@@ -37,4 +37,26 @@ $(document).ready(function() {
     		console.log(state);
     	});
     }
+
+    // ------------------------------------------------------------
+    // Lazy-load Rerun iframes when drawers are opened
+    // ------------------------------------------------------------
+    const drawers = document.querySelectorAll(".rerun-drawer");
+
+    drawers.forEach(drawer => {
+        drawer.addEventListener("toggle", () => {
+            if (drawer.open) {
+                const container = drawer.querySelector(".iframe-container");
+                if (container && !container.querySelector("iframe")) {
+                    const iframe = document.createElement("iframe");
+                    iframe.src = container.dataset.src;
+                    iframe.style.width = "100%";
+                    iframe.style.height = "500px";
+                    iframe.style.border = "none";
+                    iframe.loading = "lazy";
+                    container.appendChild(iframe);
+                }
+            }
+        });
+    });
 })
