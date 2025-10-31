@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <meta charset="utf-8">
-  <meta name="description"
-        content="Kineo: Calibration-Free Metric Motion Capture From Sparse RGB Cameras">
+  <meta name="description" content="Kineo: Calibration-Free Metric Motion Capture From Sparse RGB Cameras">
   <meta name="keywords" content="calibration-free, markerless mocap, motion-capture, human pose estimation">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Kineo: Calibration-Free Metric Motion Capture From Sparse RGB Cameras</title>
@@ -22,15 +22,13 @@
     gtag('config', 'G-CPG1V9FTGF');
   </script>
 
-  <link href="https://fonts.googleapis.com/css?family=Google+Sans|Noto+Sans|Castoro"
-        rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css?family=Google+Sans|Noto+Sans|Castoro" rel="stylesheet">
 
   <link rel="stylesheet" href="./static/css/bulma.min.css">
   <link rel="stylesheet" href="./static/css/bulma-carousel.min.css">
   <link rel="stylesheet" href="./static/css/bulma-slider.min.css">
   <link rel="stylesheet" href="./static/css/fontawesome.all.min.css">
-  <link rel="stylesheet"
-        href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
   <link rel="stylesheet" href="./static/css/index.css">
 
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
@@ -39,162 +37,305 @@
   <script src="./static/js/bulma-slider.min.js"></script>
   <script src="./static/js/index.js"></script>
 </head>
+
 <body>
 
-<nav class="navbar" role="navigation" aria-label="main navigation">
-  <div class="navbar-brand">
-    <a role="button" class="navbar-burger" aria-label="menu" aria-expanded="false">
-      <span aria-hidden="true"></span>
-      <span aria-hidden="true"></span>
-      <span aria-hidden="true"></span>
-    </a>
-  </div>
-  <div class="navbar-menu">
-    <div class="navbar-start" style="flex-grow: 1; justify-content: center;">
-      <a class="navbar-item" href="https://xr.liris.cnrs.fr/">
-      <span class="icon">
-          <i class="fas fa-home"></i>
-      </span>
+  <nav class="navbar" role="navigation" aria-label="main navigation">
+    <div class="navbar-brand">
+      <a role="button" class="navbar-burger" aria-label="menu" aria-expanded="false">
+        <span aria-hidden="true"></span>
+        <span aria-hidden="true"></span>
+        <span aria-hidden="true"></span>
       </a>
-
-      <div class="navbar-item has-dropdown is-hoverable">
-        <a class="navbar-link">
-          More Research
+    </div>
+    <div class="navbar-menu">
+      <div class="navbar-start" style="flex-grow: 1; justify-content: center;">
+        <a class="navbar-item" href="https://xr.liris.cnrs.fr/">
+          <span class="icon">
+            <i class="fas fa-home"></i>
+          </span>
         </a>
-        <div class="navbar-dropdown">
-          <a class="navbar-item" href="https://liris-xr.github.io/PLUME/">
-            PLUME: Record, Replay, Analyze and Share User Behavior in 6DoF XR Experiences
+
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link">
+            More Research
           </a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" href="https://liris-xr.github.io/PLUME/">
+              PLUME: Record, Replay, Analyze and Share User Behavior in 6DoF XR Experiences
+            </a>
+          </div>
         </div>
       </div>
+
     </div>
+  </nav>
 
-  </div>
-</nav>
-
-
-<section class="hero">
-  <div class="hero-body">
-    <div class="container is-max-desktop">
-      <div class="columns is-centered">
-        <div class="column has-text-centered">
-          <h1 class="title is-1 publication-title">Kineo: Calibration-Free Metric Motion Capture From Sparse RGB Cameras</h1>
-          <div class="is-size-5 publication-authors">
-            <span class="author-block">
-              <a href="https://scholar.google.com/citations?user=uHeqvV0AAAAJ">Charles JAVERLIAT</a><sup>1</sup>,</span>
-            <span class="author-block">
-              <a href="https://utkarshsinha.com">Pierre RAIMBAUD</a><sup>1</sup>,</span>
-            <span class="author-block">
-              <a href="https://jonbarron.info">Guillaume LAVOUÉ</a><sup>1</sup>,
-            </span>
-          </div>
-
-          <div class="is-size-5 publication-authors">
-            <span class="author-block"><sup>1</sup>École Centrale de Lyon, CNRS, INSA Lyon, Université Claude Bernard Lyon 1, Université Lumière Lyon 2, LIRIS, UMR5205, ENISE, Saint-Etienne, France</span>
-          </div>
-
+  <section class="hero" id="header">
+    <div class="hero-body">
+      <div class="container is-max-desktop">
+        <div class="columns is-centered">
           <div class="column has-text-centered">
-            <div class="publication-links">
-              <!-- PDF Link. -->
-              <span class="link-block">
-                <a href="https://arxiv.org/abs/"
-                   class="external-link button is-normal is-rounded is-dark">
-                  <span class="icon">
-                      <i class="ai ai-arxiv"></i>
-                  </span>
-                  <span>arXiv</span>
-                </a>
-              </span>
-              <!-- Video Link. -->
-              <span class="link-block">
-                <a class="external-link button is-normal is-rounded is-dark" disabled>
-                  <span class="icon">
-                      <i class="fab fa-youtube"></i>
-                  </span>
-                  <span>Video</span>
-                </a>
-              </span>
-              <!-- Code Link. -->
-              <span class="link-block">
-                <a href="https://github.com/liris-xr/kineo/"
-                   class="external-link button is-normal is-rounded is-dark">
-                  <span class="icon">
-                      <i class="fab fa-github"></i>
-                  </span>
-                  <span>Code</span>
-                  </a>
+            <h1 class="title is-1 publication-title">Kineo: Calibration-Free Metric Motion Capture From Sparse RGB
+              Cameras</h1>
+            <div class="is-size-5 publication-authors">
+              <span class="author-block">
+                <a href="https://scholar.google.com/citations?user=uHeqvV0AAAAJ">Charles
+                  JAVERLIAT</a><sup>1</sup>,</span>
+              <span class="author-block">
+                <a href="https://utkarshsinha.com">Pierre RAIMBAUD</a><sup>1</sup>,</span>
+              <span class="author-block">
+                <a href="https://jonbarron.info">Guillaume LAVOUÉ</a><sup>1</sup>,
               </span>
             </div>
 
+            <div class="is-size-5 publication-authors">
+              <span class="author-block"><sup>1</sup>École Centrale de Lyon, CNRS, INSA Lyon, Université Claude Bernard
+                Lyon 1, Université Lumière Lyon 2, LIRIS, UMR5205, ENISE, Saint-Etienne, France</span>
+            </div>
+
+            <div class="column has-text-centered">
+              <div class="publication-links">
+                <!-- PDF Link. -->
+                <span class="link-block">
+                  <a href="https://arxiv.org/abs/2510.24464" class="external-link button is-normal is-rounded is-dark">
+                    <span class="icon">
+                      <i class="ai ai-arxiv"></i>
+                    </span>
+                    <span>arXiv</span>
+                  </a>
+                </span>
+                <!-- Video Link. -->
+                <span class="link-block">
+                  <a class="external-link button is-normal is-rounded is-dark" disabled>
+                    <span class="icon">
+                      <i class="fab fa-youtube"></i>
+                    </span>
+                    <span>Video</span>
+                  </a>
+                </span>
+                <!-- Code Link. -->
+                <span class="link-block">
+                  <a href="https://github.com/liris-xr/kineo/"
+                    class="external-link button is-normal is-rounded is-dark">
+                    <span class="icon">
+                      <i class="fab fa-github"></i>
+                    </span>
+                    <span>Code</span>
+                  </a>
+                </span>
+              </div>
+
+            </div>
           </div>
         </div>
       </div>
     </div>
-  </div>
-</section>
+  </section>
 
-<section class="hero teaser">
-  <div class="container is-max-desktop">
-    <div class="hero-body">
-      <video id="teaser" autoplay muted loop playsinline height="100%">
-        <source src="./static/videos/teaser.mp4"
-                type="video/mp4">
-      </video>
-      <h2 class="subtitle has-text-centered">
-        <strong>Kineo</strong> turns raw, uncalibrated, unsynchronized videos into 3D output.
-      </h2>
+  <section class="hero teaser">
+    <div class="container is-max-desktop">
+      <div class="hero-body">
+        <video id="teaser" autoplay muted loop playsinline height="100%">
+          <source src="./static/videos/teaser.mp4" type="video/mp4">
+        </video>
+        <h2 class="subtitle has-text-centered">
+          <strong>Kineo</strong> turns raw, uncalibrated, unsynchronized videos into metric-scale 3D output.
+        </h2>
+      </div>
     </div>
-  </div>
-</section>
+  </section>
 
+  <section class="section" id="Abstract">
+    <div class="container is-max-desktop content">
+      <h2 class="title columns is-centered">Abstract</h2>
 
-<!-- <section class="hero is-light is-small">
-  <div class="hero-body">
-    <div class="container">
-      <iframe 
-        src="https://app.rerun.io/version/0.25.1/index.html?url=https://liris-xr.github.io/kineo/static/rerun/S11_WalkTogether%201.rrd"
-        style="width: 100%; height: 500px; border: none;"
-      ></iframe>
-    </div>
-  </div>
-</section> -->
-
-<section class="section">
-  <div class="container is-max-desktop">
-    <!-- Abstract. -->
-    <div class="columns is-centered has-text-centered">
-      <div class="column is-four-fifths">
-        <h2 class="title is-3">Abstract</h2>
-        <div class="content has-text-justified">
-          <p>
-            Markerless multiview motion capture remains challenging due to the need for precise camera calibration, limiting its accessibility for non-experts. Existing calibration-free approaches avoid manual calibration but suffer from high computational cost and reduced reconstruction accuracy.
-          </p>
-          <p>
-            We present Kineo, a fully automatic, calibration-free pipeline for markerless motion capture from videos captured by unsynchronized, uncalibrated, consumer-grade RGB cameras. Kineo fully leverages 2D keypoint from off-the-shelf detectors to simultaneously calibrate cameras, estimate Brown-Conrady distortion coefficients, and reconstruct 3D keypoints and dense scene point maps at metric scale. A novel confidence-driven keypoint sampling strategy, combined with graph-based optimization, ensures a fixed computational cost for the calibration step, independent of sequence duration. Additionally, we introduce the pairwise reprojection consensus score, which quantifies the reliability of 3D estimations for downstream tasks.
-          </p>
-          <p>
-            Evaluations on EgoHumans and Human3.6M demonstrate substantial improvements over prior calibration-free methods. Compared to previous state-of-the-art approaches, Kineo reduces camera translation error by approximately 81-84%, camera angular error by 86-92%, and world mean-per-joint error (W-MPJPE) by 82-91%. When provided with ground-truth intrinsics, Kineo's performance further improves, matching methods that use ground-truth extrinsics. We further demonstrate Kineo's real-world applicability in both offline and realtime scenarios. In an offline setting, we capture craftsmen gestures at Guédelon Castle, highlighting Kineo's potential for scalable, accurate motion capture in complex, uncontrolled environments and its utility in preserving intangible cultural heritage. In a realtime setting, Kineo employs a two-step approach, with calibration followed by live human reconstruction, showcasing its capability for interactive 3D motion capture.
-          </p>
-        </div>
+      <div class="content has-text-justified">
+        <p>
+          Markerless multiview motion capture remains challenging due to the need for precise camera calibration,
+          limiting its accessibility for non-experts. Existing calibration-free approaches avoid manual calibration but
+          suffer from high computational cost and reduced reconstruction accuracy.
+        </p>
+        <p>
+          We present Kineo, a fully automatic, calibration-free pipeline for markerless motion capture from videos
+          captured by unsynchronized, uncalibrated, consumer-grade RGB cameras. Kineo fully leverages 2D keypoint from
+          off-the-shelf detectors to simultaneously calibrate cameras, estimate Brown-Conrady distortion coefficients,
+          and reconstruct 3D keypoints and dense scene point maps at metric scale. A novel confidence-driven keypoint
+          sampling strategy, combined with graph-based optimization, ensures a fixed computational cost for the
+          calibration step, independent of sequence duration. Additionally, we introduce the pairwise reprojection
+          consensus score, which quantifies the reliability of 3D estimations for downstream tasks.
+        </p>
+        <p>
+          Evaluations on EgoHumans and Human3.6M demonstrate substantial improvements over prior calibration-free
+          methods. Compared to previous state-of-the-art approaches, Kineo reduces camera translation error by
+          approximately 81-84%, camera angular error by 86-92%, and world mean-per-joint error (W-MPJPE) by 82-91%. When
+          provided with ground-truth intrinsics, Kineo's performance further improves, matching methods that use
+          ground-truth extrinsics. We further demonstrate Kineo's real-world applicability in both offline and realtime
+          scenarios. In an offline setting, we capture craftsmen gestures at Guédelon Castle, highlighting Kineo's
+          potential for scalable, accurate motion capture in complex, uncontrolled environments and its utility in
+          preserving intangible cultural heritage. In a realtime setting, Kineo employs a two-step approach, with
+          calibration followed by live human reconstruction, showcasing its capability for interactive 3D motion
+          capture.
+        </p>
       </div>
     </div>
     <!--/ Abstract. -->
+    </div>
+  </section>
 
-    <!-- Paper video. -->
-    <!-- <div class="columns is-centered has-text-centered">
-      <div class="column is-four-fifths">
-        <h2 class="title is-3">Video</h2>
-        <div class="publication-video">
-          <iframe src="https://www.youtube.com/embed/MrKrnHhk8IA?rel=0&amp;showinfo=0"
-                  frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+  <section class="section" id="Method Overview">
+    <div class="container is-max-desktop content">
+      <h2 class="title columns is-centered">Method Overview</h2>
+
+      <figure class="image" style="margin-top: 1.5rem;">
+        <img id="method-overview-img" src="./static/images/pipeline_overview.png"
+          alt="Overview of the Kineo pipeline for markerless motion capture from uncalibrated and unsynchronized multi-camera videos."
+          style="max-width: 100%; height: auto; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); cursor: zoom-in;">
+
+        <figcaption class="has-text-justified is-size-6 mt-3"
+          style="text-align: justify; max-width: 95%; margin: 0 auto;">
+          <strong>Figure 1:</strong> Overview of the <em>Kineo</em> pipeline for markerless motion capture from
+          uncalibrated and unsynchronized multi-camera videos.
+          Starting from raw video inputs, the system first performs audio-based temporal synchronization to align
+          unsynchronized streams on a shared timeline.
+          Next, automatic camera calibration estimates extrinsic and intrinsic parameters, including Brown–Conrady lens
+          distortion, via a graph-based optimization
+          over 2D keypoint correspondences selected by a confidence-driven sampling strategy.
+          Using the recovered cameras, 3D keypoints and scene point maps are reconstructed, and each triangulated
+          keypoint is assigned a pairwise reprojection confidence
+          score to quantify reconstruction quality.
+          Finally, metric-scale recovery is achieved either through a human body prior using the SMPL model or a
+          monocular metric depth estimator for subject-agnostic scaling.
+          The modular design enables robust and scalable reconstruction of both human and non-human subjects across
+          long, multi-view sequences.
+        </figcaption>
+      </figure>
+
+      <!-- Modal for Enlarged Image -->
+      <div id="image-modal" class="modal">
+        <div class="modal-background"></div>
+        <div class="modal-content has-text-centered">
+          <img src="./static/images/pipeline_overview.png" alt="Kineo Method Overview Enlarged"
+            style="max-width: 95%; height: auto; border-radius: 12px;">
+        </div>
+        <button class="modal-close is-large" aria-label="close"></button>
+      </div>
+    </div>
+  </section>
+  </div>
+  </section>
+  <!--/ Method Overview. -->
+
+  <section class="section" id="results-gallery">
+    <div class="container is-max-desktop content">
+      <h2 class="title has-text-centered">Results Gallery</h2>
+
+      <div class="container is-max-desktop content">
+        <h3 class="title is-4">Interactive Result</h3>
+        <p>Interactive result on one sequence from the Human3.6M dataset (S11 WalkDog 1). The result are raw with no
+          post-processing (filtering, smoothing, etc.).
+
+        <div class="notification is-warning is-light">
+          ⚠️ <strong>Note:</strong> The viewer might take a few seconds to load the full data (SMPL mesh + video +
+          ground truth) to properly appear synchronized. We recommend waiting for the video to appear before playing the
+          sequence.
+        </div>
+        <div class="columns is-centered" style="margin-top: 1.5rem;">
+          <iframe
+            src="https://app.rerun.io/version/0.25.1/index.html?url=https://xr.liris.cnrs.fr/promess/assets/rerun/S11_Greeting_smpl.rrd"
+            style="width: 100%; height: 500px; border: none;"></iframe>
         </div>
       </div>
-    </div> -->
-    <!--/ Paper video. -->
-  </div>
-</section>
+
+      <h3 class="title is-4">Qualitative Results</h3>
+      <div class="columns is-multiline is-variable is-3">
+        <!-- Video 1 -->
+        <div class="column is-full-mobile is-half-tablet">
+          <div class="video-container">
+            <video controls autoplay muted loop playsinline>
+              <source src="./static/videos/result_egohumans_fencing.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+          </div>
+          <p class="video-caption">EgoHumans - Fencing</p>
+        </div>
+
+        <!-- Video 2 -->
+        <div class="column is-full-mobile is-half-tablet">
+          <div class="video-container">
+            <video controls autoplay muted loop playsinline>
+              <source src="./static/videos/result_egohumans_tagging.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+          </div>
+          <p class="video-caption">EgoHumans - Tagging</p>
+        </div>
+
+        <!-- Video 3 -->
+        <div class="column is-full-mobile is-half-tablet">
+          <div class="video-container">
+            <video controls autoplay muted loop playsinline>
+              <source src="./static/videos/result_h36m_phoning.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+          </div>
+          <p class="video-caption">Human3.6M - Phoning</p>
+        </div>
+
+        <!-- Video 4 -->
+        <div class="column is-full-mobile is-half-tablet">
+          <div class="video-container">
+            <video controls autoplay muted loop playsinline>
+              <source src="./static/videos/result_h36m_walkdog.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+          </div>
+          <p class="video-caption">Human3.6M - Walking Dog</p>
+        </div>
+
+        <!-- Video 5 -->
+        <div class="column is-full-mobile is-half-tablet">
+          <div class="video-container">
+            <video controls autoplay muted loop playsinline>
+              <source src="./static/videos/result_guedelon_quarry.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+          </div>
+          <p class="video-caption">Guédelon - Stonemason</p>
+        </div>
+
+        <!-- Video 6 -->
+        <div class="column is-full-mobile is-half-tablet">
+          <div class="video-container">
+            <video controls autoplay muted loop playsinline>
+              <source src="./static/videos/result_guedelon_carpenter1.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+          </div>
+          <p class="video-caption">Guédelon - Carpenter</p>
+        </div>
+
+        <!-- Comparative video spanning all columns -->
+        <h3 class="title is-4">Comparative Results (HSFM vs. Kineo)</h3>
+        <div class="column is-full">
+          <div class="video-container">
+            <video controls autoplay muted loop playsinline style="width: 100%; height: auto;">
+              <source src="./static/videos/comparison_hsfm_kineo.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+          </div>
+          <p class="video-caption">Qualitative comparison between HSfM (<strong style="color: red;">red</strong>) and Kineo
+            (<strong style="color: rgb(0, 174, 255);">blue</strong>) on the <i>S11_Eating 1</i> sequence from the Human3.6M dataset (HSfM best-performing sequence). Ground truth
+            camera and skeletons are shown in <strong style="color: black;">black</strong>. Visualization is scale-aligned.</p>
+        </div>
+
+      </div>
+
+    </div>
+  </section>
 
 
+  <!-- 
 <section class="section">
   <div class="container is-max-desktop">
 
@@ -266,43 +407,56 @@
     </div>
 
   </div>
-</section>
+</section> -->
 
-
-<section class="section" id="BibTeX">
-  <div class="container is-max-desktop content">
-    <h2 class="title">BibTeX</h2>
-    <pre><code>@article{javerliat2025kineo,
-  author    = {Javerliat, Charles and Raimbaud, Pierre and Lavoué, Guillaume},
-  title     = {Kineo: Calibration-Free Metric Motion Capture From Sparse RGB Cameras},
-}</code></pre>
-  </div>
-</section>
-
-<footer class="footer">
-  <div class="container">
-    <div class="content has-text-centered">
-      <a class="icon-link"
-         href="https://arxiv.org/abs/">
-        <i class="fas fa-file-pdf"></i>
-      </a>
-      <a class="icon-link" href="https://github.com/liris-xr/kineo" class="external-link" disabled>
-        <i class="fab fa-github"></i>
-      </a>
+  <section class="section" id="Acknowledgements">
+    <div class="container is-max-desktop content">
+      <h2 class="title">Acknowledgements</h2>
+      <p>
+        This work was supported by the Auvergne-Rhône-Alpes region as part of the PROMESS project. This work was granted
+        access to the HPC resources of IDRIS under the allocation 2025-AD010614830 made by GENCI. We also express our
+        gratitude to the Guédelon Castle for kindly welcoming us and permitting the captures that were essential to this
+        study.
+      </p>
     </div>
+  </section>
 
-    <div class="columns is-centered">
-      <div class="column is-8">
-        <div class="content has-text-centered">
-          <p>
-            Theme modified from 
-            <a href="https://github.com/nerfies/nerfies.github.io" target="_blank" rel="noopener noreferrer">Nerfies</a>.
-          </p>
+  <section class="section" id="BibTeX">
+    <div class="container is-max-desktop content">
+      <h2 class="title">Citation</h2>
+      <pre><code>@article{javerliat2025kineo,
+      author    = {Javerliat, Charles and Raimbaud, Pierre and Lavoué, Guillaume},
+      title     = {Kineo: Calibration-Free Metric Motion Capture From Sparse RGB Cameras},
+      date      = {2025},
+}</code></pre>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="container">
+      <div class="content has-text-centered">
+        <a class="icon-link" href="https://arxiv.org/abs/2510.24464">
+          <i class="fas fa-file-pdf"></i>
+        </a>
+        <a class="icon-link" href="https://github.com/liris-xr/kineo" class="external-link" disabled>
+          <i class="fab fa-github"></i>
+        </a>
+      </div>
+
+      <div class="columns is-centered">
+        <div class="column is-8">
+          <div class="content has-text-centered">
+            <p>
+              Theme modified from
+              <a href="https://github.com/nerfies/nerfies.github.io" target="_blank"
+                rel="noopener noreferrer">Nerfies</a>.
+            </p>
+          </div>
         </div>
       </div>
     </div>
-  </div>
-</footer>
+  </footer>
 
 </body>
+
 </html>

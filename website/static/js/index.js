@@ -59,4 +59,39 @@ $(document).ready(function() {
             }
         });
     });
+
+
+    // ------------------------------------------------------------
+    // Image modal popup (for figure enlarging)
+    // ------------------------------------------------------------
+    const modal = document.getElementById("image-modal");
+    const modalImg = modal ? modal.querySelector("img") : null;
+
+    // Attach to any image with data-enlarge attribute or a specific ID
+    const clickableImages = document.querySelectorAll("#method-overview-img, [data-enlarge]");
+
+    clickableImages.forEach(img => {
+        img.style.cursor = "zoom-in";
+        img.addEventListener("click", () => {
+            if (modal && modalImg) {
+                modal.classList.add("is-active");
+                modalImg.src = img.src;
+                modalImg.alt = img.alt || "Enlarged image";
+            }
+        });
+    });
+
+    if (modal) {
+        const closeBtn = modal.querySelector(".modal-close");
+        const background = modal.querySelector(".modal-background");
+
+        const closeModal = () => modal.classList.remove("is-active");
+        if (closeBtn) closeBtn.addEventListener("click", closeModal);
+        if (background) background.addEventListener("click", closeModal);
+
+        // Optional: close on Escape key
+        document.addEventListener("keydown", e => {
+            if (e.key === "Escape") closeModal();
+        });
+    }
 })

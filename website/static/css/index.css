@@ -2,7 +2,6 @@ body {
   font-family: 'Noto Sans', sans-serif;
 }
 
-
 .footer .icon-link {
     font-size: 25px;
     color: #000;
@@ -13,14 +12,9 @@ body {
     margin-bottom: 5px;
 }
 
-.dnerf {
-  font-variant: small-caps;
-}
-
-
 .teaser .hero-body {
   padding-top: 0;
-  padding-bottom: 3rem;
+  padding-bottom: 2rem;
 }
 
 .teaser {
@@ -154,4 +148,57 @@ body {
 }
 #interpolation-image-wrapper img {
   border-radius: 5px;
+}
+
+#image-modal .modal-content {
+  max-width: 95% !important;
+  width: auto;
+}
+
+#image-modal img {
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+}
+
+.teaser video {
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+  margin-bottom: 1.5rem;
+}
+
+.video-container {
+  position: relative;
+  width: 100%;
+  height: 0;
+  padding-bottom: 56.25%; /* 16:9 aspect ratio */
+  overflow: hidden;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+  margin-bottom: 1rem;
+}
+
+.video-container iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+#header, .teaser {
+  background: #f3f7f8;
+}
+
+#results-gallery {
+  background: #f3f7f8;
+}
+
+.video-caption {
+  text-align: center;
+  /* margin-top: 0.5rem; */
+  font-size: 0.9rem;
+  color: #555;
 }
