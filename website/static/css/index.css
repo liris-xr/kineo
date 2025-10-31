@@ -202,3 +202,32 @@ body {
   font-size: 0.9rem;
   color: #555;
 }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: sans-serif;
+  text-align: center;
+}
+th, td {
+  border: 1px solid #ccc;
+  padding: 6px 8px;
+}
+thead th {
+  border-bottom: 2px solid black;
+}
+.dataset-label {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  text-align: center;
+  vertical-align: middle;
+  font-weight: bold;
+  background-color: #f5f5f5;
+  border-right: 2px solid #000;
+}
+.breeze { background-color: #dff9fb; }
+.gt { background-color: #ffbfbf; }     /* Red: GT */
+.est { background-color: #bfffbf; }    /* Green: Est. */
+.notused { background-color: #ffdfbf; }/* Orange: - */
+.bold { font-weight: bold; }
+.underline { text-decoration: underline; }
