@@ -232,18 +232,12 @@
 
       <div class="container is-max-desktop content">
         <h3 class="title is-4">Interactive Result</h3>
-        <p>Interactive result on one sequence from the Human3.6M dataset (S11 WalkDog 1). The result are raw with <strong>no
+        <p>Interactive result on one sequence from the Human3.6M dataset (S11 Greeting). The result are raw with <strong>no
           post-processing</strong> (filtering, smoothing, etc.).
-
-        <div class="notification is-warning is-light">
-          ⚠️ <strong>Note:</strong> The viewer might take a few seconds to load the full data (SMPL mesh + video +
-          ground truth) to properly appear synchronized. We recommend waiting for the video to appear before playing the
-          sequence.
-        </div>
         <div class="columns is-centered" style="margin-top: 1.5rem;">
           <iframe
-            src="https://app.rerun.io/version/0.25.1/index.html?url=https://xr.liris.cnrs.fr/promess/assets/rerun/S11_Greeting_smpl.rrd"
-            style="width: 100%; height: 500px; border: none;"></iframe>
+            src="https://app.rerun.io/version/0.25.1/index.html?url=https://xr.liris.cnrs.fr/promess/assets/rerun/S11_Greeting_h36m.rrd"
+            style="width: 100%; aspect-ratio: 16/9; border: none;"></iframe>
         </div>
       </div>
 
@@ -335,11 +329,12 @@
           <thead>
             <tr>
               <th></th>
-              <th rowspan="2">Method</th>
+              <th>Method</th>
               <th colspan="2">Human Metrics</th>
               <th colspan="3">Parameters</th>
             </tr>
             <tr>
+              <th></th>
               <th></th>
               <th>W-MPJPE ↓</th>
               <th>PA-MPJPE ↓</th>
@@ -376,9 +371,9 @@
               <td class="est">Est.</td><td class="est">Est.</td><td class="est">Est.</td>
             </tr>
         
-            <!-- H3.6M -->
+            <!-- Human3.6M -->
             <tr>
-              <td class="dataset-label" rowspan="7">H3.6M</td>
+              <td class="dataset-label" rowspan="7">Human3.6M</td>
               <td>Iskakov et al.</td><td>0.02</td><td>-</td>
               <td class="gt">GT</td><td class="gt">GT</td><td class="gt">GT</td>
             </tr>
@@ -422,11 +417,12 @@
           <thead>
             <tr>
               <th></th>
-              <th rowspan="2">Method</th>
+              <th>Method</th>
               <th colspan="7">Camera Metrics</th>
               <th colspan="3">Parameters</th>
             </tr>
             <tr>
+              <th></th>
               <th></th>
               <th>TE ↓</th>
               <th>s-TE ↓</th>
@@ -486,9 +482,9 @@
               <td class="est">Est.</td><td class="est">Est.</td><td class="est">Est.</td>
             </tr>
         
-            <!-- H3.6M -->
+            <!-- Human3.6M -->
             <tr>
-              <td class="dataset-label" rowspan="4">H3.6M</td>
+              <td class="dataset-label" rowspan="4">Human3.6M</td>
               <td>HSfM</td>
               <td>0.83</td><td>0.33</td><td>6.44</td><td>0.95</td><td>0.46</td><td>0.95</td><td>36.97</td>
               <td class="est">Est.</td><td class="est">Est.</td><td class="notused">-</td>
