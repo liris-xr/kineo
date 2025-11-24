@@ -13,7 +13,9 @@
 
 Kineo is a calibration-free metric motion capture system that reconstructs 3D motion from sparse RGB cameras. It leverages existing 2D keypoints detectors to estimate 3D poses without requiring complex calibration procedures, making motion capture more accessible and flexible.
 
-![StoneQuarry](docs/static/images/stone_quarry.gif)
+<div align="center">
+    <img alt="StoneQuarry" src="docs/static/images/stone_quarry.gif" width="600">
+</div>
 
 ## Installation
 
