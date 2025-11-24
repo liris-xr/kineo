@@ -1,0 +1,56 @@
+# Kps:    GT 
+# [R, t]: GT
+# K:      GT
+# d:      GT
+# scale:  GT
+output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/h36m_cam_params_gtRt_gtK_gtD"
+cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/h36m_cam_params_gtRt_gtK_gtD"
+use_cache: False
+batch_size: 32
+use_half_precision: False
+shared_intrinsics: False
+
+pipeline:
+  seed: 19
+
+  stages:
+    transfer_gt_annotations:
+      _target_: kineo.pipeline.stages.transfer_gt_annotations.TransferGroundTruthAnnotationsStage
+      name: "Transfer GT Keypoints, K and d"
+      order: 0
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.transfer_gt_annotations.TransferGroundTruthAnnotationsRuntimeConfig
+        annotations_keys: ["bboxes_2d", "keypoints_2d", "camera_intrinsics", "camera_extrinsics"]
+
+    global_time_resampling:
+      _target_: kineo.pipeline.stages.global_time_resampling.GlobalTimeResamplingStage
+      name: "Global Time Resampling"
+      order: 10
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.global_time_resampling.GlobalTimeResamplingRuntimeConfig
+        target_fps: 10
+        interpolation_dt_thr_s: 0.3
+
+    mvs_triangulation:
+      _target_: kineo.pipeline.stages.mvs_triangulation.MVSTriangulationStage
+      name: "MVS Triangulation"
+      order: 60
+
+    annotations_export:
+      _target_: kineo.pipeline.stages.annotations_export.AnnotationsExportStage
+      name: "Annotations Export"
+      order: 100
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.annotations_export.AnnotationsExportRuntimeConfig
+        annotations_keys: "*"
+        excluded_annotations_keys: []
+        not_found_error: True
+        output_path_template: "${output_root_dir}/annotations/{sequence_name}/{annotation_key}.pkl"
+
+    metrics_export:
+      _target_: kineo.pipeline.stages.metrics_export.MetricsExportStage
+      name: "Metrics Export"
+      order: 110
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.metrics_export.MetricsExportRuntimeConfig
+        output_path_template: "${output_root_dir}/metrics/{sequence_name}.json"

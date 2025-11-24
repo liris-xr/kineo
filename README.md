@@ -1,63 +1,84 @@
 # Kineo
 
-Kineo is a toolkit for 3D human pose estimation. It is built on top of MMPretrain, MMEngine, MMCV, MMDet, and MMPose.
+Kineo is a calibration-free metric motion capture system that reconstructs 3D motion from sparse RGB cameras. It leverages existing 2D keypoints detectors to estimate 3D poses without requiring complex calibration procedures, making motion capture more accessible and flexible.
+
+![StoneQuarry](docs/static/images/stone_quarry.gif)
 
 ## Installation
 
-### Minimal installation
+To install Kineo, please follow the procedure described in [INSTALL.md](./INSTALL.md).
 
-```bash
-conda create -n kineo python=3.10
-conda activate kineo
+## Inference
+
+### Using Docker
+
+If you installed Kineo using Docker, run the inference script directly through the docker container:
+```sh
+docker run --gpus all -it --rm \
+  -v ./cache:/app/cache \
+  -v ./outputs:/app/outputs \
+  -v ./checkpoints:/app/checkpoints \
+  -v ./body_models:/app/body_models/ \
+  -v ./data:/app/data \
+  kineo:latest python3 infer.py \
+  --config-file configs/infer_nlf_single_person.yaml \
+  --sequence-name MY_SEQUENCE \
+  /app/data/view1.avi \
+  /app/data/view2.avi \
+  /app/data/view3.avi \
+  /app/data/view4.avi \
+  /app/data/view5.avi
+```
+This mounts your local folders (cache, outputs, checkpoints, body_models, data) inside the container, so the inference results and models persist outside the container.
+
+### Using Manual Installation
+
+If you installed Kineo manually (not using Docker), run the inference script directly in your Python environment:
+
+```sh
+python3 infer.py \
+  --config-file configs/infer_nlf_single_person.yaml \
+  --sequence-name MY_SEQUENCE \
+  /app/data/view1.avi \
+  /app/data/view2.avi \
+  /app/data/view3.avi \
+  /app/data/view4.avi \
+  /app/data/view5.avi
 ```
 
-To compile CUDA kernels, make sure to set the following environment variables:
-```bash
-export MMCV_WITH_OPS=1
-export SAM2_BUILD_ALLOW_ERRORS=0
-export SAM2_BUILD_CUDA=1
+## Evaluation
+
+We evaluated Kineo on the EgoHumans and Human3.6M datasets. To reproduce our results, first download and preprocess the datasets using the provided scripts:
+```sh
+python scripts/download_h36m_dataset.py <path-to-h36m-dataset>
+python scripts/preprocess_h36m_dataset.py <path-to-h36m-dataset>
+
+python scripts/download_egohumans_dataset.py <path-to-egohumans-dataset>
+python scripts/preprocess_egohumans_dataset.py <path-to-egohumans-dataset>
 ```
 
-If you want to install in headless mode, make sure to set the `AITVIEWER_HEADLESS` environment variable to `1`.
-```bash
-export AITVIEWER_HEADLESS=1
+Once the datasets are prepared, you can run evaluation using the corresponding evaluation scripts:
+```sh
+python experiments/h36m_eval.py <path-to-h36m-dataset> configs/experiments/benchmarks/h36m_benchmark_nlf_estRt_estK_estD.yaml
+
+python experiments/egohumans_eval.py <path-to-egohumans-dataset> configs/experiments/benchmarks/egohumans_benchmark_nlf_estRt_estK_estD.yaml
 ```
+All configurations used in the paper are available in the `configs` directory.
 
-When building MMCV with CUDA support, start by [installing torch](https://pytorch.org/get-started/locally/) in your environment, then install the package without build isolation so that the correct version of torch is used to build MMCV kernels. Otherwise you might encounter "undefined symbol" errors when running the pipeline.
-```bash
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126 # <- Replace with the correct version of torch you want to use
-pip install --no-build-isolation -v -e .
+## Acknowledgments
+
+This work was supported by the Auvergne-Rhône-Alpes region as part of the PROMESS project. This work was granted access to the HPC resources of IDRIS under the allocation 2025-AD010614830 made by GENCI. We also express our gratitude to the Guédelon Castle for kindly welcoming us and permitting the captures that were essential to this study.
+
+## BibTeX
+
 ```
-
-### Download the keypoints detector
-
-If you use MMDet and MMPose, you can either specify the model name alias, for example:
-```yaml
-mmlab_bbox_keypoints_detection:
-    _target_: kineo.pipeline.stages.mmlab_bbox_keypoints_detection.MMLabBboxKeypointsDetectionStage
-      name: "MMLab Bbox Keypoints Detection"
-    [...]
-    det_model: "rtmdet-t"
-    keypoints_model: "rtmpose-l_8xb256-420e_coco-256x192"
-    [...]
+@article{javerliat2025kineo,
+  title={Kineo: Calibration-Free Metric Motion Capture From Sparse RGB Cameras}, 
+  author={Charles Javerliat and Pierre Raimbaud and Guillaume Lavoué},
+  year={2025},
+  eprint={2510.24464},
+  archivePrefix={arXiv},
+  primaryClass={cs.CV},
+  url={https://arxiv.org/abs/2510.24464}, 
+}
 ```
-In which case the model weights will be downloaded automatically. Otherwise, you can specify the model config and weights path manually, for example:
-```yaml
-mmlab_bbox_keypoints_detection:
-    _target_: kineo.pipeline.stages.mmlab_bbox_keypoints_detection.MMLabBboxKeypointsDetectionStage
-      name: "MMLab Bbox Keypoints Detection"
-    [...]
-    det_model: "rtmdet-t"
-    det_model_weights: "./checkpoints/rtmdet_tiny_8xb32-300e_coco_20220902_112414-78e30dcc.pth"
-    keypoints_model: "./configs/rtmpose-l_8xb256-420e_h36m-384x288.py"
-    keypoints_model_weights: "./checkpoints/rtmpose_h36m.pth"
-    [...]
-```
-
-### Download the body models
-
-If you use SMPL global scaling, you need to download the SMPL model from [here](https://smpl.is.tue.mpg.de/) and place it in the `body_models/smpl` directory, along with the joint regressor which outputs the same joints format as the 2D detector.
-
-### Download the MoGe model
-
-If you use MoGe global scaling, you need to download the MoGe model from [here](https://huggingface.co/Ruicheng/moge-2-vitl-normal) and place it in the `checkpoints` directory after renaming it to `moge-2-vitl-normal.pt`.

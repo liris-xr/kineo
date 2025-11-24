@@ -1,0 +1,26 @@
+\clearpage
+\onecolumn
+\begin{longtblr}[
+  caption = {Comparison of the W-MPJPE metric (lower is better) across Human3.6M sequences for Kineo (\textbf{\textcolor{cyan}{blue}}), HSfM (\textbf{\textcolor{red}{red}}), and ground truth (\textbf{\textcolor{black}{black}}). For each sequence, the table reports the minimum, median, maximum, mean, and standard deviation of W-MPJPE over all frames, along with visualizations of the corresponding frames. All estimates are scale-aligned for visualization. Overall, Kineo achieves lower W-MPJPE and demonstrates greater robustness with smaller standard deviation compared to HSfM.},
+]{
+width=\textwidth,
+cells={valign=m,halign=c},
+colspec={Q[c,1.8cm] *{3}{X[c]} Q[c,1.8cm] *{3}{X[c]} Q[c,1.8cm]},
+hline{1,Z} = {1pt},
+hline{3} = {0.4pt},
+vline{2-9} = {0.4pt}, % vertical lines only in body
+rowhead=2
+}
+% --- HEADER ---
+\SetCell[r=2]{c} \textbf{Sequence} &
+\SetCell[c=4]{c} \textbf{HSfM W-MPJPE} & & & &
+\SetCell[c=4]{c} \textbf{Kineo W-MPJPE} & & & & \\
+
+& Min\,$\downarrow$ & Median\,$\downarrow$ & Max\,$\downarrow$ & Mean$\pm$Std\,$\downarrow$ &
+  Min\,$\downarrow$ & Median\,$\downarrow$ & Max\,$\downarrow$ & Mean$\pm$Std\,$\downarrow$ \\
+
+{latex_table_rows_str}
+
+\end{longtblr}
+\clearpage
+\twocolumn

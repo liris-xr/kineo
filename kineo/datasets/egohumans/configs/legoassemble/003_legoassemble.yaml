@@ -1,0 +1,109 @@
+SEQUENCE: '003_legoassemble'
+INVALID_ARIAS: []
+INVALID_EXOS: []
+
+BBOX:
+  MIN_VERTICES: 40
+  EGO:
+    MIN_AREA_RATIO: 0.001
+    CLOSE_BBOX_DISTANCE: 2.0
+    CLOSE_BBOX_MIN_AREA_RATIO: 0.01
+    MAX_ASPECT_RATIO: 4
+    MIN_ASPECT_RATIO: 0.4
+
+  EXO:
+    MIN_AREA_RATIO: 0.0005
+    MAX_ASPECT_RATIO: 5
+    MIN_ASPECT_RATIO: 0.5
+
+
+POSE2D:
+  DEBUG: False
+  # USE_BBOX_DETECTOR: False
+  USE_BBOX_DETECTOR: True
+  DETECTOR_CONFIG_FILE: './external/mmpose/demo/mmdetection_cfg/faster_rcnn_x101_64x4d_fpn_mstrain_3x_coco.py'
+  DETECTOR_CHECKPOINT: 'https://download.openmmlab.com/mmdetection/v2.0/faster_rcnn/faster_rcnn_x101_64x4d_fpn_mstrain_3x_coco/faster_rcnn_x101_64x4d_fpn_mstrain_3x_coco_20210524_124528-26c63de6.pth'
+  DETECTOR_MIN_IOU: 0.1
+
+  RGB_CONFIG_FILE: './external/mmpose/configs/wholebody/2d_kpt_sview_rgb_img/topdown_heatmap/coco-wholebody/hrnet_w48_coco_wholebody_384x288_dark_plus.py'
+  RGB_CHECKPOINT: 'https://download.openmmlab.com/mmpose/top_down/hrnet/hrnet_w48_coco_wholebody_384x288_dark-f5726563_20200918.pth'
+  
+  RGB_THRES: 0.2
+  RGB_VIS_THRES: 0.2
+  
+  GRAY_CONFIG_FILE: './external/mmpose/configs/wholebody/2d_kpt_sview_rgb_img/topdown_heatmap/coco-wholebody-grayscale/hrnet_w48_coco_wholebody_384x288_dark_plus.py'
+  GRAY_CHECKPOINT: 'https://download.openmmlab.com/mmpose/top_down/hrnet/hrnet_w48_coco_wholebody_384x288_dark-f5726563_20200918.pth'
+  GRAY_THRES: 0.5
+  GRAY_VIS_THRES: 0.5
+
+  MIN_VIS_KEYPOINTS: 5
+  OVERLAP_OKS_THRES: 0.7 ## very important, default, if overlap greater than this remove
+  BBOX_THRES: 0.5
+
+  VIS:
+    RADIUS:
+      EXO_RGB: 10
+      EGO_RGB: 5
+      EGO_LEFT: 2
+      EGO_RIGHT: 2
+    THICKNESS:
+      EXO_RGB: 10
+      EGO_RGB: 5
+      EGO_LEFT: 2
+      EGO_RIGHT: 2
+
+POSE3D:
+  KEYPOINTS_THRES: 0.5
+  BBOX_AREA_THRES: 0.002
+  NUM_ITERS: 1000
+  REPROJECTION_ERROR_EPSILON: 0.01
+
+  MIN_VIEWS: 2 ## min views for triangulation
+  SECONDARY_MIN_VIEWS: 3 ## min views for triangulation
+  INCLUDE_CONFIDENCE: True ## include confidence in triangulation  
+  # OVERRIDE:
+  #   TIMESTAMPS: [105]
+  #   HUMAN_NAMES: ['aria01']
+  #   EXO_CAMERAS: [['cam01']]
+  #   KEYPOINT_IDXS: [[11, 16]]
+
+REFINE_POSE3D:
+  DEBUG: True
+  STD_THRES: 10 ##+- std deviation allowed for inliers
+  WINDOW_LENGTH: 10
+  MOTION_THRES: 300 ## in pixels 4k
+
+FIT_POSE3D:
+  DEBUG: True
+  NUM_EPOCHS: 10
+  NUM_ITERS: 500
+  LR: 0.1
+  MAX_ITER: 20
+  INIT_POSE_LOSS_WEIGHT: 1
+  SYMMETRY_LOSS_WEIGHT: 1
+  TEMPORAL_LOSS_WEIGHT: 1
+  LIMB_LENGTH_LOSS_WEIGHT: 1
+  FTOL: 1e-4
+  GLOBAL_ITERS: 3
+
+INIT_SMPL:
+  # VIS: True
+    VIS: False
+
+SMPL:
+  DEBUG: False
+  VERBOSE: True
+  CONFIG_FILE: 'smplify3d_temporal.py'
+  ARIA_NAME_LIST: ['aria01', 'aria02', 'aria03']
+  NUM_EPOCHS_LIST: [10, 4, 10] # number of epochs
+  STAGE1_ITERS_LIST: [50, 50, 50] ## global rotation and translation
+  STAGE2_ITERS_LIST: [20, 20, 20] ## shape optimize, use small iterations if shrinking body
+  STAGE3_ITERS_LIST: [60, 10, 120] ## global rot and transl and pose. Use small iterations if crouching problem or large humans
+
+BLENDER:
+  SCENE_FILE: 'legoassemble/legoassemble.blend'
+  COLORS: 'blue###green###red'
+  MAX_OFFSET: 0.25
+  TOLERANCE: 1e-5
+  OVERLAY: True
+  OVERLAY_CAMERA: 'cam08'

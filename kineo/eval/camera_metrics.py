@@ -1,0 +1,330 @@
+# -----------------------------------------------------------------------------
+# Kineo
+# Copyright (c) Ecole Centrale de Lyon, CNRS, University Claude Bernard Lyon 1,
+# and INSA Lyon. All rights reserved.
+#
+# Use of this software is strictly for research and evaluation purposes only.
+# Commercial use or distribution without prior written consent is prohibited.
+# Contact: guillaume.lavoue@enise.ec-lyon.fr
+# -----------------------------------------------------------------------------
+
+import torch
+from kineo.geometry.transformations import (
+    compute_similarity_transform,
+    inverse_Rt,
+    apply_similarity_transform_to_Rt,
+)
+from kineo.annotations.camera_extrinsics import CameraExtrinsicsAnnotations
+from kineo.annotations.camera_intrinsics import CameraIntrinsicsAnnotations
+import roma
+
+
+def _compute_vfov(K: torch.Tensor, resolution_hw: torch.Tensor) -> torch.Tensor:
+    """
+    Compute the vertical field of view (in degrees) of a camera from its
+    intrinsics matrix and resolution.
+    """
+    fy = K[..., 1, 1]
+    h = resolution_hw[..., 0]
+    return torch.rad2deg(2 * torch.atan(h / (2 * fy)))
+
+
+def _compute_camera_metrics_for_frame(
+    frame_idx: int,
+    gt_cam_intrinsics_annotations: CameraIntrinsicsAnnotations,
+    gt_cam_extrinsics_annotations: CameraExtrinsicsAnnotations,
+    pred_cam_intrinsics_annotations: CameraIntrinsicsAnnotations,
+    pred_cam_extrinsics_annotations: CameraExtrinsicsAnnotations,
+) -> dict[str, torch.Tensor]:
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    frame_gt_cam_intrinsics_annotations = (
+        gt_cam_intrinsics_annotations.get_closest_by_frame_idx(frame_idx)
+    )
+    frame_pred_cam_intrinsics_annotations = (
+        pred_cam_intrinsics_annotations.get_closest_by_frame_idx(frame_idx)
+    )
+
+    frame_gt_cam_extrinsics_annotations = (
+        gt_cam_extrinsics_annotations.get_closest_by_frame_idx(frame_idx)
+    )
+    frame_pred_cam_extrinsics_annotations = (
+        pred_cam_extrinsics_annotations.get_closest_by_frame_idx(frame_idx)
+    )
+
+    if (
+        frame_gt_cam_intrinsics_annotations.views_ids
+        != frame_pred_cam_intrinsics_annotations.views_ids
+    ):
+        raise ValueError(
+            f"Views ids in frame {frame_idx} are different in ground truth and prediction"
+        )
+
+    if (
+        frame_gt_cam_extrinsics_annotations.views_ids
+        != frame_pred_cam_extrinsics_annotations.views_ids
+    ):
+        raise ValueError(
+            f"Views ids in frame {frame_idx} are different in ground truth and prediction"
+        )
+
+    if (
+        frame_gt_cam_intrinsics_annotations.views_ids
+        != frame_gt_cam_extrinsics_annotations.views_ids
+    ):
+        raise ValueError(
+            f"Views ids in frame {frame_idx} are different in ground truth intrinsics and extrinsics"
+        )
+
+    cam_ids = frame_gt_cam_intrinsics_annotations.views_ids
+
+    out = []
+
+    gt_Rt = torch.stack(
+        [
+            frame_gt_cam_extrinsics_annotations.filter_by_view_id(cam_id)
+            .first_or_default()
+            .Rt.to(device)
+            for cam_id in cam_ids
+        ]
+    )
+
+    pred_Rt = torch.stack(
+        [
+            frame_pred_cam_extrinsics_annotations.filter_by_view_id(cam_id)
+            .first_or_default()
+            .Rt.to(device)
+            for cam_id in cam_ids
+        ]
+    )
+
+    gt_cam2world = inverse_Rt(gt_Rt)
+    pred_cam2world = inverse_Rt(pred_Rt)
+
+    gt_cam_pos = gt_cam2world[:, :3, 3]
+    pred_cam_pos = pred_cam2world[:, :3, 3]
+
+    # Camera position accuracy, with scale alignment.
+    R, t, s = compute_similarity_transform(
+        X=pred_cam_pos,
+        Y=gt_cam_pos,
+        estimate_scale=True,
+    )
+    pred_Rt_scaled_aligned = apply_similarity_transform_to_Rt(pred_Rt, R, t, s)
+    pred_cam2world_scaled_aligned = inverse_Rt(pred_Rt_scaled_aligned)
+    pred_cam_pos_scaled_aligned = pred_cam2world_scaled_aligned[:, :3, 3]
+
+    # Camera position accuracy, without scale alignment.
+    R, t, s = compute_similarity_transform(
+        X=pred_cam_pos,
+        Y=gt_cam_pos,
+        estimate_scale=False,
+    )
+    pred_Rt_unscaled_aligned = apply_similarity_transform_to_Rt(pred_Rt, R, t, s)
+    pred_cam2world_unscaled_aligned = inverse_Rt(pred_Rt_unscaled_aligned)
+    pred_cam_pos_unscaled_aligned = pred_cam2world_unscaled_aligned[:, :3, 3]
+
+    # Equation (7) in RelPose++.
+    scene_scale = torch.max(
+        torch.linalg.norm(
+            gt_cam_pos - torch.mean(gt_cam_pos, dim=0, keepdim=True), dim=-1
+        )
+    )
+
+    for cam_idx, cam_id in enumerate(cam_ids):
+        gt_K = (
+            frame_gt_cam_intrinsics_annotations.filter_by_view_id(cam_id)
+            .first_or_default()
+            .K
+        )
+        pred_K = (
+            frame_pred_cam_intrinsics_annotations.filter_by_view_id(cam_id)
+            .first_or_default()
+            .K
+        )
+        cam_resolution_hw = torch.tensor(
+            frame_gt_cam_intrinsics_annotations.filter_by_view_id(cam_id)
+            .first_or_default()
+            .resolution_hw
+        )
+        gt_vfov = _compute_vfov(gt_K, cam_resolution_hw)
+        pred_vfov = _compute_vfov(pred_K, cam_resolution_hw)
+        vfov_error = torch.abs(gt_vfov - pred_vfov)
+
+        s_TE = torch.norm(
+            (gt_cam_pos[cam_idx] - pred_cam_pos_scaled_aligned[cam_idx]), dim=-1
+        )
+        TE = torch.norm(
+            (gt_cam_pos[cam_idx] - pred_cam_pos_unscaled_aligned[cam_idx]), dim=-1
+        )
+
+        # Camera center accuracy, with scale alignment.
+        s_CCA05 = (s_TE < (0.05 * scene_scale)).to(torch.float32)
+        s_CCA10 = (s_TE < (0.10 * scene_scale)).to(torch.float32)
+        s_CCA15 = (s_TE < (0.15 * scene_scale)).to(torch.float32)
+        s_CCA20 = (s_TE < (0.20 * scene_scale)).to(torch.float32)
+        s_CCA25 = (s_TE < (0.25 * scene_scale)).to(torch.float32)
+        s_CCA30 = (s_TE < (0.30 * scene_scale)).to(torch.float32)
+
+        # Camera center accuracy, without scale alignment.
+        CCA05 = (TE < (0.05 * scene_scale)).to(torch.float32)
+        CCA10 = (TE < (0.10 * scene_scale)).to(torch.float32)
+        CCA15 = (TE < (0.15 * scene_scale)).to(torch.float32)
+        CCA20 = (TE < (0.20 * scene_scale)).to(torch.float32)
+        CCA25 = (TE < (0.25 * scene_scale)).to(torch.float32)
+        CCA30 = (TE < (0.30 * scene_scale)).to(torch.float32)
+
+        # Orientation accuracy.
+        gt_R_world_cam = gt_cam2world[cam_idx, :3, :3]
+        pred_R_world_cam = pred_cam2world_scaled_aligned[cam_idx, :3, :3]
+
+        angular_distance = roma.rotmat_geodesic_distance(
+            gt_R_world_cam, pred_R_world_cam
+        )
+
+        # Camera angle error
+        AE = torch.rad2deg(angular_distance)
+
+        # Relative rotation accuracy
+        RRA05 = (AE < 5.0).to(torch.float32)
+        RRA10 = (AE < 10.0).to(torch.float32)
+        RRA15 = (AE < 15.0).to(torch.float32)
+        RRA20 = (AE < 20.0).to(torch.float32)
+        RRA25 = (AE < 25.0).to(torch.float32)
+        RRA30 = (AE < 30.0).to(torch.float32)
+
+        out.append(
+            {
+                "view_id": cam_id,
+                "vfov_error": vfov_error.item(),
+                "s-TE": s_TE.item(),
+                "TE": TE.item(),
+                "s-CCA05": s_CCA05.item(),
+                "s-CCA10": s_CCA10.item(),
+                "s-CCA15": s_CCA15.item(),
+                "s-CCA20": s_CCA20.item(),
+                "s-CCA25": s_CCA25.item(),
+                "s-CCA30": s_CCA30.item(),
+                "CCA05": CCA05.item(),
+                "CCA10": CCA10.item(),
+                "CCA15": CCA15.item(),
+                "CCA20": CCA20.item(),
+                "CCA25": CCA25.item(),
+                "CCA30": CCA30.item(),
+                "AE": AE.item(),
+                "RRA05": RRA05.item(),
+                "RRA10": RRA10.item(),
+                "RRA15": RRA15.item(),
+                "RRA20": RRA20.item(),
+                "RRA25": RRA25.item(),
+                "RRA30": RRA30.item(),
+            }
+        )
+
+    return out
+
+def compute_camera_metrics(
+    gt_cam_intrinsics_annotations: CameraIntrinsicsAnnotations,
+    gt_cam_extrinsics_annotations: CameraExtrinsicsAnnotations,
+    pred_cam_intrinsics_annotations: CameraIntrinsicsAnnotations,
+    pred_cam_extrinsics_annotations: CameraExtrinsicsAnnotations,
+) -> list[dict[str, torch.Tensor]]:
+    views_ids = gt_cam_extrinsics_annotations.views_ids
+    n_views = len(views_ids)
+
+    if len(pred_cam_extrinsics_annotations.annotations) != n_views:
+        frames = pred_cam_extrinsics_annotations.frames
+    else:
+        frames = [0]
+
+    out = {}
+    for frame in frames:
+        out[frame] = _compute_camera_metrics_for_frame(
+            frame,
+            gt_cam_intrinsics_annotations,
+            gt_cam_extrinsics_annotations,
+            pred_cam_intrinsics_annotations,
+            pred_cam_extrinsics_annotations,
+        )
+    return out
+
+
+def flatten_camera_metrics(
+    camera_metrics: dict[str, torch.Tensor],
+) -> dict[str, torch.Tensor]:
+    out = {}
+
+    all_vfov_error = []
+    all_s_TE = []
+    all_TE = []
+    all_s_CCA05 = []
+    all_s_CCA10 = []
+    all_s_CCA15 = []
+    all_s_CCA20 = []
+    all_s_CCA25 = []
+    all_s_CCA30 = []
+    all_CCA05 = []
+    all_CCA10 = []
+    all_CCA15 = []
+    all_CCA20 = []
+    all_CCA25 = []
+    all_CCA30 = []
+    all_AE = []
+    all_RRA05 = []
+    all_RRA10 = []
+    all_RRA15 = []
+    all_RRA20 = []
+    all_RRA25 = []
+    all_RRA30 = []
+
+    for frame_metrics in camera_metrics.values():
+        for metric in frame_metrics:
+            all_vfov_error.append(metric["vfov_error"])
+            all_s_TE.append(metric["s-TE"])
+            all_TE.append(metric["TE"])
+            all_s_CCA05.append(metric["s-CCA05"])
+            all_s_CCA10.append(metric["s-CCA10"])
+            all_s_CCA15.append(metric["s-CCA15"])
+            all_s_CCA20.append(metric["s-CCA20"])
+            all_s_CCA25.append(metric["s-CCA25"])
+            all_s_CCA30.append(metric["s-CCA30"])
+            all_CCA05.append(metric["CCA05"])
+            all_CCA10.append(metric["CCA10"])
+            all_CCA15.append(metric["CCA15"])
+            all_CCA20.append(metric["CCA20"])
+            all_CCA25.append(metric["CCA25"])
+            all_CCA30.append(metric["CCA30"])
+            all_AE.append(metric["AE"])
+            all_RRA05.append(metric["RRA05"])
+            all_RRA10.append(metric["RRA10"])
+            all_RRA15.append(metric["RRA15"])
+            all_RRA20.append(metric["RRA20"])
+            all_RRA25.append(metric["RRA25"])
+            all_RRA30.append(metric["RRA30"])
+
+    out = {
+        "vfov_error": all_vfov_error,
+        "s-TE": all_s_TE,
+        "TE": all_TE,
+        "s-CCA05": all_s_CCA05,
+        "s-CCA10": all_s_CCA10,
+        "s-CCA15": all_s_CCA15,
+        "s-CCA20": all_s_CCA20,
+        "s-CCA25": all_s_CCA25,
+        "s-CCA30": all_s_CCA30,
+        "CCA05": all_CCA05,
+        "CCA10": all_CCA10,
+        "CCA15": all_CCA15,
+        "CCA20": all_CCA20,
+        "CCA25": all_CCA25,
+        "CCA30": all_CCA30,
+        "AE": all_AE,
+        "RRA05": all_RRA05,
+        "RRA10": all_RRA10,
+        "RRA15": all_RRA15,
+        "RRA20": all_RRA20,
+        "RRA25": all_RRA25,
+        "RRA30": all_RRA30,
+    }
+
+    return out

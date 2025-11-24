@@ -1,0 +1,257 @@
+output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/infer_dwpose_single_person_sam2"
+cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/infer_dwpose_single_person_sam2"
+use_cache: True
+batch_size: 32
+use_half_precision: True
+shared_intrinsics: True
+# Don't use faces and hands in the pipeline (body only), except when triangulating the final result.
+# This is because hands and faces are often noisy, yet their score is anormaly high giving false positives.
+keypoints_indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+frame_step: 1
+
+pipeline:
+  seed: 19
+
+  stages:
+    mfcc_temporal_calibration:
+      _target_: kineo.pipeline.stages.mfcc_temporal_calibration.MFCCTemporalCalibrationStage
+      name: "MFCC Temporal Calibration"
+      order: 0
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.mfcc_temporal_calibration.TemporalCalibrationRuntimeConfig
+        ref_idx: 0
+
+    sam2_semiauto_bbox_detection:
+      _target_: kineo.pipeline.stages.sam2_semiauto_bbox_detection.SAM2SemiAutoBboxDetectionStage
+      name: "SAM2 Semi-Auto Bbox Detection"
+      order: 5
+      det_model: "rtmdet-t"
+      sam2_model_cfg: "configs/efficienttam/efficienttam_s_2.yaml"
+      sam2_model_weights: "./checkpoints/efficienttam_s_2.pt"
+      sam2_vos_optimized: False
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.sam2_semiauto_bbox_detection.SAM2SemiAutoBboxDetectionRuntimeConfig
+        use_cache: ${use_cache}
+        use_half_precision: ${use_half_precision}
+        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
+
+    # Infer intrinsics before NLF to provide it to the model
+    moge_intrinsics_estimation:
+      _target_: kineo.pipeline.stages.moge_intrinsics_estimation.MoGeIntrinsicsEstimationStage
+      name: "MoGe Intrinsics Estimation"
+      model_name_or_path: "./checkpoints/moge-2-vitl-normal.pt"
+      order: 8
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.moge_intrinsics_estimation.MoGeIntrinsicsEstimationRuntimeConfig
+        use_cache: ${use_cache}
+        use_half_precision: ${use_half_precision}
+        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
+
+    mmpose_keypoints_detection:
+      _target_: kineo.pipeline.stages.mmpose_keypoints_detection.MMPoseKeypointsDetectionStage
+      name: "MMpose Keypoints Detection"
+      order: 10
+      keypoints_model: "./configs/dwpose-ll_8xb32-384e_coco-ubody-wholebody-384x288.py"
+      keypoints_model_weights: "./checkpoints/dw-ll_ucoco_384.pth"
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.mmpose_keypoints_detection.MMPoseKeypointsDetectionRuntimeConfig
+        use_half_precision: ${use_half_precision}
+        batch_size: ${batch_size}
+        use_cache: ${use_cache}
+        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
+
+    global_time_resampling:
+      _target_: kineo.pipeline.stages.global_time_resampling.GlobalTimeResamplingStage
+      name: "Global Time Resampling"
+      order: 30
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.global_time_resampling.GlobalTimeResamplingRuntimeConfig
+        target_fps: 50
+        interpolation_dt_thr_s: 0.3
+
+    # visualization_2d:
+    #   _target_: kineo.pipeline.stages.visualization_2d.Visualization2DStage
+    #   name: "Visualization 2D"
+    #   order: 35
+    #   runtime_cfg:
+    #     _target_: kineo.pipeline.stages.visualization_2d.Visualization2DRuntimeConfig
+    #     keypoints_score_threshold: 0.2
+    #     keypoints_indices: ${smplx_joints_indices}
+
+    keypoints_pairs_sampling:
+      _target_: kineo.pipeline.stages.keypoints_pairs_sampling.KeypointsPairsSamplingStage
+      name: "Keypoints Pairs Sampling"
+      order: 40
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.keypoints_pairs_sampling.KeypointsPairsSamplingRuntimeConfig
+        max_points_pairs: 4000
+        pair_avg_conf_score_thr: 0.5
+        keypoints_indices: null
+
+    sfm_camera_extrinsics_initialization:
+      _target_: kineo.pipeline.stages.sfm_camera_extrinsics_initialization.SfMCameraExtrinsicsInitializationStage
+      name: "SfM Camera Extrinsics Initialization"
+      order: 50
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.sfm_camera_extrinsics_initialization.SfMCameraExtrinsicsInitializationRuntimeConfig
+        ransac_confidence: 0.99
+        ransac_reproj_threshold: 3.0
+        n_refinement_iters: 200
+        tolerance_grad: 1e-05
+        tolerance_change: 1e-09
+
+    bundle_adjustment_sampling:
+      _target_: kineo.pipeline.stages.bundle_adjustment_sampling.BundleAdjustmentSamplingStage
+      name: "Bundle Adjustment Sampling"
+      order: 55
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.bundle_adjustment_sampling.BundleAdjustmentSamplingRuntimeConfig
+        n_kp_samples: 400
+        min_kp_score: 0.5
+
+    bundle_adjustment_1: # Only optimize camera extrinsics
+      _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentStage
+      name: "Bundle Adjustment (First Pass)"
+      order: 60
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentRuntimeConfig
+        n_iters: 300
+        use_lbfgs: True
+        optimize_distortion_coefficients: False
+        optimize_focal_length: False
+        optimize_principal_point: False
+        optimize_rotation: True
+        optimize_translation: True
+        shared_intrinsics: ${shared_intrinsics}
+        huber_delta: 1.0
+        tolerance_grad: 1e-05
+        tolerance_change: 1e-09
+        dist_coeffs_regularization_weight: 0.0
+
+    bundle_adjustment_2:
+      _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentStage
+      name: "Bundle Adjustment (Second Pass)"
+      order: 70
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentRuntimeConfig
+        n_iters: 300
+        use_lbfgs: True
+        optimize_distortion_coefficients: False
+        optimize_focal_length: True
+        optimize_principal_point: False
+        optimize_rotation: True
+        optimize_translation: True
+        shared_intrinsics: ${shared_intrinsics}
+        huber_delta: 1.0
+        tolerance_grad: 1e-05
+        tolerance_change: 1e-09
+        dist_coeffs_regularization_weight: 0.0
+
+    bundle_adjustment_3:
+      _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentStage
+      name: "Bundle Adjustment (Third Pass)"
+      order: 80
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentRuntimeConfig
+        n_iters: 300
+        optimize_distortion_coefficients: True
+        optimize_focal_length: True
+        optimize_principal_point: False
+        optimize_rotation: True
+        optimize_translation: True
+        shared_intrinsics: ${shared_intrinsics}
+        huber_delta: 1.0
+        dist_coeffs_regularization_weight: 1.0
+        use_lbfgs: True
+
+    mvs_triangulation:
+      _target_: kineo.pipeline.stages.mvs_triangulation.MVSTriangulationStage
+      name: "MVS Triangulation"
+      order: 90
+
+    smpl_global_scale_estimation:
+      _target_: kineo.pipeline.stages.smpl_global_scale_estimation.SMPLGlobalScaleEstimationStage
+      name: "SMPL Global Scale Estimation"
+      joint_regressor_path: "./body_models/smpl/J_regressor_coco.npy"
+      smpl_model_path: "./body_models/smpl/"
+      order: 100
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.smpl_global_scale_estimation.SMPLGlobalScaleEstimationRuntimeConfig
+        n_iters: 100
+        keypoints_indices: ${keypoints_indices}
+
+    global_scale_application:
+      _target_: kineo.pipeline.stages.global_scale_application.GlobalScaleApplicationStage
+      name: "Global Scale Application"
+      order: 110
+
+    scene_reorientation:
+      _target_: kineo.pipeline.stages.scene_reorientation.SceneReorientationStage
+      name: "Scene Reorientation"
+      order: 120
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.scene_reorientation.SceneReorientationRuntimeConfig
+        min_kps_quantile: 0.01
+
+    background_subtraction:
+      _target_: kineo.pipeline.stages.background_subtraction.BackgroundSubtractionStage
+      name: "Background Subtraction"
+      order: 125
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.background_subtraction.BackgroundSubtractionRuntimeConfig
+
+    moge_scene_reconstruction:
+      _target_: kineo.pipeline.stages.moge_scene_reconstruction.MoGeSceneReconstructionStage
+      name: "Scene Reconstruction"
+      order: 130
+      model_name_or_path: "./checkpoints/moge-2-vitl-normal.pt"
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.moge_scene_reconstruction.MoGeSceneReconstructionRuntimeConfig
+        use_half_precision: ${use_half_precision}
+        use_background_image: True
+        view_idx: 1
+
+    rerun_export:
+      _target_: kineo.pipeline.stages.rerun_export.RerunExportStage
+      name: "Rerun Export"
+      order: 160
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.rerun_export.RerunExportRuntimeConfig
+        output_path_template: "${output_root_dir}/rerun/{sequence_name}.rrd"
+        max_world_points_to_show: 1000000
+        world_points_confidence_threshold: 0.5
+        world_z_clipping_threshold: 1.5
+        remove_world_points_outside_scene_radius: True
+        world_translation: [0.0, 0.0, -0.1]
+
+        start_frame_idx: 1164
+
+        skeleton_joint_radius_3d: 0.010
+        skeleton_joint_radius_2d: 6.0
+        skeleton_bones_thickness_3d: 0.005
+        skeleton_bones_thickness_2d: 3.0
+
+        min_kps_score_3d: 0.15
+        min_kps_score_2d: 0.15
+
+        video_quality: 25
+        image_plane_distance: 0.2
+
+        log_disconnected_joints: True
+
+        log_videos: True
+        video_view_ids: "view_1"
+
+        log_world_reconstruction: True
+        log_pred_cameras: True
+        log_pred_keypoints_2d: False
+        log_pred_keypoints_3d: False
+        log_pred_skeletons_2d: True
+        log_pred_skeletons_3d: True
+        log_pred_smpl: False
+
+        log_gt_keypoints_2d: False
+        log_gt_keypoints_3d: False
+        log_gt_skeletons_2d: False
+        log_gt_skeletons_3d: False
+        log_gt_cameras: False

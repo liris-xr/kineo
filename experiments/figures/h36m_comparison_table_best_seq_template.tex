@@ -1,0 +1,21 @@
+\begin{tblr}[
+  caption = {Comparison of the W-MPJPE metric (lower is better) for the best sequence on Human3.6M for HSfM (\textbf{\textcolor{red}{red}}) and Kineo (\textbf{\textcolor{cyan}{blue}}). For each sequence, the table reports the minimum, median, maximum, mean, and standard deviation of W-MPJPE over all frames, along with visualizations of the corresponding frames. All estimates are scale-aligned for visualization.},
+]{
+width=\textwidth,
+cells={valign=m,halign=c},
+colspec={Q[c,1.5cm,font=\small] *{6}{X[c]} *{4}{Q[c,0.8cm]}},
+row{1,2}={bg=lightgray,font=\bfseries,rowsep=8pt},
+hlines,
+vlines,
+rowhead=2
+}
+\SetCell[r=2]{c} Sequence & \SetCell[c=2]{c} W-MPJPE Min\,$\downarrow$ & & \SetCell[c=2]{c} W-MPJPE Median\,$\downarrow$ & & \SetCell[c=2]{c} W-MPJPE Max\,$\downarrow$ & & \SetCell[c=2]{c} W-MPJPE Mean\,$\downarrow$ & & \SetCell[c=2]{c} W-MPJPE Std\,$\downarrow$ &\\
+& HSfM & Kineo & HSfM & Kineo & HSfM & Kineo & HSfM & Kineo & HSfM & Kineo\\
+
+\SetCell[r=2]{c}\small{{seq_name}\\(HSfM's best)} & {hsfm_min} & {hsfm_median} & {hsfm_max} & {hsfm_mean}$\pm${hsfm_std} & {kineo_min} & {kineo_median} & {kineo_max} & {kineo_mean}$\pm${kineo_std} \\
+& \includegraphics[width=\linewidth]{figs/min_max_median/{seq_name}_hsfm_min.jpg} & \includegraphics[width=\linewidth]{figs/min_max_median/{seq_name}_hsfm_median.jpg} & \includegraphics[width=\linewidth]{figs/min_max_median/{seq_name}_hsfm_max.jpg} & & \includegraphics[width=\linewidth]{figs/min_max_median/{seq_name}_kineo_min.jpg} & \includegraphics[width=\linewidth]{figs/min_max_median/{seq_name}_kineo_median.jpg} & \includegraphics[width=\linewidth]{figs/min_max_median/{seq_name}_kineo_max.jpg} & \\
+
+\SetCell[r=2]{c}\small{{seq_name}\\(Kineo's best)} & {hsfm_min} & {hsfm_median} & {hsfm_max} & {hsfm_mean}$\pm${hsfm_std} & {kineo_min} & {kineo_median} & {kineo_max} & {kineo_mean}$\pm${kineo_std} \\
+& \includegraphics[width=\linewidth]{figs/min_max_median/{seq_name}_hsfm_min.jpg} & \includegraphics[width=\linewidth]{figs/min_max_median/{seq_name}_hsfm_median.jpg} & \includegraphics[width=\linewidth]{figs/min_max_median/{seq_name}_hsfm_max.jpg} & & \includegraphics[width=\linewidth]{figs/min_max_median/{seq_name}_kineo_min.jpg} & \includegraphics[width=\linewidth]{figs/min_max_median/{seq_name}_kineo_median.jpg} & \includegraphics[width=\linewidth]{figs/min_max_median/{seq_name}_kineo_max.jpg} & \\
+
+\end{tblr}
