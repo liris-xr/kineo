@@ -1,8 +1,6 @@
 <div align="center">
     <a href="https://github.com/liris-xr/kineo">
-        <picture>
-            <img alt="Kineo banner." src="docs/static/images/kineo.png" width="350">
-        </picture>
+      <img alt="Kineo banner." src="docs/static/images/kineo.png" width="350">
     </a>
 </div>
 <p align="center">
