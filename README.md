@@ -1,4 +1,17 @@
-# Kineo
+<div align="center">
+    <a href="https://github.com/liris-xr/kineo">
+        <picture>
+            <img alt="Kineo banner." src="docs/static/images/kineo.png" width="350">
+        </picture>
+    </a>
+</div>
+<p align="center">
+    Charles Javerliat, Pierre Raimbaud, Guillaume Lavoué
+    <br />
+    <a href="https://liris-xr.github.io/kineo/"><strong>Project Page »</strong></a>&emsp;
+    <a href="https://arxiv.org/abs/2510.24464"><strong>Paper »</strong></a>&emsp;
+    <br />
+</p>
 
 Kineo is a calibration-free metric motion capture system that reconstructs 3D motion from sparse RGB cameras. It leverages existing 2D keypoints detectors to estimate 3D poses without requiring complex calibration procedures, making motion capture more accessible and flexible.
 
