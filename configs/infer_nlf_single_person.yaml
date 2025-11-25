@@ -4,7 +4,8 @@ use_cache: True
 batch_size: 32
 use_half_precision: True
 shared_intrinsics: True
-frame_step: 1
+
+rtmlib_bbox_detection_frame_step: 10
 
 smplx_joints_indices: [
     0,
@@ -88,6 +89,7 @@ pipeline:
         use_cache: ${use_cache}
         cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
         show: True
+        frame_step: ${rtmlib_bbox_detection_frame_step}
 
     # Infer intrinsics before NLF to provide it to the model
     moge_intrinsics_estimation:

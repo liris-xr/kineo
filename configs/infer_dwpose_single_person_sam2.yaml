@@ -7,7 +7,9 @@ shared_intrinsics: True
 # Don't use faces and hands in the pipeline (body only), except when triangulating the final result.
 # This is because hands and faces are often noisy, yet their score is anormaly high giving false positives.
 keypoints_indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
-frame_step: 1
+
+sam2_bbox_detection_frame_step: 10
+rtmlib_keypoints_detection_frame_step: 1
 
 pipeline:
   seed: 19
@@ -26,20 +28,22 @@ pipeline:
       name: "SAM2 Semi-Auto Bbox Detection"
       order: 5
       det_model: "rtmdet-t"
-      sam2_model_cfg: "configs/efficienttam/efficienttam_s_2.yaml"
-      sam2_model_weights: "./checkpoints/efficienttam_s_2.pt"
+      sam2_model_cfg: "configs/efficienttam/efficienttam_s.yaml"
+      sam2_model_weights: "./checkpoints/efficienttam_s.pt"
       sam2_vos_optimized: False
       runtime_cfg:
         _target_: kineo.pipeline.stages.sam2_semiauto_bbox_detection.SAM2SemiAutoBboxDetectionRuntimeConfig
         use_cache: ${use_cache}
         use_half_precision: ${use_half_precision}
         cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
+        show: True
+        frame_step: ${sam2_bbox_detection_frame_step}
 
     # Infer intrinsics before NLF to provide it to the model
     moge_intrinsics_estimation:
       _target_: kineo.pipeline.stages.moge_intrinsics_estimation.MoGeIntrinsicsEstimationStage
       name: "MoGe Intrinsics Estimation"
-      model_name_or_path: "./checkpoints/moge-2-vitl-normal.pt"
+      model_name_or_path: "Ruicheng/moge-2-vitl"
       order: 8
       runtime_cfg:
         _target_: kineo.pipeline.stages.moge_intrinsics_estimation.MoGeIntrinsicsEstimationRuntimeConfig
@@ -47,18 +51,18 @@ pipeline:
         use_half_precision: ${use_half_precision}
         cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
 
-    mmpose_keypoints_detection:
-      _target_: kineo.pipeline.stages.mmpose_keypoints_detection.MMPoseKeypointsDetectionStage
-      name: "MMpose Keypoints Detection"
+    rtmlib_keypoints_detection:
+      _target_: kineo.pipeline.stages.rtmlib.rtmlib_keypoints_detection.RtmlibKeypointsDetectionStage
+      name: "Rtmlib Keypoints Detection"
       order: 10
-      keypoints_model: "./configs/dwpose-ll_8xb32-384e_coco-ubody-wholebody-384x288.py"
-      keypoints_model_weights: "./checkpoints/dw-ll_ucoco_384.pth"
+      keypoints_model: "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-l_simcc-ucoco_dw-ucoco_270e-384x288-2438fd99_20230728.zip"
+      keypoints_model_input_shape_hw: [288, 384]
       runtime_cfg:
-        _target_: kineo.pipeline.stages.mmpose_keypoints_detection.MMPoseKeypointsDetectionRuntimeConfig
-        use_half_precision: ${use_half_precision}
-        batch_size: ${batch_size}
+        _target_: kineo.pipeline.stages.rtmlib.rtmlib_keypoints_detection.RtmlibKeypointsDetectionRuntimeConfig
         use_cache: ${use_cache}
         cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
+        show: True
+        frame_step: ${rtmlib_keypoints_detection_frame_step}
 
     global_time_resampling:
       _target_: kineo.pipeline.stages.global_time_resampling.GlobalTimeResamplingStage
@@ -169,16 +173,14 @@ pipeline:
       name: "MVS Triangulation"
       order: 90
 
-    smpl_global_scale_estimation:
-      _target_: kineo.pipeline.stages.smpl_global_scale_estimation.SMPLGlobalScaleEstimationStage
-      name: "SMPL Global Scale Estimation"
-      joint_regressor_path: "./body_models/smpl/J_regressor_coco.npy"
-      smpl_model_path: "./body_models/smpl/"
+    moge_global_scale_estimation:
+      _target_: kineo.pipeline.stages.moge_global_scale_estimation.MoGeGlobalScaleEstimationStage
+      name: "MoGe Global Scale Estimation"
+      model_name_or_path: "Ruicheng/moge-2-vitl"
       order: 100
       runtime_cfg:
-        _target_: kineo.pipeline.stages.smpl_global_scale_estimation.SMPLGlobalScaleEstimationRuntimeConfig
-        n_iters: 100
-        keypoints_indices: ${keypoints_indices}
+        _target_: kineo.pipeline.stages.moge_global_scale_estimation.MoGeGlobalScaleEstimationRuntimeConfig
+        use_half_precision: ${use_half_precision}
 
     global_scale_application:
       _target_: kineo.pipeline.stages.global_scale_application.GlobalScaleApplicationStage
@@ -204,7 +206,7 @@ pipeline:
       _target_: kineo.pipeline.stages.moge_scene_reconstruction.MoGeSceneReconstructionStage
       name: "Scene Reconstruction"
       order: 130
-      model_name_or_path: "./checkpoints/moge-2-vitl-normal.pt"
+      model_name_or_path: "Ruicheng/moge-2-vitl"
       runtime_cfg:
         _target_: kineo.pipeline.stages.moge_scene_reconstruction.MoGeSceneReconstructionRuntimeConfig
         use_half_precision: ${use_half_precision}

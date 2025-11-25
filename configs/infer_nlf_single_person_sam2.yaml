@@ -4,7 +4,8 @@ use_cache: True
 batch_size: 32
 use_half_precision: True
 shared_intrinsics: True
-frame_step: 1
+
+sam2_bbox_detection_frame_step: 10
 
 smplx_joints_indices: [
     0,
@@ -82,19 +83,20 @@ pipeline:
       name: "SAM2 Semi-Auto Bbox Detection"
       order: 5
       det_model: "rtmdet-t"
-      sam2_model_cfg: "configs/efficienttam/efficienttam_s_2.yaml"
-      sam2_model_weights: "./checkpoints/efficienttam_s_2.pt"
+      sam2_model_cfg: "configs/efficienttam/efficienttam_s.yaml"
+      sam2_model_weights: "./checkpoints/efficienttam_s.pt"
       sam2_vos_optimized: False
       runtime_cfg:
         _target_: kineo.pipeline.stages.sam2_semiauto_bbox_detection.SAM2SemiAutoBboxDetectionRuntimeConfig
         use_cache: ${use_cache}
         use_half_precision: ${use_half_precision}
+        frame_step: ${sam2_bbox_detection_frame_step}
 
     # Infer intrinsics before NLF to provide it to the model
     moge_intrinsics_estimation:
       _target_: kineo.pipeline.stages.moge_intrinsics_estimation.MoGeIntrinsicsEstimationStage
       name: "MoGe Intrinsics Estimation"
-      model_name_or_path: "./checkpoints/moge-2-vitl-normal.pt"
+      model_name_or_path: "Ruicheng/moge-2-vitl"
       order: 10
       runtime_cfg:
         _target_: kineo.pipeline.stages.moge_intrinsics_estimation.MoGeIntrinsicsEstimationRuntimeConfig
