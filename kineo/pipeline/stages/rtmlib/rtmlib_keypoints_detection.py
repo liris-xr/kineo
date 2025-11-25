@@ -178,6 +178,7 @@ class RtmlibKeypointsDetectionStage(
             views=views,
             bboxes_annotations=bboxes_annotations,
             keypoints_model=self.keypoints_model,
+            frame_step=runtime_cfg.frame_step,
             show=runtime_cfg.show,
         )
 
@@ -195,6 +196,7 @@ class RtmlibKeypointsDetectionStage(
         views: list[ViewInput],
         bboxes_annotations: BBox2DAnnotations,
         keypoints_model: RTMPose,
+        frame_step: int = 1,
         show: bool = False,
     ) -> Keypoints2DAnnotations:
         """
