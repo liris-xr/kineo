@@ -5,7 +5,7 @@ batch_size: 32
 use_half_precision: True
 shared_intrinsics: True
 
-rtmlib_bbox_detection_frame_step: 10
+rtmlib_bbox_detection_frame_step: 5
 
 smplx_joints_indices: [
     0,

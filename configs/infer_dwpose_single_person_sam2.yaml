@@ -8,7 +8,7 @@ shared_intrinsics: True
 # This is because hands and faces are often noisy, yet their score is anormaly high giving false positives.
 keypoints_indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
 
-sam2_bbox_detection_frame_step: 10
+sam2_bbox_detection_frame_step: 5
 rtmlib_keypoints_detection_frame_step: 1
 
 pipeline:
