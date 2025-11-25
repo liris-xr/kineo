@@ -97,7 +97,7 @@ class RerunExportStage(PipelineStage[RerunExportRuntimeConfig]):
         order: int,
         runtime_cfg: RerunExportRuntimeConfig,
         dynamic_runtime_cfg: dict[str, RerunExportRuntimeConfig] | None = None,
-        smpl_model_path: str = "./body_models/smplx/SMPLX_NEUTRAL.npz",
+        smpl_model_path: str | None = "./body_models/smplx/SMPLX_NEUTRAL.npz",
         smpl_model_type: str = "smplx",
         smpl_num_betas: int = 10,
         smpl_gender: str = "neutral",
@@ -111,16 +111,17 @@ class RerunExportStage(PipelineStage[RerunExportRuntimeConfig]):
             dynamic_runtime_cfg=dynamic_runtime_cfg,
         )
 
-        self.smpl_layer = build_layer(
-            model_path=smpl_model_path,
-            model_type=smpl_model_type,
-            num_betas=smpl_num_betas,
-            gender=smpl_gender,
-            use_face_contour=smpl_use_face_contour,
-            use_pca=smpl_use_pca,
-        )
-        self.smpl_layer = self.smpl_layer.cpu()
-        self.smpl_layer = self.smpl_layer.eval()
+        if smpl_model_path is not None:
+            self.smpl_layer = build_layer(
+                model_path=smpl_model_path,
+                model_type=smpl_model_type,
+                num_betas=smpl_num_betas,
+                gender=smpl_gender,
+                use_face_contour=smpl_use_face_contour,
+                use_pca=smpl_use_pca,
+            )
+            self.smpl_layer = self.smpl_layer.cpu()
+            self.smpl_layer = self.smpl_layer.eval()
 
     def align_predictions_to_gt(
         self,

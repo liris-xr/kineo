@@ -15,11 +15,6 @@ dependencies = [
     "numpy<2",
     "torchvision",
     "torchaudio",
-    "mmpretrain",
-    "mmengine",
-    "mmcv @ git+https://github.com/cjaverliat/mmcv.git",
-    "mmpose @ git+https://github.com/cjaverliat/mmpose.git",
-    "mmdet @ git+https://github.com/cjaverliat/mmdetection.git",
     "moge @ git+https://github.com/microsoft/MoGe.git",
     "vggt @ git+https://github.com/facebookresearch/vggt.git",
     "aitviewer @ git+https://github.com/cjaverliat/aitviewer.git",
@@ -49,7 +44,13 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-notebook = ["ipympl", "ipywidgets", "ipykernel"]
+dev = [
+    "mmpretrain",
+    "mmengine",
+    "mmcv @ git+https://github.com/cjaverliat/mmcv.git",
+    "mmpose @ git+https://github.com/cjaverliat/mmpose.git",
+    "mmdet @ git+https://github.com/cjaverliat/mmdetection.git",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]
