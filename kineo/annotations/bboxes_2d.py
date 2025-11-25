@@ -189,6 +189,16 @@ class BBox2DAnnotations(Annotations[BBox2DAnnotation]):
             ],
         )
 
+    def filter_by_frame_indices(self, frame_indices: list[int]) -> BBox2DAnnotations:
+        return BBox2DAnnotations(
+            metadata=self._metadata,
+            annotations=[
+                annotation
+                for annotation in self._annotations
+                if annotation.frame_idx in frame_indices
+            ],
+        )
+
     def filter_by_subject_id(self, subject_ids: str | list[str]) -> BBox2DAnnotations:
         if isinstance(subject_ids, str):
             subject_ids = [subject_ids]
