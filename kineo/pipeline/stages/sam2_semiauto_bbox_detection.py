@@ -34,9 +34,11 @@ from sam2.build_sam import build_sam2_generic_video_predictor
 from mmdet.apis import DetInferencer
 
 from dataclasses import dataclass
-
+import cv2
+from kineo.visualization.viz_2d import draw_bboxes
 import matplotlib.pyplot as plt
 import matplotlib
+from kineo.maths import clamp
 
 matplotlib.use("TkAgg")
 
@@ -50,6 +52,8 @@ class SAM2SemiAutoBboxDetectionRuntimeConfig:
     use_half_precision: bool = True
     use_cache: bool = True
     cache_output_path_template: str = "cache/{sequence_name}/{annotation_key}.pkl"
+    show: bool = False
+    frame_step: int = 1
 
 
 class SAM2SemiAutoBboxDetectionStage(
@@ -124,8 +128,8 @@ class SAM2SemiAutoBboxDetectionStage(
         self.det_inferencer.model.test_cfg["nms_pre"] = runtime_cfg.nms_pre_top_k
 
         states = _init_video_states(views, self.sam2_video_predictor)
-        bboxes_annotations = _detect_bboxes(
-            views, states, self.det_inferencer, self.sam2_video_predictor
+        bboxes_annotations = _infer_bboxes(
+            views, states, frame_step=runtime_cfg.frame_step, det_inferencer=self.det_inferencer, sam2_video_predictor=self.sam2_video_predictor, show=runtime_cfg.show
         )
 
         if runtime_cfg.use_cache:
@@ -221,76 +225,95 @@ def _batch_infer_bboxes(
     return batch_bboxes, batch_scores
 
 
-def _detect_bboxes(
+def _infer_bboxes(
     views: list[ViewInput],
     states: list[SAM2GenericVideoPredictorState],
     det_inferencer: DetInferencer,
     sam2_video_predictor: SAM2GenericVideoPredictor,
+    frame_step: int = 1,
+    show: bool = False,
 ) -> BBox2DAnnotations:
 
     all_bboxes_annotations: list[BBox2DAnnotation] = []
 
     n_total_frames = sum(view["frame_loader"].n_frames for view in views)
+    n_total_inference_frames = sum(
+        len(_get_frames_batch(view["frame_loader"].n_frames, frame_step))
+        for view in views
+    )
     pbar = tqdm(total=n_total_frames, desc="Propagating SAM2 masks to bboxes")
 
+    batch_size = 1 # SAM doesn't support batch inference
+    n_inference_frames_processed = 0
+
     for view, state in zip(views, states):
+        view_bboxes_annotations: list[BBox2DAnnotation] = []
+
         subject_id = 0
-        n_frames = view["frame_loader"].n_frames
+        frame_loader = view["frame_loader"]
+        view_n_frames = frame_loader.n_frames
+        inference_frames = _get_frames_batch(view_n_frames, frame_step)
 
-        for frame_idx in range(n_frames):
-            frame_rgb = (
-                view["frame_loader"]
-                .load_frame_at(frame_idx)
-                .to(sam2_video_predictor.device)
-            )
+        inference_frames = _get_frames_batch(view_n_frames, frame_step)
 
-            results = sam2_video_predictor.forward(
-                state=state,
-                frame_idx=frame_idx,
-                frame=frame_rgb,
-                prompts=[],
-                multimask_output=True,
-                reverse_tracking=False,
-                create_memory=True,
-            )
-            obj_results = results.get(subject_id, None)
+        for batch_start in range(0, len(inference_frames), batch_size):
+            batch_end = min(batch_start + batch_size, len(inference_frames))
+            batch_frames = inference_frames[batch_start:batch_end]
+            actual_batch_size = len(batch_frames)
 
-            if obj_results is None:
-                continue
+            # Load batch of frames
+            frames_rgb = frame_loader.load_frames_at(
+                frame_indices=torch.tensor(batch_frames)
+            ).to(sam2_video_predictor.device)
 
-            mask = (obj_results.best_mask_logits > 0).squeeze()
+            for frame_idx, frame_rgb in zip(batch_frames, frames_rgb):
 
-            batch_bboxes, batch_scores = _batch_infer_bboxes(
-                frame_rgb, det_inferencer, det_category_id=0
-            )
+                results = sam2_video_predictor.forward(
+                    state=state,
+                    frame_idx=frame_idx,
+                    frame=frame_rgb,
+                    prompts=[],
+                    multimask_output=True,
+                    reverse_tracking=False,
+                    create_memory=True,
+                )
+                obj_results = results.get(subject_id, None)
 
-            bboxes = batch_bboxes[0]
-            scores = batch_scores[0]
+                if obj_results is None:
+                    continue
 
-            best_bbox = None
-            best_bbox_tracking_score = 0
-            best_bbox_score = 0
+                mask = (obj_results.best_mask_logits > 0).squeeze()
 
-            bbox_score_thr = 0.5
-            tracking_score_thr = 0.5
+                batch_bboxes, batch_scores = _batch_infer_bboxes(
+                    frame_rgb, det_inferencer, det_category_id=0
+                )
 
-            for bbox, score in zip(bboxes, scores):
-                iou = _mask_bbox_iou(mask, bbox)
-                intersection = _mask_bbox_intersection(mask, bbox)
+                bboxes = batch_bboxes[0]
+                scores = batch_scores[0]
 
-                tracking_score = sqrt(iou * intersection)
+                best_bbox = None
+                best_bbox_tracking_score = 0
+                best_bbox_score = 0
 
-                if (
-                    tracking_score > tracking_score_thr
-                    and tracking_score > best_bbox_tracking_score
-                ):
-                    best_bbox = bbox
-                    best_bbox_tracking_score = tracking_score
-                    best_bbox_score = score
+                bbox_score_thr = 0.5
+                tracking_score_thr = 0.5
 
-            if best_bbox is not None and best_bbox_score > bbox_score_thr:
-                all_bboxes_annotations.append(
-                    BBox2DAnnotation(
+                for bbox, score in zip(bboxes, scores):
+                    iou = _mask_bbox_iou(mask, bbox)
+                    intersection = _mask_bbox_intersection(mask, bbox)
+
+                    tracking_score = sqrt(iou * intersection)
+
+                    if (
+                        tracking_score > tracking_score_thr
+                        and tracking_score > best_bbox_tracking_score
+                    ):
+                        best_bbox = bbox
+                        best_bbox_tracking_score = tracking_score
+                        best_bbox_score = score
+
+                if best_bbox is not None and best_bbox_score > bbox_score_thr:
+                    bbox_annotation = BBox2DAnnotation(
                         view_id=view["view_id"],
                         frame_idx=frame_idx,
                         subject_id=str(subject_id),
@@ -298,9 +321,40 @@ def _detect_bboxes(
                         score=best_bbox_score.item(),
                         category_id=0,
                     )
-                )
 
-            pbar.update(1)
+                    if show:
+                        frame_bgr = frame_rgb.flip(0).permute(1, 2, 0).contiguous().cpu().numpy()
+                        frame_bgr = draw_bboxes(frame_bgr, best_bbox.reshape(4).cpu().numpy())
+                        cv2.imshow("Frame", frame_bgr)
+                        cv2.waitKey(1)
+
+                    view_bboxes_annotations.append(bbox_annotation)
+
+                    n_inference_frames_processed += 1
+                    progress = int(
+                        clamp(
+                            n_total_frames
+                            * (n_inference_frames_processed / n_total_inference_frames),
+                            0,
+                            n_total_frames,
+                        )
+                    )
+                    pbar.update(progress - pbar.n)
+
+        view_bboxes_annotations = BBox2DAnnotations(
+            metadata=BBox2DAnnotationsMetadata(),
+            annotations=view_bboxes_annotations,
+        )
+
+        if frame_step > 1:
+            # Interpolate bboxes to all frames
+            all_frames = list(range(view_n_frames))
+            view_bboxes_annotations = (
+                view_bboxes_annotations.interpolate_by_frame_indices(
+                    target_frame_indices=all_frames, max_frame_idx_diff=frame_step
+                )
+            )
+        all_bboxes_annotations.extend(view_bboxes_annotations._annotations)
 
     pbar.close()
 
@@ -308,6 +362,9 @@ def _detect_bboxes(
         metadata=BBox2DAnnotationsMetadata(),
         annotations=all_bboxes_annotations,
     )
+
+    if show:
+        cv2.destroyAllWindows()
 
     return bboxes_annotations
 
@@ -342,3 +399,16 @@ def _mask_bbox_iou(mask: torch.Tensor, bbox: torch.Tensor) -> torch.Tensor:
         return 0
 
     return intersection.sum() / union.sum()
+
+def _get_frames_batch(n_frames: int, frame_step: int) -> list[int]:
+    """Get list of frame indices to run inference on."""
+    if frame_step == 1:
+        return list(range(n_frames))
+
+    frames_batch = list(range(0, n_frames, frame_step))
+
+    # Always include the last frame if it's not already included
+    if (n_frames - 1) not in frames_batch and n_frames > 0:
+        frames_batch.append(n_frames - 1)
+
+    return sorted(frames_batch)
