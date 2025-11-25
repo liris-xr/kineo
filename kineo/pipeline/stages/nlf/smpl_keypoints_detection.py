@@ -19,6 +19,9 @@ from kineo.pipeline.pipeline import Pipeline
 from kineo.pipeline.stages.nlf.model_wrapper import NLFModelWrapper
 from kineo.pipeline.stages.nlf.smpl_keypoints_format import NLF_SMPL_KEYPOINTS_FORMAT, NLF_SMPLX_KEYPOINTS_FORMAT
 
+import cv2
+from kineo.visualization.viz_2d import draw_bboxes, draw_keypoints
+
 from dataclasses import dataclass
 
 @dataclass
@@ -31,6 +34,7 @@ class NLFSMPLKeypointsDetectionRuntimeConfig:
         1  # Infer every N frames (1 = every frame, 2 = every other frame, etc.)
     )
     model_name: Literal["smpl", "smplx"] = "smplx"
+    show: bool = False
 
 # TODO: in case of single view, export keypoints 3d as well
 class NLFSMPLKeypointsDetectionStage(PipelineStage[NLFSMPLKeypointsDetectionRuntimeConfig]):
@@ -110,6 +114,7 @@ class NLFSMPLKeypointsDetectionStage(PipelineStage[NLFSMPLKeypointsDetectionRunt
             use_half_precision=runtime_cfg.use_half_precision,
             frame_step=runtime_cfg.frame_step,
             model_name=runtime_cfg.model_name,
+            show=runtime_cfg.show,
         )
 
         self.model = self.model.cpu()
@@ -137,6 +142,7 @@ class NLFSMPLKeypointsDetectionStage(PipelineStage[NLFSMPLKeypointsDetectionRunt
         use_half_precision: bool = True,
         frame_step: int = 1,
         model_name: Literal["smpl", "smplx"] = "smplx",
+        show: bool = False,
     ) -> Keypoints2DAnnotations:
         """
         Infer keypoints for all views.
@@ -293,6 +299,17 @@ class NLFSMPLKeypointsDetectionStage(PipelineStage[NLFSMPLKeypointsDetectionRunt
 
                         all_keypoints_annotations.append(keypoints_annotation)
 
+                    if show:
+                        frame_bgr = frames_rgb[batch_idx].flip(0).permute(1, 2, 0).contiguous().cpu().numpy()
+                        frame_bboxes_xywh = batch_bboxes_xywhs[batch_idx][:, :4]
+                        frame_bboxes_xyxy = torch.cat([frame_bboxes_xywh[..., :2], frame_bboxes_xywh[..., :2] + frame_bboxes_xywh[..., 2:]], dim=-1).cpu().numpy()
+                        frame_joints2d = batch_joints2d.cpu().numpy()
+                        for bbox, keypoints in zip(frame_bboxes_xyxy, frame_joints2d):
+                            frame_bgr = draw_bboxes(frame_bgr, bbox)
+                            frame_bgr = draw_keypoints(frame_bgr, keypoints, connectivity=keypoints_format.keypoints_connectivity)
+                        cv2.imshow("Frame", frame_bgr)
+                        cv2.waitKey(1)
+
                 pbar.update(actual_batch_size)
 
         pbar.close()
@@ -305,6 +322,9 @@ class NLFSMPLKeypointsDetectionStage(PipelineStage[NLFSMPLKeypointsDetectionRunt
             ),
             annotations=all_keypoints_annotations,
         ).cpu()
+
+        if show:
+            cv2.destroyAllWindows()
 
         return keypoints_annotations
 
