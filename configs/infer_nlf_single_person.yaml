@@ -77,28 +77,23 @@ pipeline:
         _target_: kineo.pipeline.stages.mfcc_temporal_calibration.TemporalCalibrationRuntimeConfig
         ref_idx: 0
 
-    mmdet_bbox_detection:
-      _target_: kineo.pipeline.stages.mmdet_bbox_detection.MMDetBboxDetectionStage
-      name: "MMDet Bbox Detection"
+    rtmlib_bbox_detection:
+      _target_: kineo.pipeline.stages.rtmlib.rtmlib_bbox_detection.RtmlibBboxDetectionStage
+      name: "Rtmlib Bbox Detection"
       order: 5
-      det_model: "rtmdet-t"
-      det_model_weights: "./checkpoints/rtmdet_tiny_8xb32-300e_coco_20220902_112414-78e30dcc.pth"
+      bbox_model: "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/yolox_tiny_8xb8-300e_humanart-6f3252f9.zip"
+      bbox_model_input_shape_hw: [416, 416]
       runtime_cfg:
-        _target_: kineo.pipeline.stages.mmdet_bbox_detection.MMDetBboxDetectionRuntimeConfig
-        use_half_precision: ${use_half_precision}
-        batch_size: ${batch_size}
+        _target_: kineo.pipeline.stages.rtmlib.rtmlib_bbox_detection.RtmlibBboxDetectionRuntimeConfig
         use_cache: ${use_cache}
         cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
-        frame_step: ${frame_step}
-        best_bbox_only: True
-        det_category_id: 0
-        default_subject_id: "subject_0"
+        show: True
 
     # Infer intrinsics before NLF to provide it to the model
     moge_intrinsics_estimation:
       _target_: kineo.pipeline.stages.moge_intrinsics_estimation.MoGeIntrinsicsEstimationStage
       name: "MoGe Intrinsics Estimation"
-      model_name_or_path: "./checkpoints/moge-2-vitl-normal.pt"
+      model_name_or_path: "Ruicheng/moge-2-vitl"
       order: 10
       runtime_cfg:
         _target_: kineo.pipeline.stages.moge_intrinsics_estimation.MoGeIntrinsicsEstimationRuntimeConfig
@@ -118,6 +113,7 @@ pipeline:
         use_cache: ${use_cache}
         cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
         model_name: "smplx"
+        show: True
 
     global_time_resampling:
       _target_: kineo.pipeline.stages.global_time_resampling.GlobalTimeResamplingStage
@@ -127,15 +123,6 @@ pipeline:
         _target_: kineo.pipeline.stages.global_time_resampling.GlobalTimeResamplingRuntimeConfig
         target_fps: 50
         interpolation_dt_thr_s: 0.3
-
-    # visualization_2d:
-    #   _target_: kineo.pipeline.stages.visualization_2d.Visualization2DStage
-    #   name: "Visualization 2D"
-    #   order: 35
-    #   runtime_cfg:
-    #     _target_: kineo.pipeline.stages.visualization_2d.Visualization2DRuntimeConfig
-    #     keypoints_score_threshold: 0.2
-    #     keypoints_indices: ${smplx_joints_indices}
 
     keypoints_pairs_sampling:
       _target_: kineo.pipeline.stages.keypoints_pairs_sampling.KeypointsPairsSamplingStage
