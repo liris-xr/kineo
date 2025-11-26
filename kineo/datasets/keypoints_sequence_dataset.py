@@ -12,7 +12,12 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TypedDict, Iterator, Iterable
 import torch
-from mmengine.infer.infer import BaseInferencer
+
+try:
+    from mmengine.infer.infer import BaseInferencer
+except ImportError:
+    BaseInferencer = None
+
 import os
 import orjson
 
@@ -104,8 +109,12 @@ class KeypointsMetadata(TypedDict):
             "n_keypoints should be equal to the length of names"
         )
 
+    # TODO: move somewhere else to avoid mmengine dependency
     @staticmethod
     def from_mmpose_dataset(dataset_name: str) -> KeypointsMetadata:
+        if BaseInferencer is None:
+            raise ImportError("mmengine is not installed")
+
         repo_or_mim_dir = BaseInferencer._get_repo_or_mim_dir("mmpose")
         dataset_filepath = os.path.join(
             repo_or_mim_dir, "configs", "_base_", "datasets", f"{dataset_name}.py"
