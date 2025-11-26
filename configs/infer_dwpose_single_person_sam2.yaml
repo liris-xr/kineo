@@ -181,6 +181,7 @@ pipeline:
       runtime_cfg:
         _target_: kineo.pipeline.stages.moge_global_scale_estimation.MoGeGlobalScaleEstimationRuntimeConfig
         use_half_precision: ${use_half_precision}
+        keypoints_indices: ${keypoints_indices}
 
     global_scale_application:
       _target_: kineo.pipeline.stages.global_scale_application.GlobalScaleApplicationStage
