@@ -1,0 +1,24 @@
+output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/realtime_demo_viz"
+cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/realtime_demo_viz"
+
+use_half_precision: True
+
+rtmlib_bbox_keypoints_detection_frame_step: 1
+
+pipeline:
+  seed: 19
+
+  stages:
+    live_rtmlib_bbox_keypoints_detection:
+      _target_: kineo.pipeline.stages.rtmlib.rtmlib_bbox_keypoints_live_detection.RtmlibBboxKeypointsLiveDetectionStage
+      name: "Live Rtmlib Bbox Keypoints Detection"
+      order: 0
+      bbox_model: "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/yolox_tiny_8xb8-300e_humanart-6f3252f9.zip"
+      bbox_model_input_shape_hw: [416, 416]
+      keypoints_model: "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-l_simcc-ucoco_dw-ucoco_270e-384x288-2438fd99_20230728.zip"
+      keypoints_model_input_shape_hw: [288, 384]
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.rtmlib.rtmlib_bbox_keypoints_live_detection.RtmlibBboxKeypointsLiveDetectionRuntimeConfig
+        show: False
+        frame_step: ${rtmlib_bbox_keypoints_detection_frame_step}
+        best_bbox_only: True

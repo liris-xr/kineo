@@ -52,6 +52,10 @@ dev = [
     "mmdet @ git+https://github.com/cjaverliat/mmdetection.git",
 ]
 
+demo = [
+    "cv2-enumerate-cameras",
+]
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["kineo*"]
