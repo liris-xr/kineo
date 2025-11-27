@@ -1,121 +1,43 @@
-output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/infer_nlf_single_person"
-cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/infer_nlf_single_person"
-use_cache: True
+output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/infer_dwpose_single_person"
+cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/infer_dwpose_single_person"
+use_cache: False
 batch_size: 32
 use_half_precision: True
 shared_intrinsics: True
+# Don't use faces and hands in the pipeline (body only), except when triangulating the final result.
+# This is because hands and faces are often noisy, yet their score is anormaly high giving false positives.
+keypoints_indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
 
-rtmlib_bbox_detection_frame_step: 5
-
-smplx_joints_indices: [
-    0,
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10,
-    11,
-    12,
-    13,
-    14,
-    15,
-    16,
-    17,
-    18,
-    19,
-    20,
-    21,
-    22,
-    23,
-    24,
-    25,
-    26,
-    27,
-    28,
-    29,
-    30,
-    31,
-    32,
-    33,
-    34,
-    35,
-    36,
-    37,
-    38,
-    39,
-    40,
-    41,
-    42,
-    43,
-    44,
-    45,
-    46,
-    47,
-    48,
-    49,
-    50,
-    51,
-    52,
-    53,
-    54,
-  ] # The indices of the joints to use from the SMPL-X model for SMPL Global Scale Estimation
-
+rtmlib_bbox_keypoints_detection_frame_step: 1
 
 pipeline:
   seed: 19
 
   stages:
-    mfcc_temporal_calibration:
-      _target_: kineo.pipeline.stages.mfcc_temporal_calibration.MFCCTemporalCalibrationStage
-      name: "MFCC Temporal Calibration"
-      order: 0
-      runtime_cfg:
-        _target_: kineo.pipeline.stages.mfcc_temporal_calibration.TemporalCalibrationRuntimeConfig
-        ref_idx: 0
-
-    rtmlib_bbox_detection:
-      _target_: kineo.pipeline.stages.rtmlib.rtmlib_bbox_detection.RtmlibBboxDetectionStage
-      name: "Rtmlib Bbox Detection"
+    rtmlib_bbox_keypoints_detection:
+      _target_: kineo.pipeline.stages.rtmlib.rtmlib_bbox_keypoints_detection.RtmlibBboxKeypointsDetectionStage
+      name: "Rtmlib Bbox Keypoints Detection"
       order: 5
-      bbox_model: "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/yolox_tiny_8xb8-300e_humanart-6f3252f9.zip"
-      bbox_model_input_shape_hw: [416, 416]
+      keypoints_model: "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-l_simcc-ucoco_dw-ucoco_270e-384x288-2438fd99_20230728.zip"
+      keypoints_model_input_shape_hw: [288, 384]
       runtime_cfg:
-        _target_: kineo.pipeline.stages.rtmlib.rtmlib_bbox_detection.RtmlibBboxDetectionRuntimeConfig
+        _target_: kineo.pipeline.stages.rtmlib.rtmlib_bbox_keypoints_detection.RtmlibBboxKeypointsDetectionRuntimeConfig
         use_cache: ${use_cache}
         cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
-        show: True
-        frame_step: ${rtmlib_bbox_detection_frame_step}
+        show: False
+        frame_step: ${rtmlib_bbox_keypoints_detection_frame_step}
 
     # Infer intrinsics before NLF to provide it to the model
     moge_intrinsics_estimation:
       _target_: kineo.pipeline.stages.moge_intrinsics_estimation.MoGeIntrinsicsEstimationStage
       name: "MoGe Intrinsics Estimation"
       model_name_or_path: "Ruicheng/moge-2-vitl"
-      order: 10
+      order: 20
       runtime_cfg:
         _target_: kineo.pipeline.stages.moge_intrinsics_estimation.MoGeIntrinsicsEstimationRuntimeConfig
         use_cache: ${use_cache}
         use_half_precision: ${use_half_precision}
         cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
-
-    nlf_smpl_keypoints_detection:
-      _target_: kineo.pipeline.stages.nlf.smpl_keypoints_detection.NLFSMPLKeypointsDetectionStage
-      name: "NLF SMPL Keypoints Detection"
-      order: 20
-      torchscript_model_path: "./checkpoints/nlf_l_multi_0.3.2.torchscript"
-      runtime_cfg:
-        _target_: kineo.pipeline.stages.nlf.smpl_keypoints_detection.NLFSMPLKeypointsDetectionRuntimeConfig
-        batch_size: ${batch_size}
-        use_half_precision: ${use_half_precision}
-        use_cache: ${use_cache}
-        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
-        model_name: "smplx"
-        show: True
 
     global_time_resampling:
       _target_: kineo.pipeline.stages.global_time_resampling.GlobalTimeResamplingStage
@@ -125,7 +47,7 @@ pipeline:
         _target_: kineo.pipeline.stages.global_time_resampling.GlobalTimeResamplingRuntimeConfig
         target_fps: 50
         interpolation_dt_thr_s: 0.3
-
+  
     keypoints_pairs_sampling:
       _target_: kineo.pipeline.stages.keypoints_pairs_sampling.KeypointsPairsSamplingStage
       name: "Keypoints Pairs Sampling"
@@ -216,17 +138,19 @@ pipeline:
       _target_: kineo.pipeline.stages.mvs_triangulation.MVSTriangulationStage
       name: "MVS Triangulation"
       order: 90
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.mvs_triangulation.MVSTriangulationRuntimeConfig
+        use_eigendecomposition: True
 
-    smpl_global_scale_estimation:
-      _target_: kineo.pipeline.stages.smpl_global_scale_estimation.SMPLGlobalScaleEstimationStage
-      name: "SMPL Global Scale Estimation"
-      joint_regressor_path: "./body_models/smplx/J_regressor_55.pt"
-      smpl_model_path: "./body_models/smplx/SMPLX_NEUTRAL.pkl"
+    moge_global_scale_estimation:
+      _target_: kineo.pipeline.stages.moge_global_scale_estimation.MoGeGlobalScaleEstimationStage
+      name: "MoGe Global Scale Estimation"
+      model_name_or_path: "Ruicheng/moge-2-vitl"
       order: 100
       runtime_cfg:
-        _target_: kineo.pipeline.stages.smpl_global_scale_estimation.SMPLGlobalScaleEstimationRuntimeConfig
-        n_iters: 100
-        keypoints_indices: ${smplx_joints_indices}
+        _target_: kineo.pipeline.stages.moge_global_scale_estimation.MoGeGlobalScaleEstimationRuntimeConfig
+        use_half_precision: ${use_half_precision}
+        keypoints_indices: ${keypoints_indices}
 
     global_scale_application:
       _target_: kineo.pipeline.stages.global_scale_application.GlobalScaleApplicationStage
@@ -241,58 +165,63 @@ pipeline:
         _target_: kineo.pipeline.stages.scene_reorientation.SceneReorientationRuntimeConfig
         min_kps_quantile: 0.01
 
-    smpl_fitting:
-      _target_: kineo.pipeline.stages.nlf.smpl_fitting.NLFSMPLFittingStage
-      name: "SMPL Fitting"
-      order: 130
-      torchscript_model_path: "./checkpoints/nlf_l_multi_0.3.2.torchscript"
-      smpl_model_path: "./body_models/smplx/SMPLX_NEUTRAL.npz"
+    background_subtraction:
+      _target_: kineo.pipeline.stages.background_subtraction.BackgroundSubtractionStage
+      name: "Background Subtraction"
+      order: 125
       runtime_cfg:
-        _target_: kineo.pipeline.stages.nlf.smpl_fitting.NLFSMPLFittingRuntimeConfig
+        _target_: kineo.pipeline.stages.background_subtraction.BackgroundSubtractionRuntimeConfig
+        run_skyseg: False
 
-    export_bvh:
-      _target_: kineo.pipeline.stages.bvh.export_bvh.ExportBvhStage
-      name: "Export BVH"
-      order: 140
-      smpl_model_path: "./body_models/smplx/SMPLX_NEUTRAL.npz"
+    moge_scene_reconstruction:
+      _target_: kineo.pipeline.stages.moge_scene_reconstruction.MoGeSceneReconstructionStage
+      name: "Scene Reconstruction"
+      order: 130
+      model_name_or_path: "Ruicheng/moge-2-vitl"
       runtime_cfg:
-        _target_: kineo.pipeline.stages.bvh.export_bvh.ExportBvhRuntimeConfig
+        _target_: kineo.pipeline.stages.moge_scene_reconstruction.MoGeSceneReconstructionRuntimeConfig
+        use_half_precision: ${use_half_precision}
+        use_background_image: True
+        view_idx: 1
 
     rerun_export:
       _target_: kineo.pipeline.stages.rerun_export.RerunExportStage
       name: "Rerun Export"
       order: 160
+      smpl_model_path: null
       runtime_cfg:
         _target_: kineo.pipeline.stages.rerun_export.RerunExportRuntimeConfig
-        output_path_template: "${output_root_dir}/rerun/{sequence_name}_smpl.rrd"
+        output_path_template: "${output_root_dir}/offline_demo/{sequence_name}.rrd"
         max_world_points_to_show: 1000000
         world_points_confidence_threshold: 0.5
-        world_z_clipping_threshold: 2.0
+        world_z_clipping_threshold: 1.5
         remove_world_points_outside_scene_radius: True
 
-        skeleton_joint_radius_3d: 0.020
-        skeleton_joint_radius_2d: 14.0
-        skeleton_bones_thickness_3d: 0.010
-        skeleton_bones_thickness_2d: 9.0
+        start_frame_idx: 1164
 
-        min_kps_score_3d: 0.2
-        min_kps_score_2d: 0.2
+        skeleton_joint_radius_3d: 0.010
+        skeleton_joint_radius_2d: 6.0
+        skeleton_bones_thickness_3d: 0.005
+        skeleton_bones_thickness_2d: 3.0
+
+        min_kps_score_3d: 0.15
+        min_kps_score_2d: 0.15
 
         video_quality: 25
         image_plane_distance: 0.2
 
-        log_disconnected_joints: False
+        log_disconnected_joints: True
 
         log_videos: True
         video_view_ids: "view_1"
 
-        log_world_reconstruction: False
+        log_world_reconstruction: True
         log_pred_cameras: True
         log_pred_keypoints_2d: False
         log_pred_keypoints_3d: False
-        log_pred_skeletons_2d: False
+        log_pred_skeletons_2d: True
         log_pred_skeletons_3d: True
-        log_pred_smpl: True
+        log_pred_smpl: False
 
         log_gt_keypoints_2d: False
         log_gt_keypoints_3d: False

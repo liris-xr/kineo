@@ -1,6 +1,6 @@
-output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/infer_dwpose_single_person"
-cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/infer_dwpose_single_person"
-use_cache: True
+output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/infer_dwpose_single_person_sam2"
+cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/infer_dwpose_single_person_sam2"
+use_cache: False
 batch_size: 32
 use_half_precision: True
 shared_intrinsics: True
@@ -8,44 +8,53 @@ shared_intrinsics: True
 # This is because hands and faces are often noisy, yet their score is anormaly high giving false positives.
 keypoints_indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
 
-rtmlib_bbox_keypoints_detection_frame_step: 1
+sam2_bbox_detection_frame_step: 5
+rtmlib_keypoints_detection_frame_step: 1
 
 pipeline:
   seed: 19
 
   stages:
-    mfcc_temporal_calibration:
-      _target_: kineo.pipeline.stages.mfcc_temporal_calibration.MFCCTemporalCalibrationStage
-      name: "MFCC Temporal Calibration"
-      order: 0
-      runtime_cfg:
-        _target_: kineo.pipeline.stages.mfcc_temporal_calibration.TemporalCalibrationRuntimeConfig
-        ref_idx: 0
-
-    rtmlib_bbox_keypoints_detection:
-      _target_: kineo.pipeline.stages.rtmlib.rtmlib_bbox_keypoints_detection.RtmlibBboxKeypointsDetectionStage
-      name: "Rtmlib Bbox Keypoints Detection"
+    sam2_semiauto_bbox_detection:
+      _target_: kineo.pipeline.stages.sam2_semiauto_bbox_detection.SAM2SemiAutoBboxDetectionStage
+      name: "SAM2 Semi-Auto Bbox Detection"
       order: 5
-      keypoints_model: "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-l_simcc-ucoco_dw-ucoco_270e-384x288-2438fd99_20230728.zip"
-      keypoints_model_input_shape_hw: [288, 384]
+      det_model: "rtmdet-t"
+      sam2_model_cfg: "configs/efficienttam/efficienttam_s.yaml"
+      sam2_model_weights: "./checkpoints/efficienttam_s.pt"
+      sam2_vos_optimized: False
       runtime_cfg:
-        _target_: kineo.pipeline.stages.rtmlib.rtmlib_bbox_keypoints_detection.RtmlibBboxKeypointsDetectionRuntimeConfig
+        _target_: kineo.pipeline.stages.sam2_semiauto_bbox_detection.SAM2SemiAutoBboxDetectionRuntimeConfig
         use_cache: ${use_cache}
+        use_half_precision: ${use_half_precision}
         cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
-        show: False
-        frame_step: ${rtmlib_bbox_keypoints_detection_frame_step}
+        show: True
+        frame_step: ${sam2_bbox_detection_frame_step}
 
     # Infer intrinsics before NLF to provide it to the model
     moge_intrinsics_estimation:
       _target_: kineo.pipeline.stages.moge_intrinsics_estimation.MoGeIntrinsicsEstimationStage
       name: "MoGe Intrinsics Estimation"
       model_name_or_path: "Ruicheng/moge-2-vitl"
-      order: 20
+      order: 8
       runtime_cfg:
         _target_: kineo.pipeline.stages.moge_intrinsics_estimation.MoGeIntrinsicsEstimationRuntimeConfig
         use_cache: ${use_cache}
         use_half_precision: ${use_half_precision}
         cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
+
+    rtmlib_keypoints_detection:
+      _target_: kineo.pipeline.stages.rtmlib.rtmlib_keypoints_detection.RtmlibKeypointsDetectionStage
+      name: "Rtmlib Keypoints Detection"
+      order: 10
+      keypoints_model: "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-l_simcc-ucoco_dw-ucoco_270e-384x288-2438fd99_20230728.zip"
+      keypoints_model_input_shape_hw: [288, 384]
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.rtmlib.rtmlib_keypoints_detection.RtmlibKeypointsDetectionRuntimeConfig
+        use_cache: ${use_cache}
+        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
+        show: True
+        frame_step: ${rtmlib_keypoints_detection_frame_step}
 
     global_time_resampling:
       _target_: kineo.pipeline.stages.global_time_resampling.GlobalTimeResamplingStage
@@ -55,7 +64,16 @@ pipeline:
         _target_: kineo.pipeline.stages.global_time_resampling.GlobalTimeResamplingRuntimeConfig
         target_fps: 50
         interpolation_dt_thr_s: 0.3
-  
+
+    # visualization_2d:
+    #   _target_: kineo.pipeline.stages.visualization_2d.Visualization2DStage
+    #   name: "Visualization 2D"
+    #   order: 35
+    #   runtime_cfg:
+    #     _target_: kineo.pipeline.stages.visualization_2d.Visualization2DRuntimeConfig
+    #     keypoints_score_threshold: 0.2
+    #     keypoints_indices: ${smplx_joints_indices}
+
     keypoints_pairs_sampling:
       _target_: kineo.pipeline.stages.keypoints_pairs_sampling.KeypointsPairsSamplingStage
       name: "Keypoints Pairs Sampling"
@@ -146,7 +164,10 @@ pipeline:
       _target_: kineo.pipeline.stages.mvs_triangulation.MVSTriangulationStage
       name: "MVS Triangulation"
       order: 90
-
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.mvs_triangulation.MVSTriangulationRuntimeConfig
+        use_eigendecomposition: True
+    
     moge_global_scale_estimation:
       _target_: kineo.pipeline.stages.moge_global_scale_estimation.MoGeGlobalScaleEstimationStage
       name: "MoGe Global Scale Estimation"
@@ -176,7 +197,6 @@ pipeline:
       order: 125
       runtime_cfg:
         _target_: kineo.pipeline.stages.background_subtraction.BackgroundSubtractionRuntimeConfig
-        run_skyseg: False
 
     moge_scene_reconstruction:
       _target_: kineo.pipeline.stages.moge_scene_reconstruction.MoGeSceneReconstructionStage
@@ -193,14 +213,14 @@ pipeline:
       _target_: kineo.pipeline.stages.rerun_export.RerunExportStage
       name: "Rerun Export"
       order: 160
-      smpl_model_path: null
       runtime_cfg:
         _target_: kineo.pipeline.stages.rerun_export.RerunExportRuntimeConfig
-        output_path_template: "${output_root_dir}/rerun/{sequence_name}.rrd"
+        output_path_template: "${output_root_dir}/offline_demo/{sequence_name}.rrd"
         max_world_points_to_show: 1000000
         world_points_confidence_threshold: 0.5
         world_z_clipping_threshold: 1.5
         remove_world_points_outside_scene_radius: True
+        world_translation: [0.0, 0.0, -0.1]
 
         start_frame_idx: 1164
 

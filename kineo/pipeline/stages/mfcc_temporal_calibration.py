@@ -78,9 +78,12 @@ class MFCCTemporalCalibrationStage(PipelineStage[TemporalCalibrationRuntimeConfi
                 audio_sample_rates.append(None)
                 continue
 
+            print(f"Loading audio for {view['view_id']}...")
             audio, sample_rate = audio_loader.load_audio()
             audio_waveforms.append(audio)
             audio_sample_rates.append(sample_rate)
+
+        print("Computing time offsets...")
 
         if not all(audio_sample_rates):
             print(
@@ -98,8 +101,15 @@ class MFCCTemporalCalibrationStage(PipelineStage[TemporalCalibrationRuntimeConfi
                 win_duration=runtime_cfg.win_duration,
                 n_mels=runtime_cfg.n_mels,
                 mel_scale=runtime_cfg.mel_scale,
-                shift_offsets=True,
+                shift_offsets=False,
             )
+
+        print("--------------------------------")
+        print("Time offsets:")
+        for i, view in enumerate(views):
+            is_ref = i == runtime_cfg.ref_idx
+            print(f"{view['view_id']}: {time_offsets[i].item()}{' (ref)' if is_ref else ''}")
+        print("--------------------------------")
 
         annotations["camera_temporal"] = CameraTemporalAnnotations(
             metadata=CameraTemporalAnnotationsMetadata(),

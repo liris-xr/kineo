@@ -1,11 +1,11 @@
-output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/infer_nlf_single_person_sam2"
-cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/infer_nlf_single_person_sam2"
-use_cache: True
+output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/infer_nlf_single_person"
+cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/infer_nlf_single_person"
+use_cache: False
 batch_size: 32
 use_half_precision: True
 shared_intrinsics: True
 
-sam2_bbox_detection_frame_step: 5
+rtmlib_bbox_detection_frame_step: 5
 
 smplx_joints_indices: [
     0,
@@ -70,27 +70,18 @@ pipeline:
   seed: 19
 
   stages:
-    mfcc_temporal_calibration:
-      _target_: kineo.pipeline.stages.mfcc_temporal_calibration.MFCCTemporalCalibrationStage
-      name: "MFCC Temporal Calibration"
-      order: 0
-      runtime_cfg:
-        _target_: kineo.pipeline.stages.mfcc_temporal_calibration.TemporalCalibrationRuntimeConfig
-        ref_idx: 0
-
-    sam2_semiauto_bbox_detection:
-      _target_: kineo.pipeline.stages.sam2_semiauto_bbox_detection.SAM2SemiAutoBboxDetectionStage
-      name: "SAM2 Semi-Auto Bbox Detection"
+    rtmlib_bbox_detection:
+      _target_: kineo.pipeline.stages.rtmlib.rtmlib_bbox_detection.RtmlibBboxDetectionStage
+      name: "Rtmlib Bbox Detection"
       order: 5
-      det_model: "rtmdet-t"
-      sam2_model_cfg: "configs/efficienttam/efficienttam_s.yaml"
-      sam2_model_weights: "./checkpoints/efficienttam_s.pt"
-      sam2_vos_optimized: False
+      bbox_model: "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/yolox_tiny_8xb8-300e_humanart-6f3252f9.zip"
+      bbox_model_input_shape_hw: [416, 416]
       runtime_cfg:
-        _target_: kineo.pipeline.stages.sam2_semiauto_bbox_detection.SAM2SemiAutoBboxDetectionRuntimeConfig
+        _target_: kineo.pipeline.stages.rtmlib.rtmlib_bbox_detection.RtmlibBboxDetectionRuntimeConfig
         use_cache: ${use_cache}
-        use_half_precision: ${use_half_precision}
-        frame_step: ${sam2_bbox_detection_frame_step}
+        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
+        show: True
+        frame_step: ${rtmlib_bbox_detection_frame_step}
 
     # Infer intrinsics before NLF to provide it to the model
     moge_intrinsics_estimation:
@@ -116,6 +107,7 @@ pipeline:
         use_cache: ${use_cache}
         cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
         model_name: "smplx"
+        show: True
 
     global_time_resampling:
       _target_: kineo.pipeline.stages.global_time_resampling.GlobalTimeResamplingStage
@@ -125,15 +117,6 @@ pipeline:
         _target_: kineo.pipeline.stages.global_time_resampling.GlobalTimeResamplingRuntimeConfig
         target_fps: 50
         interpolation_dt_thr_s: 0.3
-
-    # visualization_2d:
-    #   _target_: kineo.pipeline.stages.visualization_2d.Visualization2DStage
-    #   name: "Visualization 2D"
-    #   order: 35
-    #   runtime_cfg:
-    #     _target_: kineo.pipeline.stages.visualization_2d.Visualization2DRuntimeConfig
-    #     keypoints_score_threshold: 0.2
-    #     keypoints_indices: ${smplx_joints_indices}
 
     keypoints_pairs_sampling:
       _target_: kineo.pipeline.stages.keypoints_pairs_sampling.KeypointsPairsSamplingStage
@@ -225,6 +208,9 @@ pipeline:
       _target_: kineo.pipeline.stages.mvs_triangulation.MVSTriangulationStage
       name: "MVS Triangulation"
       order: 90
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.mvs_triangulation.MVSTriangulationRuntimeConfig
+        use_eigendecomposition: True
 
     smpl_global_scale_estimation:
       _target_: kineo.pipeline.stages.smpl_global_scale_estimation.SMPLGlobalScaleEstimationStage
@@ -266,6 +252,7 @@ pipeline:
       smpl_model_path: "./body_models/smplx/SMPLX_NEUTRAL.npz"
       runtime_cfg:
         _target_: kineo.pipeline.stages.bvh.export_bvh.ExportBvhRuntimeConfig
+        output_path_template: "${output_root_dir}/offline_demo/{sequence_name}.bvh"
 
     rerun_export:
       _target_: kineo.pipeline.stages.rerun_export.RerunExportStage
@@ -273,7 +260,7 @@ pipeline:
       order: 160
       runtime_cfg:
         _target_: kineo.pipeline.stages.rerun_export.RerunExportRuntimeConfig
-        output_path_template: "${output_root_dir}/rerun/{sequence_name}_smpl.rrd"
+        output_path_template: "${output_root_dir}/offline_demo/{sequence_name}.rrd"
         max_world_points_to_show: 1000000
         world_points_confidence_threshold: 0.5
         world_z_clipping_threshold: 2.0

@@ -37,6 +37,7 @@ from typing import Optional
 @dataclass(frozen=True)
 class MVSTriangulationRuntimeConfig:
     triangulation_chunk_size: int = 200
+    use_eigendecomposition: bool = False
 
 
 class MVSTriangulationStage(PipelineStage[MVSTriangulationRuntimeConfig]):
@@ -200,6 +201,7 @@ class MVSTriangulationStage(PipelineStage[MVSTriangulationRuntimeConfig]):
                     Ps=Ps,
                     points=chunk_points_2d,
                     points_weights=chunk_points_2d_scores,
+                    use_eigendecomposition=runtime_cfg.use_eigendecomposition,
                 ).reshape(-1, n_keypoints, 3)
                 all_kps_3d[chunk_frames, subject_idx, :, :] = chunk_points_3d
 

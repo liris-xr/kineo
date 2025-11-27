@@ -31,13 +31,21 @@ from kineo.annotations.global_time_reference import (
 from kineo.annotations.bboxes_2d import BBox2DAnnotations, BBox2DAnnotation
 
 from dataclasses import dataclass
-
+import cv2
+import numpy as np
 
 @dataclass(frozen=True)
 class GlobalTimeResamplingRuntimeConfig:
     target_fps: int = 50
     interpolation_dt_thr_s: float = 1 / 50 * 3  # 3 frames at 50 Hz
+    show: bool = False
 
+def pad_to_size(img, target_h, target_w):
+    """Pad image (H, W, C) with black pixels to target size."""
+    h, w = img.shape[:2]
+    pad_h = target_h - h
+    pad_w = target_w - w
+    return cv2.copyMakeBorder(img, 0, pad_h, 0, pad_w, cv2.BORDER_CONSTANT, value=(0,0,0))
 
 class GlobalTimeResamplingStage(PipelineStage[GlobalTimeResamplingRuntimeConfig]):
     def __init__(
@@ -71,6 +79,7 @@ class GlobalTimeResamplingStage(PipelineStage[GlobalTimeResamplingRuntimeConfig]
         )
 
         if camera_temporal is None:
+            print("No camera temporal annotations provided, assuming synchronized cameras.")
             # If no camera temporal annotations is provided, assume synchronized cameras.
             camera_temporal = CameraTemporalAnnotations(
                 metadata=CameraTemporalAnnotationsMetadata(),
@@ -83,6 +92,7 @@ class GlobalTimeResamplingStage(PipelineStage[GlobalTimeResamplingRuntimeConfig]
                     for view_idx in range(n_views)
                 ],
             )
+            annotations["camera_temporal"] = camera_temporal
 
         # Short path, if all cameras are synchronized and have the same number of frames, we can return the annotations as is (e.g. for synchronized datasets)
         if all(a.time_offset == 0.0 for a in camera_temporal.annotations) and all(
@@ -286,6 +296,41 @@ class GlobalTimeResamplingStage(PipelineStage[GlobalTimeResamplingRuntimeConfig]
                             score=resampled_bboxes_2d_scores[f, view_idx].item(),
                         )
                     )
+
+        if runtime_cfg.show:
+
+            cv2.namedWindow("Synchronized Views", cv2.WINDOW_NORMAL)
+            cv2.resizeWindow("Synchronized Views", 1280, 720)
+
+            for frame_idx in range(n_frames):
+                frames_bgr = []
+        
+                # --- Load all views for this frame ---
+                max_h, max_w = 0, 0
+                for view_idx in range(n_views):
+                    view_id = views[view_idx]["view_id"]
+                    frame_loader = views[view_idx]["frame_loader"]
+                    local_frame_idx = closest_local_frame_idx[view_id][frame_idx]
+
+                    frame = frame_loader.load_frame_at(local_frame_idx)
+                    frame_rgb = frame.permute(1, 2, 0).cpu().numpy()
+
+                    frame_bgr = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
+
+                    h, w = frame_bgr.shape[:2]
+                    max_h = max(max_h, h)
+                    max_w = max(max_w, w)
+
+                    frames_bgr.append(frame_bgr)
+
+                padded_frames = [pad_to_size(f, max_h, max_w) for f in frames_bgr]
+
+                concatenated_frame = np.concatenate(padded_frames, axis=1)
+
+                cv2.imshow("Synchronized Views", concatenated_frame)
+                cv2.waitKey(1)
+        
+            cv2.destroyAllWindows()
 
         annotations["keypoints_2d"] = Keypoints2DAnnotations(
             metadata=kps_2d.metadata, annotations=resampled_kps_2d_annotations

@@ -10,7 +10,7 @@
 
 import itertools
 import torch
-
+from tqdm import tqdm
 from kineo.geometry.conversions import convert_points_from_homogeneous
 from kineo.torch_utils import check_shape
 
@@ -19,6 +19,7 @@ def triangulate_points(
     Ps: torch.Tensor,
     points: torch.Tensor,
     points_weights: torch.Tensor | None = None,
+    use_eigendecomposition: bool = False,
 ) -> torch.Tensor:
     r"""Reconstructs a bunch of points by triangulation.
 
@@ -55,7 +56,7 @@ def triangulate_points(
         (*batch_dims, N, n_pairs, 4, 4), dtype=points.dtype, device=points.device
     )
 
-    for pair_idx, (view_i, view_j) in enumerate(pairs):
+    for pair_idx, (view_i, view_j) in tqdm(enumerate(pairs), total=n_pairs, desc="Building linear system", leave=False):
         pair_points1 = points[..., view_i, :, :]
         pair_points2 = points[..., view_j, :, :]
         pair_P1 = Ps[..., view_i, :, :]
@@ -79,8 +80,15 @@ def triangulate_points(
             )
 
     X = X.reshape(-1, n_pairs * 4, 4)
-    _, _, V = torch.svd(X)
-    points3d_h = V[..., -1]
+
+    if use_eigendecomposition:
+        XtX = X.transpose(-2, -1) @ X
+        _, eigvecs = torch.linalg.eigh(XtX)
+        points3d_h = eigvecs[..., :, 0]
+    else:
+        _, _, V = torch.svd(X)
+        points3d_h = V[..., -1]
+
     points3d, _ = convert_points_from_homogeneous(points3d_h)
     points3d = points3d.reshape((*batch_dims, N, 3))
     return points3d
