@@ -53,6 +53,10 @@ dev = [
     "mmdet @ git+https://github.com/cjaverliat/mmdetection.git",
 ]
 
+[project.scripts]
+kineo-offline = "kineo.demo.offline.demo:main"
+kineo-online = "kineo.demo.online.demo:main"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["kineo*"]
