@@ -12,9 +12,6 @@ import torch
 import warnings
 warnings.filterwarnings("ignore")
 
-from mmengine.logging import MMLogger
-logger = MMLogger.get_instance('mmengine', log_level='ERROR')
-
 from kineo.pipeline.pipeline import Pipeline
 from kineo.datasets.keypoints_sequence_dataset import ViewInput
 from kineo.io.frame_sequence_loader import VideoLoader
