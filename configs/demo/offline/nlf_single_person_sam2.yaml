@@ -247,6 +247,24 @@ pipeline:
       runtime_cfg:
         _target_: kineo.pipeline.stages.nlf.smpl_fitting.NLFSMPLFittingRuntimeConfig
 
+    background_subtraction:
+      _target_: kineo.pipeline.stages.background_subtraction.BackgroundSubtractionStage
+      name: "Background Subtraction"
+      order: 135
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.background_subtraction.BackgroundSubtractionRuntimeConfig
+        run_skyseg: False
+
+    moge_scene_reconstruction:
+      _target_: kineo.pipeline.stages.moge_scene_reconstruction.MoGeSceneReconstructionStage
+      name: "Scene Reconstruction"
+      order: 136
+      model_name_or_path: "Ruicheng/moge-2-vitl"
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.moge_scene_reconstruction.MoGeSceneReconstructionRuntimeConfig
+        use_half_precision: ${use_half_precision}
+        use_background_image: True
+
     export_bvh:
       _target_: kineo.pipeline.stages.bvh.export_bvh.ExportBvhStage
       name: "Export BVH"
@@ -284,7 +302,7 @@ pipeline:
         log_videos: True
         video_view_ids: "view_1"
 
-        log_world_reconstruction: False
+        log_world_reconstruction: True
         log_pred_cameras: True
         log_pred_keypoints_2d: False
         log_pred_keypoints_3d: False
