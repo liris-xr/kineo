@@ -70,16 +70,17 @@ pipeline:
   seed: 19
 
   stages:
-    sam2_semiauto_bbox_detection:
-      _target_: kineo.pipeline.stages.sam2_semiauto_bbox_detection.SAM2SemiAutoBboxDetectionStage
+    sam2_semiauto_bbox_detection_rtmlib:
+      _target_: kineo.pipeline.stages.sam2_semiauto_bbox_detection_rtmlib.SAM2SemiAutoBboxDetectionRtmlibStage
       name: "SAM2 Semi-Auto Bbox Detection"
       order: 5
-      det_model: "rtmdet-t"
+      det_model: "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/yolox_tiny_8xb8-300e_humanart-6f3252f9.zip"
+      det_model_input_shape_hw: [416, 416]
       sam2_model_cfg: "configs/efficienttam/efficienttam_s.yaml"
       sam2_model_weights: "./checkpoints/efficienttam_s.pt"
       sam2_vos_optimized: False
       runtime_cfg:
-        _target_: kineo.pipeline.stages.sam2_semiauto_bbox_detection.SAM2SemiAutoBboxDetectionRuntimeConfig
+        _target_: kineo.pipeline.stages.sam2_semiauto_bbox_detection_rtmlib.SAM2SemiAutoBboxDetectionRtmlibRuntimeConfig
         use_cache: ${use_cache}
         use_half_precision: ${use_half_precision}
         frame_step: ${sam2_bbox_detection_frame_step}
