@@ -1,3 +1,3 @@
 #!/bin/bash
 
-python demo/online/demo.py
+python kineo/demo/online/demo.py
