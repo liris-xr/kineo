@@ -87,13 +87,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--target-fps", type=int, default=20)
     parser.add_argument("--target-res", type=str, default="640x480")
-    parser.add_argument("--n-required-cameras", type=int, default=4)
     parser.add_argument("--live-viz-config", type=str, default="configs/demo/realtime/realtime_viz.yaml")
     parser.add_argument("--skip-calibration", action="store_true")
     args = parser.parse_args()
     target_fps = int(args.target_fps)
     target_res = tuple(int(x) for x in args.target_res.split("x"))
-    n_required_cameras = int(args.n_required_cameras)
 
     calibration_config_file = "configs/demo/realtime/calibration.yaml"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -104,7 +102,7 @@ if __name__ == "__main__":
         print("Pipelines loaded")
 
         app = QtWidgets.QApplication(sys.argv)
-        recorder = MultiCamRecorder(target_fps=target_fps, target_res=target_res, n_required_cameras=n_required_cameras, api_preference=cv2.CAP_ANY)
+        recorder = MultiCamRecorder(target_fps=target_fps, target_res=target_res, api_preference=cv2.CAP_ANY)
         recorder.show()
         app.exec_()
 
@@ -131,8 +129,8 @@ if __name__ == "__main__":
         camera_indices.append(camera_info.index)
         camera_ids.append(camera_id)
 
-    if len(camera_indices) != n_required_cameras:
-        raise Exception(f"Expected {n_required_cameras} cameras, got {len(camera_indices)}")
+    if len(camera_indices) <= 1:
+        raise Exception(f"Expected at least 2 cameras, got {len(camera_indices)}")
 
     views = create_live_views(camera_indices, camera_ids)
 

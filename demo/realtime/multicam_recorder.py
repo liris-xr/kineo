@@ -16,7 +16,7 @@ import numpy as np
 
 
 class MultiCamRecorder(QtWidgets.QWidget):
-    def __init__(self, target_fps=20, target_res=(640, 480), n_required_cameras=None, api_preference=cv2.CAP_V4L2):
+    def __init__(self, target_fps=20, target_res=(640, 480), api_preference=cv2.CAP_V4L2):
         super().__init__()
         self.setWindowTitle("Multi-Camera Recorder")
 
@@ -44,10 +44,7 @@ class MultiCamRecorder(QtWidgets.QWidget):
             self.camera_indices.append(camera_info.index)
             self.camera_ids.append(f"{camera_info.pid}_{camera_info.vid}_{camera_info.index}")
 
-        if n_required_cameras is not None and len(self.camera_indices) < n_required_cameras:
-            raise Exception(
-                f"Not enough cameras available. {n_required_cameras} required, {len(self.camera_indices)} available."
-            )
+        print(f"Found {len(self.camera_indices)} cameras: {self.camera_ids}")
 
         self.webcams = [cv2.VideoCapture(c) for c in self.camera_indices]
         if not self.webcams:
