@@ -29,7 +29,6 @@ dependencies = [
     "roma",
     "opencv-python",
     "hydra-core",
-    "open3d",
     "soundfile",
     "yacs",
     "spacepy",
