@@ -6,8 +6,8 @@
 <p align="center">
     Charles Javerliat, Pierre Raimbaud, Guillaume Lavoué
     <br />
-    <a href="https://liris-xr.github.io/kineo/"><strong>Project Page »</strong></a>&emsp;
-    <a href="https://arxiv.org/abs/2510.24464"><strong>Paper »</strong></a>&emsp;
+    <a href="https://liris-xr.github.io/kineo/"><strong>🌐 Project Page »</strong></a>&emsp;
+    <a href="https://arxiv.org/abs/2510.24464"><strong>📄Paper »</strong></a>&emsp;
     <br />
 </p>
 
@@ -17,9 +17,9 @@ Kineo is a calibration-free metric motion capture system that reconstructs 3D mo
     <img alt="StoneQuarry" src="docs/static/images/stone_quarry.gif" width="600">
 </div>
 
-## Quick Install
+## ⚡Quick Install
 
-Kineo needs to be installed first before use. The code requires `python>=3.10`, as well as `torch>=2.6.0`:
+Kineo requires `python>=3.10` and `torch>=2.6.0`:
 
 ```sh
 conda create -n kineo python=3.10
@@ -28,7 +28,7 @@ git clone https://github.com/liris-xr/kineo.git && cd kineo
 pip install -e .
 ```
 
-## How to use
+## 🚀 How to use
 
 Kineo provides two processing modes: offline and online. The offline mode is the primary mode, designed for unconstrained, real-world video capture, delivering high reconstruction accuracy and supporting long sequences without on-site calibration. The online mode enables real-time processing of live video streams, offering immediate feedback for interactive applications.
 
@@ -64,15 +64,17 @@ In online mode, Kineo first performs a short calibration sequence to estimate th
 kineo-online
 ```
 
-## Evaluation
+## 📊 Evaluation
+
+Kineo sets a new state-of-the-art on EgoHumans and Human3.6M, reducing camera translation error by ~83–85%, camera angular error by ~86–92%, and world mean-per-joint error (W-MPJPE) by ~83–91% compared to prior methods, while efficiently handling multi-view sequences.
 
 To reproduce the results presented in the paper, please refer to the [evaluation](./EVALUATION.md) instructions.
 
-## Acknowledgments
+## 🙏 Acknowledgments
 
 This work was supported by the Auvergne-Rhône-Alpes region as part of the PROMESS project. This work was granted access to the HPC resources of IDRIS under the allocation 2025-AD010614830 made by GENCI. We also express our gratitude to the Guédelon Castle for kindly welcoming us and permitting the captures that were essential to this study.
 
-## BibTeX
+## 📚 BibTeX
 
 ```
 @article{javerliat2025kineo,
