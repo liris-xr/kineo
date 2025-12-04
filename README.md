@@ -19,13 +19,13 @@ Kineo is a calibration-free metric motion capture system that reconstructs 3D mo
 
 ## ⚡Quick Install
 
-Kineo requires `python>=3.10` and `torch>=2.6.0`:
+Kineo requires `python>=3.10` and `torch>=2.6.0` and was tested with CUDA 12.x:
 
 ```sh
 conda create -n kineo python=3.10
 pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu126
 git clone https://github.com/liris-xr/kineo.git && cd kineo
-pip install -e .
+SAM2_BUILD_ALLOW_ERRORS=0 SAM2_BUILD_CUDA=1 pip install --no-build-isolation -v .
 ```
 
 ## 🚀 How to use
@@ -49,12 +49,24 @@ kineo-offline --sequence-name stone_quarry --batch-size 16 --target-fps 50 --sha
 A window will appear prompting you to select the person to track. Once selected, you can use the slider to verify that the track remains accurate throughout the video. When you press Continue, a new window will open for the next view, and this process repeats until the person has been selected in all views.
 
 <div align="center" style="display: flex; justify-content: center; gap: 10px;">
-    <img src="docs/static/images/ui/sam2_base.png" alt="Offline image 1" width="250">
-    <img src="docs/static/images/ui/sam2_select.png" alt="Offline image 2" width="250">
-    <img src="docs/static/images/ui/sam2_propagate.png" alt="Offline image 3" width="250">
+    <img src="docs/static/images/ui/sam2_base.png" alt="SAM2 Base Image" width="250">
+    <img src="docs/static/images/ui/sam2_select.png" alt="SAM2 Select Image" width="250">
+    <img src="docs/static/images/ui/sam2_propagate.png" alt="SAM2 Propagate Image" width="250">
 </div>
 
 This step relies on our [custom fork of SAM2](https://github.com/cjaverliat/sam2) to run without requiring the entire video to be loaded into RAM or VRAM (which led to OOM in the original implementation), to define custom memory/forgetting strategies and to use EfficientTAM for faster inference.
+
+The pipeline will output results in the `outputs/infer_nlf_single_person_sam2/offline_demo/` folder, including a `.rrd` rerun file that can be visualized with [Rerun](https://www.rerun.io/), along with a `.bvh` file that can be imported in Blender, Maya, Unity, Unreal Engine, etc.
+
+<div align="center" style="display: flex; justify-content: center; flex-direction: column;">
+    <img src="docs/static/images/stone_quarry_rrd.gif" alt="Stone Quarry Rerun" width="500">
+    <p><i>Rerun visualization of the reconstructed motion from multiple views.</i></p>
+</div>
+
+<div align="center" style="display: flex; justify-content: center; flex-direction: column;">
+    <img src="docs/static/images/stone_quarry_bvh.gif" alt="Stone Quarry Blender" width="500">
+    <p><i>3D motion imported into Blender via BVH format for animation or analysis.</i></p>
+</div>
 
 ### Online
 
