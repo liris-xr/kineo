@@ -117,9 +117,18 @@ Kineo sets a new state-of-the-art on EgoHumans and Human3.6M, reducing camera tr
 
 To reproduce the results presented in the paper, please refer to the [evaluation](./EVALUATION.md) instructions.
 
+## 🤝 Contributing
+
+The pipeline is modular and can easily be extended by changing the stages defined in the configuration files. Example of configuration files are available in the `configs` directory. If you want to integrate your own work in Kineo, feel free to fork the repository and modify the code to suit your needs.
+
 ## 🙏 Acknowledgments
 
 This work was supported by the Auvergne-Rhône-Alpes region as part of the PROMESS project. This work was granted access to the HPC resources of IDRIS under the allocation 2025-AD010614830 made by GENCI. We also express our gratitude to the Guédelon Castle for kindly welcoming us and permitting the captures that were essential to this study.
+
+## 📜 License
+
+Kineo is distributed under a non-commercial research license. The full terms are available in the [LICENSE file](LICENSE.md).
+For commercial use, please contact us at guillaume.lavoue@enise.ec-lyon.fr.
 
 ## 📚 BibTeX
 
