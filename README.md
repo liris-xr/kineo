@@ -32,6 +32,26 @@ SAM2_BUILD_ALLOW_ERRORS=0 SAM2_BUILD_CUDA=1 pip install --no-build-isolation -v 
 
 Kineo provides two processing modes: offline and online. The offline mode is the primary mode, designed for unconstrained, real-world video capture, delivering high reconstruction accuracy and supporting long sequences without on-site calibration. The online mode enables real-time processing of live video streams, offering immediate feedback for interactive applications.
 
+### Prerequisites
+
+To run Kineo's demo, you will need to download:
+
+- SMPL-X body model from [here](https://smpl-x.is.tue.mpg.de/)
+- NLF model from [here](https://github.com/isarandi/nlf/releases/tag/v0.3.2)
+- EfficientTAM model from [here](https://huggingface.co/yunyangx/efficient-track-anything/tree/main)
+
+Your directory structure should look like:
+```
+checkpoints/
+├── nlf_l_multi_0.3.2.torchscript
+├── efficienttam_s.pt
+body_models/
+├── smplx/
+│   ├── SMPLX_NEUTRAL.npz
+│   ├── SMPLX_NEUTRAL.pkl
+│   └── J_regressor_55.pt
+```
+
 ### Offline
 
 In offline mode, Kineo uses the full video sequence to produce high-accuracy calibration of camera parameters and 3D motion reconstructions. This mode can be used on any video by running the following command:
