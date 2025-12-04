@@ -1,17 +1,17 @@
-from multicam_recorder import MultiCamRecorder
+from kineo.demo.online.multicam_recorder import MultiCamRecorder
 from PyQt5 import QtWidgets
 import sys
 import torch
 from kineo.pipeline.pipeline import Pipeline
 from kineo.datasets.keypoints_sequence_dataset import ViewInput
 from kineo.io.frame_sequence_loader import VideoLoader
-from live_video_loader import LiveVideoLoader
+from kineo.demo.online.live_video_loader import LiveVideoLoader
 import cv2
 from kineo.annotations.camera_extrinsics import CameraExtrinsicsAnnotations
 from kineo.annotations.camera_intrinsics import CameraIntrinsicsAnnotations
 from kineo.annotations.reconstructed_scene import WorldReconstructedSceneAnnotations
 
-from camera_utils import get_available_cameras
+from kineo.demo.online.camera_utils import get_available_cameras
 import pickle
 import argparse
 import os

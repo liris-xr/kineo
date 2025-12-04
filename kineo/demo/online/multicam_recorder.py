@@ -11,7 +11,7 @@ if "QT_QPA_PLATFORM_PLUGIN_PATH" in os.environ:
 
 import math
 from PyQt5 import QtWidgets, QtCore, QtGui
-from camera_utils import get_available_cameras
+from kineo.demo.online.camera_utils import get_available_cameras
 import numpy as np
 
 
