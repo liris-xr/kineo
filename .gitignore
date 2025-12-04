@@ -1,4 +1,3 @@
-body_models/*
 ./*.slurm
 slurm-*.out
 tmp/
@@ -13,7 +12,6 @@ checkpoints/*
 .vscode/
 outputs/*
 checkpoints/*
-body_models/*
 data_output/
 credentials.json
 *.apps.googleusercontent.com.json

@@ -1,0 +1,11 @@
+*.npz
+*.pkl
+*.pt
+!.gitignore
+!.gitkeep
+!**/J_regressor_55.pt
+!**/h36m_joints_regressor.pt
+!**/J_regressor_coco.npy
+!**/J_regressor_coco19.pt
+!**/retrained_J_Regressor.pt
+!**/J_regressor_24.pt
