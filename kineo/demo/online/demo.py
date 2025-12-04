@@ -10,6 +10,8 @@ import cv2
 from kineo.annotations.camera_extrinsics import CameraExtrinsicsAnnotations
 from kineo.annotations.camera_intrinsics import CameraIntrinsicsAnnotations
 from kineo.annotations.reconstructed_scene import WorldReconstructedSceneAnnotations
+import sys
+import platform
 
 from kineo.demo.online.camera_utils import get_available_cameras
 import pickle
@@ -21,7 +23,7 @@ torch.backends.cudnn.allow_tf32 = True
 torch.backends.cudnn.benchmark = True
 
 
-def create_views_from_temp_videos(temp_videos, cam_names, device: torch.device):
+def create_views_from_temp_videos(temp_videos, cam_names, device: torch.device, api_preference: int = cv2.CAP_ANY):
     views = []
     for i, temp_video in enumerate(temp_videos):
         video_path = temp_video.name
@@ -32,13 +34,14 @@ def create_views_from_temp_videos(temp_videos, cam_names, device: torch.device):
                 frame_loader=VideoLoader(
                     video_path=video_path,
                     device=device,
+                    api_preference=api_preference,
                 ),
                 audio_loader=None,
             )
         )
     return views
 
-def create_live_views(cam_indices: list[int], cam_names: list[str], device: torch.device):
+def create_live_views(cam_indices: list[int], cam_names: list[str], device: torch.device, api_preference: int = cv2.CAP_ANY):
     views = []
     for cam_idx, cam_name in zip(cam_indices, cam_names):
         views.append(
@@ -47,6 +50,7 @@ def create_live_views(cam_indices: list[int], cam_names: list[str], device: torc
                 frame_loader=LiveVideoLoader(
                     camera_idx=cam_idx,
                     device=device,
+                    api_preference=api_preference,
                 ),
             )
         )
@@ -83,7 +87,7 @@ def load_camera_calibrations(cam_ids: list[str], calibration_output_root_dir: st
     return cam_intrinsics, cam_extrinsics, world_reconstructed_scene
 
 
-def main(target_fps, target_res, live_viz_config, skip_calibration):
+def main(target_fps, target_res, live_viz_config, skip_calibration, api_preference: int = cv2.CAP_ANY):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     calibration_config_file = "configs/demo/realtime/calibration.yaml"
@@ -97,7 +101,7 @@ def main(target_fps, target_res, live_viz_config, skip_calibration):
         recorder = MultiCamRecorder(
             target_fps=target_fps,
             target_res=target_res,
-            api_preference=cv2.CAP_ANY
+            api_preference=api_preference
         )
         recorder.show()
         app.exec_()
@@ -105,7 +109,7 @@ def main(target_fps, target_res, live_viz_config, skip_calibration):
         cam_indices = recorder.camera_indices
         cam_names = recorder.camera_ids
 
-        views = create_views_from_temp_videos(recorder.temp_videos, cam_names, device=device)
+        views = create_views_from_temp_videos(recorder.temp_videos, cam_names, device=device, api_preference=api_preference)
         calibration_pipeline.run(
             sequence_name="calibration",
             views=views,
@@ -120,7 +124,7 @@ def main(target_fps, target_res, live_viz_config, skip_calibration):
     camera_indices = []
     camera_ids = []
 
-    for camera_info in get_available_cameras(cv2.CAP_ANY):
+    for camera_info in get_available_cameras(api_preference=api_preference):
         camera_id = f"{camera_info.pid}_{camera_info.vid}_{camera_info.index}"
         camera_indices.append(camera_info.index)
         camera_ids.append(camera_id)
@@ -128,7 +132,7 @@ def main(target_fps, target_res, live_viz_config, skip_calibration):
     if len(camera_indices) <= 1:
         raise Exception(f"Expected at least 2 cameras, got {len(camera_indices)}")
 
-    views = create_live_views(camera_indices, camera_ids, device=device)
+    views = create_live_views(camera_indices, camera_ids, device=device, api_preference=api_preference)
 
     calibration_output_root_dir = "./outputs/realtime_demo_calibration"
     cam_intrinsics, cam_extrinsics, world_reconstructed_scene = load_camera_calibrations(
@@ -153,15 +157,40 @@ def cli():
     parser.add_argument("--target-res", type=str, default="640x480")
     parser.add_argument("--live-viz-config", type=str, default="configs/demo/realtime/realtime_viz.yaml")
     parser.add_argument("--skip-calibration", action="store_true")
+    parser.add_argument(
+        "--api-preference",
+        type=str,
+        choices=["any", "dshow", "v4l2", "msmf"],
+        default=None
+    )
     args = parser.parse_args()
 
     target_res = tuple(int(x) for x in args.target_res.split("x"))
+
+    available_backends = cv2.videoio_registry.getBackends()
+
+    if args.api_preference is None:
+        if platform.system() == "Windows" and cv2.CAP_DSHOW in available_backends:
+            api_preference = cv2.CAP_DSHOW
+        elif platform.system() == "Linux" and cv2.CAP_V4L2 in available_backends:
+            api_preference = cv2.CAP_V4L2
+        else:
+            api_preference = cv2.CAP_ANY
+    elif args.api_preference == "any":
+        api_preference = cv2.CAP_ANY
+    elif args.api_preference == "dshow":
+        api_preference = cv2.CAP_DSHOW
+    elif args.api_preference == "v4l2":
+        api_preference = cv2.CAP_V4L2
+    elif args.api_preference == "msmf":
+        api_preference = cv2.CAP_MSMF
 
     main(
         target_fps=args.target_fps,
         target_res=target_res,
         live_viz_config=args.live_viz_config,
         skip_calibration=args.skip_calibration,
+        api_preference=api_preference,
     )
 
 if __name__ == "__main__":

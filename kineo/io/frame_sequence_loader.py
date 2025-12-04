@@ -147,6 +147,7 @@ class VideoLoader(FrameSequenceLoader):
         video_path: str,
         device: torch.device,
         selected_frames: torch.Tensor | Sequence | range | slice | None = None,
+        api_preference: int = cv2.CAP_ANY,
     ):
         super().__init__(device)
 
@@ -160,7 +161,7 @@ class VideoLoader(FrameSequenceLoader):
         if self.selected_frames is not None:
             self.selected_frames = torch.as_tensor(self.selected_frames)
 
-        self._video_reader = cv2.VideoCapture(self.video_path)
+        self._video_reader = cv2.VideoCapture(self.video_path, api_preference)
         self._resolution_hw = (
             int(self._video_reader.get(cv2.CAP_PROP_FRAME_HEIGHT)),
             int(self._video_reader.get(cv2.CAP_PROP_FRAME_WIDTH)),

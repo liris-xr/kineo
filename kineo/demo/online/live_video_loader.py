@@ -9,11 +9,12 @@ class LiveVideoLoader:
             self,
             camera_idx: int,
             device: torch.device,
+            api_preference: int = cv2.CAP_ANY,
     ):
         self.device = device
         self.camera_idx = camera_idx
 
-        self._video_reader = cv2.VideoCapture(self.camera_idx)
+        self._video_reader = cv2.VideoCapture(self.camera_idx, api_preference)
 
         if not self._video_reader.isOpened():
             raise Exception(f"Failed to open video capture for camera {camera_idx}")

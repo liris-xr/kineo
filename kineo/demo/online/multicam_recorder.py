@@ -46,7 +46,7 @@ class MultiCamRecorder(QtWidgets.QWidget):
 
         print(f"Found {len(self.camera_indices)} cameras: {self.camera_ids}")
 
-        self.webcams = [cv2.VideoCapture(c) for c in self.camera_indices]
+        self.webcams = [cv2.VideoCapture(c, api_preference) for c in self.camera_indices]
         if not self.webcams:
             raise Exception("No webcams available")
 
