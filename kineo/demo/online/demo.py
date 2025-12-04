@@ -21,7 +21,7 @@ torch.backends.cudnn.allow_tf32 = True
 torch.backends.cudnn.benchmark = True
 
 
-def create_views_from_temp_videos(temp_videos, cam_names):
+def create_views_from_temp_videos(temp_videos, cam_names, device: torch.device):
     views = []
     for i, temp_video in enumerate(temp_videos):
         video_path = temp_video.name
@@ -38,7 +38,7 @@ def create_views_from_temp_videos(temp_videos, cam_names):
         )
     return views
 
-def create_live_views(cam_indices: list[int], cam_names: list[str]):
+def create_live_views(cam_indices: list[int], cam_names: list[str], device: torch.device):
     views = []
     for cam_idx, cam_name in zip(cam_indices, cam_names):
         views.append(
@@ -82,35 +82,31 @@ def load_camera_calibrations(cam_ids: list[str], calibration_output_root_dir: st
 
     return cam_intrinsics, cam_extrinsics, world_reconstructed_scene
 
-if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--target-fps", type=int, default=20)
-    parser.add_argument("--target-res", type=str, default="640x480")
-    parser.add_argument("--live-viz-config", type=str, default="configs/demo/realtime/realtime_viz.yaml")
-    parser.add_argument("--skip-calibration", action="store_true")
-    args = parser.parse_args()
-    target_fps = int(args.target_fps)
-    target_res = tuple(int(x) for x in args.target_res.split("x"))
-
-    calibration_config_file = "configs/demo/realtime/calibration.yaml"
+def main(target_fps, target_res, live_viz_config, skip_calibration):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    if not args.skip_calibration:
+    calibration_config_file = "configs/demo/realtime/calibration.yaml"
+
+    if not skip_calibration:
         print("Loading calibration pipeline")
         calibration_pipeline = Pipeline.build_pipeline_from_config(calibration_config_file, device)
         print("Pipelines loaded")
 
         app = QtWidgets.QApplication(sys.argv)
-        recorder = MultiCamRecorder(target_fps=target_fps, target_res=target_res, api_preference=cv2.CAP_ANY)
+        recorder = MultiCamRecorder(
+            target_fps=target_fps,
+            target_res=target_res,
+            api_preference=cv2.CAP_ANY
+        )
         recorder.show()
         app.exec_()
 
         cam_indices = recorder.camera_indices
         cam_names = recorder.camera_ids
 
-        views = create_views_from_temp_videos(recorder.temp_videos, cam_names)
-        annotations = calibration_pipeline.run(
+        views = create_views_from_temp_videos(recorder.temp_videos, cam_names, device=device)
+        calibration_pipeline.run(
             sequence_name="calibration",
             views=views,
             annotations={},
@@ -118,7 +114,7 @@ if __name__ == "__main__":
         )
 
     print("Loading live viz pipeline")
-    live_viz_pipeline = Pipeline.build_pipeline_from_config(args.live_viz_config, device)
+    live_viz_pipeline = Pipeline.build_pipeline_from_config(live_viz_config, device)
     print("Live viz pipeline loaded")
 
     camera_indices = []
@@ -132,13 +128,14 @@ if __name__ == "__main__":
     if len(camera_indices) <= 1:
         raise Exception(f"Expected at least 2 cameras, got {len(camera_indices)}")
 
-    views = create_live_views(camera_indices, camera_ids)
+    views = create_live_views(camera_indices, camera_ids, device=device)
 
-    # Load calibration data
     calibration_output_root_dir = "./outputs/realtime_demo_calibration"
-    cam_intrinsics, cam_extrinsics, world_reconstructed_scene = load_camera_calibrations(camera_ids, calibration_output_root_dir)
+    cam_intrinsics, cam_extrinsics, world_reconstructed_scene = load_camera_calibrations(
+        camera_ids, calibration_output_root_dir
+    )
 
-    _ = live_viz_pipeline.run(
+    live_viz_pipeline.run(
         sequence_name="realtime_viz",
         views=views,
         annotations={
@@ -148,3 +145,24 @@ if __name__ == "__main__":
         },
         gt_annotations={},
     )
+
+
+def cli():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--target-fps", type=int, default=20)
+    parser.add_argument("--target-res", type=str, default="640x480")
+    parser.add_argument("--live-viz-config", type=str, default="configs/demo/realtime/realtime_viz.yaml")
+    parser.add_argument("--skip-calibration", action="store_true")
+    args = parser.parse_args()
+
+    target_res = tuple(int(x) for x in args.target_res.split("x"))
+
+    main(
+        target_fps=args.target_fps,
+        target_res=target_res,
+        live_viz_config=args.live_viz_config,
+        skip_calibration=args.skip_calibration,
+    )
+
+if __name__ == "__main__":
+    cli()

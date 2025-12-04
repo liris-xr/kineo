@@ -53,8 +53,8 @@ dev = [
 ]
 
 [project.scripts]
-kineo-offline = "kineo.demo.offline.demo:main"
-kineo-online = "kineo.demo.online.demo:main"
+kineo-offline = "kineo.demo.offline.demo:cli"
+kineo-online = "kineo.demo.online.demo:cli"
 
 [tool.setuptools.packages.find]
 where = ["."]

@@ -71,8 +71,7 @@ def main(config_file: str, sequence_name: str, video_paths: list[str], batch_siz
         gt_annotations={}
     )
 
-
-if __name__ == "__main__":
+def cli():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config-file", type=str, default="configs/demo/offline/nlf_single_person_sam2.yaml")
     parser.add_argument("--sequence-name", type=str, default="offline_demo")
@@ -82,11 +81,16 @@ if __name__ == "__main__":
     parser.add_argument("--use-cache", action="store_true", default=False)
     parser.add_argument("video_paths", type=str, nargs="+")
     args = parser.parse_args()
-    config_file = args.config_file
-    sequence_name = args.sequence_name
-    video_paths = args.video_paths
-    batch_size = args.batch_size
-    target_fps = args.target_fps
-    shared_intrinsics = args.shared_intrinsics
-    use_cache = args.use_cache
-    main(config_file, sequence_name, video_paths, batch_size, target_fps, shared_intrinsics, use_cache)
+
+    main(
+        args.config_file,
+        args.sequence_name,
+        args.video_paths,
+        args.batch_size,
+        args.target_fps,
+        args.shared_intrinsics,
+        args.use_cache,
+    )
+
+if __name__ == "__main__":
+    cli()
