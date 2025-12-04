@@ -21,11 +21,26 @@ Kineo is a calibration-free metric motion capture system that reconstructs 3D mo
 
 Kineo requires `python>=3.10` and `torch>=2.6.0` and was tested with CUDA 12.x:
 
+### Windows
+
 ```sh
 conda create -n kineo python=3.10
 pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu126
 git clone https://github.com/liris-xr/kineo.git && cd kineo
-SAM2_BUILD_ALLOW_ERRORS=0 SAM2_BUILD_CUDA=1 pip install --no-build-isolation -v .
+set SAM2_BUILD_ALLOW_ERRORS=0
+set SAM2_BUILD_CUDA=1
+pip install --no-build-isolation -v .
+```
+
+### Linux
+
+```sh
+conda create -n kineo python=3.10
+pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu126
+git clone https://github.com/liris-xr/kineo.git && cd kineo
+export SAM2_BUILD_ALLOW_ERRORS=0
+export SAM2_BUILD_CUDA=1
+pip install --no-build-isolation -v .
 ```
 
 ## 🚀 How to use
