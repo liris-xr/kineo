@@ -23,7 +23,7 @@ torch.backends.cudnn.allow_tf32 = True
 torch.backends.cudnn.benchmark = True
 
 
-def create_views_from_temp_videos(temp_videos, cam_names, device: torch.device, api_preference: int = cv2.CAP_ANY):
+def create_views_from_temp_videos(temp_videos, cam_names, device: torch.device):
     views = []
     for i, temp_video in enumerate(temp_videos):
         video_path = temp_video.name
@@ -34,7 +34,6 @@ def create_views_from_temp_videos(temp_videos, cam_names, device: torch.device, 
                 frame_loader=VideoLoader(
                     video_path=video_path,
                     device=device,
-                    api_preference=api_preference,
                 ),
                 audio_loader=None,
             )
