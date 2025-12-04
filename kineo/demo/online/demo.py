@@ -108,7 +108,7 @@ def main(target_fps, target_res, live_viz_config, skip_calibration, api_preferen
         cam_indices = recorder.camera_indices
         cam_names = recorder.camera_ids
 
-        views = create_views_from_temp_videos(recorder.temp_videos, cam_names, device=device, api_preference=api_preference)
+        views = create_views_from_temp_videos(recorder.temp_videos, cam_names, device=device)
         calibration_pipeline.run(
             sequence_name="calibration",
             views=views,
