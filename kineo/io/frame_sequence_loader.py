@@ -162,6 +162,10 @@ class VideoLoader(FrameSequenceLoader):
             self.selected_frames = torch.as_tensor(self.selected_frames)
 
         self._video_reader = cv2.VideoCapture(self.video_path, api_preference)
+
+        if not self._video_reader.isOpened():
+            raise IOError(f"Failed to open video file {self.video_path}")
+
         self._resolution_hw = (
             int(self._video_reader.get(cv2.CAP_PROP_FRAME_HEIGHT)),
             int(self._video_reader.get(cv2.CAP_PROP_FRAME_WIDTH)),
