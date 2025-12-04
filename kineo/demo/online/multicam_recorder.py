@@ -77,12 +77,15 @@ class MultiCamRecorder(QtWidgets.QWidget):
 
     def stop_recording(self):
         if self.is_recording:
+            self.is_recording = False
+            self.timer.stop()
+            for cam in self.webcams:
+                cam.release()
             for writer in self.writers:
                 writer.release()
             for tmp_video in self.temp_videos:
                 tmp_video.close()
             self.writers = []
-            self.is_recording = False
             print("Recording stopped")
 
         self.close()
@@ -143,6 +146,4 @@ class MultiCamRecorder(QtWidgets.QWidget):
 
     def closeEvent(self, event):
         self.stop_recording()
-        for cam in self.webcams:
-            cam.release()
         event.accept()
