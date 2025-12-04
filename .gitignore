@@ -11,7 +11,6 @@ cache/
 checkpoints/*
 .vscode/
 outputs/*
-checkpoints/*
 data_output/
 credentials.json
 *.apps.googleusercontent.com.json
