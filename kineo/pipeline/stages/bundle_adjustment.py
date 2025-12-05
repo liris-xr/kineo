@@ -89,6 +89,12 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
         gt_annotations: dict[str, Annotations],
         runtime_cfg: BundleAdjustmentRuntimeConfig,
     ):
+        # -------------------------------------------------------------------------
+        # TODO: Consider replacing this dense optimization with sparse bundle adjustment
+        # using a solver like Ceres. This could significantly improve efficiency and
+        # scalability for large-scale multi-view setups.
+        # -------------------------------------------------------------------------
+        
         device = pipeline.device
 
         cameras_intrinsics: CameraIntrinsicsAnnotations = annotations[
