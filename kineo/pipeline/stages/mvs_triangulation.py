@@ -203,19 +203,21 @@ class MVSTriangulationStage(PipelineStage[MVSTriangulationRuntimeConfig]):
                     points_weights=chunk_points_2d_scores,
                     use_eigendecomposition=runtime_cfg.use_eigendecomposition,
                 ).reshape(-1, n_keypoints, 3)
+
+                chunk_points_3d_scores = pairwise_reprojection_consensus_score(
+                    kps_3d=chunk_points_3d.view(-1, n_subjects * n_keypoints, 3),
+                    kps_2d=chunk_points_2d.view(-1, n_views, n_subjects * n_keypoints, 2),
+                    kps_2d_scores=chunk_points_2d_scores.view(-1, n_views, n_subjects * n_keypoints),
+                    Rts=Rts,
+                    Ks=Ks,
+                    Ds=dist_coeffs,
+                    distortion_model=distortion_model.value,
+                ).reshape(-1, n_keypoints)
+
                 all_kps_3d[chunk_frames, subject_idx, :, :] = chunk_points_3d
+                all_kps_3d_scores[chunk_frames, subject_idx, :] = chunk_points_3d_scores
 
         valid_kps_3d_mask = torch.isfinite(all_kps_3d).all(dim=-1)
-
-        all_kps_3d_scores = pairwise_reprojection_consensus_score(
-            kps_3d=all_kps_3d.view(-1, n_subjects * n_keypoints, 3),
-            kps_2d=all_kps_2d.view(-1, n_views, n_subjects * n_keypoints, 2),
-            kps_2d_scores=all_kps_2d_scores.view(-1, n_views, n_subjects * n_keypoints),
-            Rts=Rts,
-            Ks=Ks,
-            Ds=dist_coeffs,
-            distortion_model=distortion_model.value,
-        ).reshape_as(all_kps_3d_scores)
 
         all_kps_3d[~valid_kps_3d_mask] = 0
         all_kps_3d_scores[~valid_kps_3d_mask] = 0
