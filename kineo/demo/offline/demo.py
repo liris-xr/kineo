@@ -18,6 +18,7 @@ from kineo.io.frame_sequence_loader import VideoLoader
 from kineo.io.audio_loader import VideoAudioLoader
 import argparse
 from omegaconf import OmegaConf
+import os
 
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
@@ -71,6 +72,22 @@ def main(config_file: str, sequence_name: str, video_paths: list[str], batch_siz
         gt_annotations={}
     )
 
+
+def expand_video_inputs(paths: list[str]) -> list[str]:
+    """Expand a single directory into a list of video files."""
+    if len(paths) == 1 and os.path.isdir(paths[0]):
+        root = paths[0]
+        exts = {".mp4", ".mov", ".avi", ".mkv"}
+        files = [
+            os.path.join(root, f)
+            for f in sorted(os.listdir(root))
+            if os.path.splitext(f)[1].lower() in exts
+        ]
+        if not files:
+            raise ValueError(f"No video files found in directory: {root}")
+        return files
+    return paths
+
 def cli():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config-file", type=str, default="configs/demo/offline/nlf_single_person_sam2.yaml")
@@ -81,6 +98,8 @@ def cli():
     parser.add_argument("--use-cache", action="store_true", default=False)
     parser.add_argument("video_paths", type=str, nargs="+")
     args = parser.parse_args()
+
+    args.video_paths = expand_video_inputs(args.video_paths)
 
     main(
         args.config_file,
