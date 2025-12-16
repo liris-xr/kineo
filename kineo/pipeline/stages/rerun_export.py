@@ -410,6 +410,17 @@ def log_videos(
     if av is None:
         raise ImportError("av is not installed. Videos cannot be logged.")
 
+    # Some versions of rerun don't have support for video yet.
+    # Don't log the videos in that case.
+    try:
+        codec = rr.VideoCodec.H264
+    except (AttributeError, NameError):
+        warnings.warn("Can't find rerun H264 codec. Video will not be logged.")
+        return
+    
+    format = "h264"
+    encoder = "libx264"
+
     n_frames = len(global_time_reference.timestamps)
     fps = int(global_time_reference.fps)
 
@@ -417,10 +428,6 @@ def log_videos(
         view_id = view["view_id"]
         view_frame_loader = view["frame_loader"]
         view_resolution_hw = view_frame_loader.resolution_hw
-
-        codec = rr.VideoCodec.H264
-        format = "h264"
-        encoder = "libx264"
 
         av.logging.set_level(av.logging.VERBOSE)
         container = av.open("/dev/null", "w", format=format)  # Use AnnexB H.265 stream.
