@@ -316,3 +316,14 @@ pipeline:
         log_gt_skeletons_2d: False
         log_gt_skeletons_3d: False
         log_gt_cameras: False
+
+    annotations_export:
+      _target_: kineo.pipeline.stages.annotations_export.AnnotationsExportStage
+      name: "Annotations Export"
+      order: 170
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.annotations_export.AnnotationsExportRuntimeConfig
+        annotations_keys: "*"
+        excluded_annotations_keys: []
+        not_found_error: False
+        output_path_template: "${output_root_dir}/offline_demo/annotations/{sequence_name}/{annotation_key}.pkl"
