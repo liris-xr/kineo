@@ -91,7 +91,7 @@ A window will appear prompting you to select the person to track. Once selected,
 
 This step relies on our [custom fork of SAM2](https://github.com/cjaverliat/sam2) to run without requiring the entire video to be loaded into RAM or VRAM (which led to OOM in the original implementation), to define custom memory/forgetting strategies and to use EfficientTAM for faster inference.
 
-The pipeline will output results in the `outputs/infer_nlf_single_person_sam2/offline_demo/` folder, including a `.rrd` rerun file that can be visualized with [Rerun](https://www.rerun.io/), along with a `.bvh` file that can be imported in Blender, Maya, Unity, Unreal Engine, etc.
+The pipeline will output results in the `outputs/infer_nlf_single_person_sam2/offline_demo/` folder, including all generated annotations in `.pkl` format (e.g. bboxes, camera parameters, 3D keypoints, etc.), a `.rrd` rerun file that can be visualized with [Rerun](https://www.rerun.io/), along with a `.bvh` file that can be imported in Blender, Maya, Unity, Unreal Engine, etc.
 
 <div align="center" style="display: flex; justify-content: center; flex-direction: column;">
     <img src="docs/static/images/stone_quarry_rrd.gif" alt="Stone Quarry Rerun" width="500">
