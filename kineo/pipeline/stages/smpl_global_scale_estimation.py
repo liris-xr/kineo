@@ -36,12 +36,22 @@ from dataclasses import dataclass
 # Fix to properly load smpl model without errors
 np.bool = np.bool_
 np.int = np.int_
-np.float = np.float_
 np.long = np.int_
-np.complex = np.complex_
 np.object = np.object_
 np.str = np.str_
-np.unicode = np.unicode_
+
+try:
+    np.float = np.float_
+except AttributeError:
+    np.float = np.float64
+try:
+    np.complex = np.complex_
+except AttributeError:
+    np.complex = np.complex128
+try:
+    np.unicode = np.unicode_
+except AttributeError:
+    np.unicode = np.str_
 
 
 @dataclass(frozen=True)
@@ -60,15 +70,15 @@ class SMPLGlobalScaleEstimationStage(
     PipelineStage[SMPLGlobalScaleEstimationRuntimeConfig]
 ):
     def __init__(
-        self,
-        name: str,
-        order: int,
-        smpl_model_path: str,
-        joint_regressor_path: str,
-        runtime_cfg: SMPLGlobalScaleEstimationRuntimeConfig,
-        dynamic_runtime_cfg: (
-            dict[str, SMPLGlobalScaleEstimationRuntimeConfig] | None
-        ) = None,
+            self,
+            name: str,
+            order: int,
+            smpl_model_path: str,
+            joint_regressor_path: str,
+            runtime_cfg: SMPLGlobalScaleEstimationRuntimeConfig,
+            dynamic_runtime_cfg: (
+                    dict[str, SMPLGlobalScaleEstimationRuntimeConfig] | None
+            ) = None,
     ):
         super().__init__(
             name=name,
@@ -95,13 +105,13 @@ class SMPLGlobalScaleEstimationStage(
         self.smpl_joints_regressor = self.smpl_joints_regressor.cpu()
 
     def forward(
-        self,
-        sequence_name: str,
-        pipeline: Pipeline,
-        views: list[ViewInput],
-        annotations: dict[str, Annotations],
-        gt_annotations: dict[str, Annotations],
-        runtime_cfg: SMPLGlobalScaleEstimationRuntimeConfig,
+            self,
+            sequence_name: str,
+            pipeline: Pipeline,
+            views: list[ViewInput],
+            annotations: dict[str, Annotations],
+            gt_annotations: dict[str, Annotations],
+            runtime_cfg: SMPLGlobalScaleEstimationRuntimeConfig,
     ):
         device = pipeline.device
 
@@ -254,11 +264,11 @@ class SMPLGlobalScaleEstimationStage(
                 values=bone_lengths_loss, weights=valid_bone_scores
             )
 
-            betas_l2_loss = (betas**2).sum(dim=-1).mean()
+            betas_l2_loss = (betas ** 2).sum(dim=-1).mean()
 
             loss = (
-                runtime_cfg.bones_lengths_loss_weight * bone_lengths_loss
-                + runtime_cfg.betas_prior_loss_weight * betas_l2_loss
+                    runtime_cfg.bones_lengths_loss_weight * bone_lengths_loss
+                    + runtime_cfg.betas_prior_loss_weight * betas_l2_loss
             )
             loss.backward()
             return loss
@@ -280,12 +290,12 @@ class SMPLGlobalScaleEstimationStage(
             pbar.set_postfix(loss=loss.item())
 
             if optimizer_should_stop(
-                optimizer,
-                loss,
-                prev_losses,
-                patience=5,
-                tolerance_grad=runtime_cfg.tolerance_grad,
-                tolerance_change=runtime_cfg.tolerance_change,
+                    optimizer,
+                    loss,
+                    prev_losses,
+                    patience=5,
+                    tolerance_grad=runtime_cfg.tolerance_grad,
+                    tolerance_change=runtime_cfg.tolerance_change,
             ):
                 break
 
@@ -307,7 +317,7 @@ class SMPLGlobalScaleEstimationStage(
 
 
 def _compute_bone_lengths(
-    joints: torch.Tensor, joints_connectivity: torch.Tensor
+        joints: torch.Tensor, joints_connectivity: torch.Tensor
 ) -> torch.Tensor:
     bone_lengths = torch.norm(
         joints[..., joints_connectivity[:, 0], :]
@@ -318,8 +328,8 @@ def _compute_bone_lengths(
 
 
 def _compute_bone_scores(
-    joints_scores: torch.Tensor,
-    joints_connectivity: torch.Tensor,
+        joints_scores: torch.Tensor,
+        joints_connectivity: torch.Tensor,
 ) -> torch.Tensor:
     # The bone score is the geometric mean of the scores of the two joints
     bone_scores = torch.sqrt(
@@ -330,9 +340,9 @@ def _compute_bone_scores(
 
 
 def _compute_smpl_joints(
-    smpl_layer: SMPLLayer,
-    smpl_joints_regressor: torch.Tensor,
-    betas: torch.Tensor,
+        smpl_layer: SMPLLayer,
+        smpl_joints_regressor: torch.Tensor,
+        betas: torch.Tensor,
 ) -> torch.Tensor:
     smpl_output = smpl_layer.forward_shape(betas)
     vertices = smpl_output.vertices
