@@ -118,7 +118,7 @@ pipeline:
         _target_: kineo.pipeline.stages.global_time_resampling.GlobalTimeResamplingRuntimeConfig
         target_fps: 50
         interpolation_dt_thr_s: 0.3
-        show: True
+        show: False
 
     keypoints_pairs_sampling:
       _target_: kineo.pipeline.stages.keypoints_pairs_sampling.KeypointsPairsSamplingStage

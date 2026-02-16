@@ -52,7 +52,7 @@ pipeline:
         _target_: kineo.pipeline.stages.rtmlib.rtmlib_keypoints_detection.RtmlibKeypointsDetectionRuntimeConfig
         use_cache: ${use_cache}
         cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
-        show: True
+        show: False
         frame_step: ${rtmlib_keypoints_detection_frame_step}
 
     global_time_resampling:
