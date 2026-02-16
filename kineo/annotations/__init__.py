@@ -36,6 +36,11 @@ from kineo.annotations.global_time_reference import (
     GlobalTimeReferenceAnnotation,
     GlobalTimeReferenceAnnotationsMetadata,
 )
+from kineo.annotations.bundle_adjustment_history import (
+    BundleAdjustmentHistoryAnnotations,
+    BundleAdjustmentHistoryAnnotation,
+    BundleAdjustmentHistoryAnnotationsMetadata,
+)
 
 __all__ = [
     "Annotations",
@@ -61,4 +66,7 @@ __all__ = [
     "GlobalTimeReferenceAnnotations",
     "GlobalTimeReferenceAnnotation",
     "GlobalTimeReferenceAnnotationsMetadata",
+    "BundleAdjustmentHistoryAnnotations",
+    "BundleAdjustmentHistoryAnnotation",
+    "BundleAdjustmentHistoryAnnotationsMetadata",
 ]
