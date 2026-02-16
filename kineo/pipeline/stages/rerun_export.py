@@ -333,7 +333,6 @@ class RerunExportStage(PipelineStage[RerunExportRuntimeConfig]):
                 prefix="kineo",
                 radius=runtime_cfg.skeleton_joint_radius_2d,
                 color_override=runtime_cfg.skeleton_color_override,
-                bones_thickness=runtime_cfg.skeleton_bones_thickness_2d,
                 fps=target_fps,
                 min_kps_score_2d=runtime_cfg.min_kps_score_2d,
                 start_frame_idx=runtime_cfg.start_frame_idx,
