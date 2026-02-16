@@ -181,6 +181,14 @@ pipeline:
         _target_: kineo.pipeline.stages.scene_reorientation.SceneReorientationRuntimeConfig
         min_kps_quantile: 0.01
 
+    bundle_adjustment_history_rerun_export:
+      _target_: kineo.pipeline.stages.bundle_adjustment_history_rerun_export.BundleAdjustmentHistoryRerunExportStage
+      name: "Bundle Adjustment History Rerun Export"
+      order: 121
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.bundle_adjustment_history_rerun_export.BundleAdjustmentHistoryRerunExportRuntimeConfig
+        output_path_template: "./outputs/rerun/{sequence_name}_ba_history.rrd"
+
     background_subtraction:
       _target_: kineo.pipeline.stages.background_subtraction.BackgroundSubtractionStage
       name: "Background Subtraction"
@@ -209,35 +217,35 @@ pipeline:
         output_path_template: "${output_root_dir}/offline_demo/{sequence_name}.rrd"
         max_world_points_to_show: 1000000
         world_points_confidence_threshold: 0.5
-        world_z_clipping_threshold: 1.5
+        world_z_clipping_threshold: 2.0
         remove_world_points_outside_scene_radius: True
-        world_translation: [0.0, 0.0, -0.1]
 
-        start_frame_idx: 1164
+        keypoints_radius_2d: 1
+        keypoints_radius_3d: 0.02
 
-        skeleton_joint_radius_3d: 0.010
-        skeleton_joint_radius_2d: 6.0
-        skeleton_bones_thickness_3d: 0.005
-        skeleton_bones_thickness_2d: 3.0
+        skeleton_bones_thickness_3d: 0.010
+        skeleton_joint_radius_3d: 0.020
 
-        min_kps_score_3d: 0.15
-        min_kps_score_2d: 0.15
+        skeleton_bones_thickness_2d: 1.0
+        skeleton_joint_radius_2d: 2.5
+
+        min_kps_score_3d: 0.2
+        min_kps_score_2d: 0.2
 
         video_quality: 25
         image_plane_distance: 0.2
 
-        log_disconnected_joints: True
+        log_disconnected_joints: False
 
         log_videos: True
-        video_view_ids: "view_1"
 
         log_world_reconstruction: True
         log_pred_cameras: True
-        log_pred_keypoints_2d: False
-        log_pred_keypoints_3d: False
+        log_pred_keypoints_2d: True
+        log_pred_keypoints_3d: True
         log_pred_skeletons_2d: True
         log_pred_skeletons_3d: True
-        log_pred_smpl: False
+        log_pred_smpl: True
 
         log_gt_keypoints_2d: False
         log_gt_keypoints_3d: False
