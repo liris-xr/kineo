@@ -217,12 +217,13 @@ class RtmlibKeypointsDetectionStage(
         n_inference_frames_processed = 0
 
         for view in views:
-            view_bboxes_annotations: list[BBox2DAnnotation] = bboxes_annotations.filter_by_view_id(view_id)
-            view_keypoints_annotations: list[Keypoints2DAnnotation] = []
 
             frame_loader = view["frame_loader"]
             view_id = view["view_id"]
             view_n_frames = frame_loader.n_frames
+
+            view_bboxes_annotations: list[BBox2DAnnotation] = bboxes_annotations.filter_by_view_id(view_id)
+            view_keypoints_annotations: list[Keypoints2DAnnotation] = []
 
             inference_frames = _get_frames_batch(view_n_frames, frame_step)
 
@@ -246,7 +247,7 @@ class RtmlibKeypointsDetectionStage(
                     batch_frames=batch_frames,
                     bboxes_annotations=batch_bboxes_annotations,
                     keypoints_model=keypoints_model,
-                    keypoints_metadata=self.keypoints_metadata,
+                    keypoints_metadata=self.keypoints_metadata
                 )
 
                 if show:
@@ -314,23 +315,16 @@ def detect_keypoints(
     batch_frames: list[int],
     bboxes_annotations: BBox2DAnnotations,
     keypoints_model: RTMPose,
-    keypoints_metadata: Keypoints2DAnnotationsMetadata,
-    filter_bbox_with_zero_score: bool = True,
-    force_zero_scores_outside_bbox: bool = True,
-    default_subject_id: str = "subject_0",
+    keypoints_metadata: Keypoints2DAnnotationsMetadata
 ) -> Keypoints2DAnnotations:
     assert frames_bgr.ndim in [3, 4] and frames_bgr.shape[-1] == 3, (
         f"Expected frames_bgr to have shape (B, H, W, C) or (H, W, C), got {frames_bgr.shape}"
     )
     assert frames_bgr.dtype == np.uint8, "Expected frames_bgr to be uint8"
 
-    actual_batch_size = len(batch_frames)
+    annotations: list[Keypoints2DAnnotation] = []
 
-    bboxes: list[np.ndarray] = [np.zeros((0, 5)) for _ in range(actual_batch_size)]
-
-    for batch_idx in range(actual_batch_size):
-        frame_idx = batch_frames[batch_idx]
-
+    for batch_idx, frame_idx in enumerate(batch_frames):
         frame_bboxes = bboxes_annotations.filter_by_view_id(
             view_id
         ).filter_by_frame_idx(frame_idx)
@@ -338,40 +332,59 @@ def detect_keypoints(
         if len(frame_bboxes) == 0:
             continue
 
-        bboxes[batch_idx] = np.stack(
-            [
-                bbox.xyxy.cpu().numpy()
-                for bbox in frame_bboxes
-            ],
+        bboxes_array = np.stack(
+            [bbox.xyxy.cpu().numpy() for bbox in frame_bboxes],
             axis=0,
         )
+        subjects_ids = [bbox.subject_id for bbox in frame_bboxes]
 
-    keypoints_results: list[KeypointsDetectionResult] = []
-    for i in range(actual_batch_size):
-        frame_bgr = frames_bgr[i]
-        frame_bboxes = bboxes[i]
-        keypoints, scores = keypoints_model(frame_bgr, frame_bboxes)
-        keypoints_results.append(KeypointsDetectionResult(keypoints=keypoints, scores=scores))
+        keypoints, scores = keypoints_model(frames_bgr[batch_idx], bboxes_array)
 
-    annotations: list[Keypoints2DAnnotation] = []
-
-    for batch_idx in range(actual_batch_size):
-        frame_idx = batch_frames[batch_idx]
-        keypoints_result = keypoints_results[batch_idx]
-
-        keypoints_annotations = _create_keypoints_annotations(
-            keypoints_result=keypoints_result,
+        annotations.extend(_create_keypoints_annotations(
+            keypoints_result=KeypointsDetectionResult(keypoints=keypoints, scores=scores),
             view_id=view_id,
             frame_idx=frame_idx,
             keypoints_format_name=keypoints_metadata.formats[0].name,
-            default_subject_id=default_subject_id,
-        )
-        annotations.extend(keypoints_annotations)
+            subjects_ids=subjects_ids,
+        ))
 
     return Keypoints2DAnnotations(
         metadata=keypoints_metadata,
         annotations=annotations,
     )
+
+
+def _create_keypoints_annotations(
+    keypoints_result: KeypointsDetectionResult,
+    view_id: str,
+    frame_idx: int,
+    keypoints_format_name: str,
+    subjects_ids: list[str]
+) -> list[Keypoints2DAnnotation]:
+    """Create keypoints annotations from inference results."""
+    annotations = []
+    n_instances = len(keypoints_result.keypoints)
+
+    for instance_idx in range(n_instances):
+        keypoints_xy = keypoints_result.keypoints[instance_idx]
+        keypoints_scores = keypoints_result.scores[instance_idx]
+
+        kps_xy = torch.from_numpy(keypoints_xy).to(torch.float32)
+        scores = torch.from_numpy(keypoints_scores).to(torch.float32)
+        subject_id = subjects_ids[instance_idx]
+
+        keypoint_annotation = Keypoints2DAnnotation(
+            view_id=view_id,
+            frame_idx=frame_idx,
+            subject_id=subject_id,
+            xy=kps_xy.cpu(),
+            scores=scores.cpu(),
+            annotated=torch.ones(keypoints_xy.shape[0], dtype=torch.bool),
+            format=keypoints_format_name,
+        )
+        annotations.append(keypoint_annotation)
+
+    return annotations
 
 def _get_frames_batch(n_frames: int, frame_step: int) -> list[int]:
     """Get list of frame indices to run inference on."""
