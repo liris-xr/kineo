@@ -8,15 +8,15 @@ from typing import Dict, List, Tuple
 from kineo.pipeline.pipeline import PipelineStage, Pipeline
 from kineo.datasets.keypoints_sequence_dataset import ViewInput
 from kineo.annotations import Annotations
-from kineo.annotations.camera_intrinsics import CameraIntrinsicsAnnotations, CameraDistortionModel
-from kineo.annotations.keypoints_2d import Keypoints2DAnnotations
-from kineo.annotations.global_time_reference import GlobalTimeReferenceAnnotation
+from kineo.annotations.camera_intrinsics import CameraIntrinsicsAnnotations
 from kineo.annotations.bundle_adjustment_history import (
     BundleAdjustmentHistoryAnnotations,
     BundleAdjustmentHistoryAnnotation,
 )
+from kineo.annotations.bundle_adjustment_keypoints import BundleAdjustmentKeypointsAnnotations
 from kineo.geometry.transformations import inverse_Rt, undistort_points
 from kineo.geometry.triangulation import triangulate_points
+from kineo.geometry.camera import transform_points_from_world_to_camera, project_points_from_camera_to_image
 
 
 @dataclass(frozen=True)
@@ -54,66 +54,44 @@ class BundleAdjustmentHistoryRerunExportStage(
         history: BundleAdjustmentHistoryAnnotations | None = annotations.get(
             "bundle_adjustment_history"
         )
-        kps_2d: Keypoints2DAnnotations | None = annotations.get("keypoints_2d")
+        ba_kps_annots: BundleAdjustmentKeypointsAnnotations | None = annotations.get(
+            "bundle_adjustment_keypoints"
+        )
 
         if history is None or len(history) == 0:
             print("No bundle adjustment history to export.")
             return
 
-        if kps_2d is None:
-            print("No 2D keypoints found. Skipping triangulation export.")
+        if ba_kps_annots is None:
+            print("No bundle adjustment keypoints found. Skipping.")
             return
 
+        ba_kps = ba_kps_annots.first_or_default()
         device = pipeline.device
         cameras_intrinsics: CameraIntrinsicsAnnotations = annotations["camera_intrinsics"]
-        global_time_ref: GlobalTimeReferenceAnnotation = annotations["global_time_reference"].first_or_default()
-
-        n_frames = global_time_ref.timestamps.numel()
-        view_ids = cameras_intrinsics.views_ids
-        subject_ids = kps_2d.subjects_ids
-        n_kpts = kps_2d.metadata.formats[0].n_keypoints
-
-        # 1. Identify the Best Frame based on average 2D score
-        # Shape: (frames, views, subjects, kpts)
-        all_scores = torch.zeros((n_frames, len(view_ids), len(subject_ids), n_kpts), device=device)
-        all_coords = torch.zeros((n_frames, len(view_ids), len(subject_ids), n_kpts, 2), device=device)
-
-        view_to_idx = {v_id: i for i, v_id in enumerate(view_ids)}
-        subj_to_idx = {s_id: i for i, s_id in enumerate(subject_ids)}
-
-        for annot in kps_2d.annotations:
-            v_idx = view_to_idx[annot.view_id]
-            s_idx = subj_to_idx[annot.subject_id]
-            all_scores[annot.frame_idx, v_idx, s_idx] = annot.scores
-            all_coords[annot.frame_idx, v_idx, s_idx] = annot.xy
-
-        # Avg score per frame across all views, subjects, and keypoints
-        frame_avg_scores = all_scores.mean(dim=(1, 2, 3))
-        best_frame_idx = torch.argmax(frame_avg_scores).item()
-        print(
-            f"Selected best frame for triangulation visualization: {best_frame_idx} (score: {frame_avg_scores[best_frame_idx]:.4f})")
-
-        # 2. Prepare undistorted points for the best frame
-        best_kps_2d = all_coords[best_frame_idx]  # (views, subjects, kpts, 2)
-        best_kps_weights = all_scores[best_frame_idx]  # (views, subjects, kpts)
-
-        undistorted_best_kps = best_kps_2d.clone()
-        for v_idx, v_id in enumerate(view_ids):
-            cam = cameras_intrinsics.filter_by_view_id(v_id).first_or_default()
-            undistorted_best_kps[v_idx] = undistort_points(
-                points=best_kps_2d[v_idx].reshape(-1, 2),
-                K=cam.K.to(device),
-                D=cam.distortion_coefficients.to(device),
-                distortion_model=cam.distortion_model.value
-            ).reshape(len(subject_ids), n_kpts, 2)
+        distortion_model = cameras_intrinsics.first_or_default().distortion_model.value
 
         # Build resolution lookup
         resolution_by_view_id = {
             v_id: cameras_intrinsics.filter_by_view_id(v_id).first_or_default().resolution_hw
-            for v_id in view_ids
+            for v_id in ba_kps.view_ids
         }
 
-        # 3. Export Loop
+        # Undistort BA sample 2D points for triangulation
+        ba_kps_2d = ba_kps.kps_2d_xy.to(device)  # (n_views, n_kps, 2)
+        ba_kps_scores = ba_kps.kps_2d_scores.to(device)  # (n_views, n_kps)
+
+        ba_kps_2d_undistorted = ba_kps_2d.clone()
+        for v_idx, v_id in enumerate(ba_kps.view_ids):
+            cam = cameras_intrinsics.filter_by_view_id(v_id).first_or_default()
+            ba_kps_2d_undistorted[v_idx] = undistort_points(
+                points=ba_kps_2d[v_idx],
+                K=cam.K.to(device),
+                D=cam.distortion_coefficients.to(device),
+                distortion_model=cam.distortion_model.value,
+            )
+
+        # Export Loop
         formatted_output_path = runtime_cfg.output_path_template.format(sequence_name=sequence_name)
         os.makedirs(os.path.dirname(formatted_output_path), exist_ok=True)
         rr.init(sequence_name, recording_id=uuid4())
@@ -136,8 +114,9 @@ class BundleAdjustmentHistoryRerunExportStage(
                 entry=entry,
                 normalized_iteration=normalized_iteration,
                 resolution_by_view_id=resolution_by_view_id,
-                best_kps_undistorted=undistorted_best_kps,
-                best_kps_weights=best_kps_weights,
+                ba_kps_2d_undistorted=ba_kps_2d_undistorted,
+                ba_kps_scores=ba_kps_scores,
+                distortion_model=distortion_model,
                 image_plane_distance=runtime_cfg.image_plane_distance,
             )
 
@@ -148,8 +127,9 @@ def _log_history_entry(
         entry: BundleAdjustmentHistoryAnnotation,
         normalized_iteration: int,
         resolution_by_view_id: Dict[str, Tuple[int, int]],
-        best_kps_undistorted: torch.Tensor,
-        best_kps_weights: torch.Tensor,
+        ba_kps_2d_undistorted: torch.Tensor,
+        ba_kps_scores: torch.Tensor,
+        distortion_model: str,
         image_plane_distance: float = 0.2,
 ):
     rr.set_time("iteration", sequence=normalized_iteration)
@@ -176,24 +156,36 @@ def _log_history_entry(
         ))
         rr.log(f"ba/cameras/{view_id}", rr.Transform3D(translation=translation, mat3x3=rotation))
 
-    # Triangulate Best Frame for this iteration
+    # Triangulate BA sample points for this iteration
     Ps_tensor = torch.stack(Ps)
-    # Flatten subjects/kpts for triangulation: (views, N_points, 2)
-    pts_2d = best_kps_undistorted.transpose(0, 1).reshape(n_views, -1, 2)
-    weights = best_kps_weights.transpose(0, 1).reshape(n_views, -1)
 
     points_3d = triangulate_points(
-        Ps=Ps_tensor.to(pts_2d.device),
-        points=pts_2d,  # triangulate_points expects (views, ..., 2)
-        points_weights=weights
+        Ps=Ps_tensor.to(ba_kps_2d_undistorted.device),
+        points=ba_kps_2d_undistorted,
+        points_weights=ba_kps_scores,
     )
 
-    # Log Triangulation Result
+    # Log 3D Triangulation Result
     rr.log("ba/triangulation", rr.Points3D(
         positions=points_3d.reshape(-1, 3).cpu().numpy(),
         radii=0.02,
         colors=[255, 255, 255]
     ))
 
+    # Log 2D Reprojection in each camera
+    device = ba_kps_2d_undistorted.device
+    points_3d_cam = transform_points_from_world_to_camera(points_3d, entry.Rts.to(device))
+    proj_2d, _ = project_points_from_camera_to_image(
+        points_3d_cam, entry.Ks.to(device), entry.dist_coeffs.to(device), distortion_model
+    )
+
+    for view_idx in range(n_views):
+        view_id = entry.view_ids[view_idx]
+        rr.log(f"ba/cameras/{view_id}/reprojection", rr.Points2D(
+            positions=proj_2d[view_idx].detach().cpu().numpy(),
+            radii=3.0,
+            colors=[0, 255, 0]
+        ))
+
     if entry.loss is not None:
-        rr.log(f"ba/loss", rr.Scalars(entry.loss))
+        rr.log("ba/loss", rr.Scalars(entry.loss))
