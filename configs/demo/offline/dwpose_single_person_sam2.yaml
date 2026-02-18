@@ -246,6 +246,7 @@ pipeline:
         log_pred_skeletons_2d: True
         log_pred_skeletons_3d: True
         log_pred_smpl: True
+        log_pred_smpl_skeleton_2d: True
 
         log_gt_keypoints_2d: False
         log_gt_keypoints_3d: False
