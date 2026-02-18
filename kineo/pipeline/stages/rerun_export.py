@@ -65,6 +65,7 @@ class RerunExportRuntimeConfig:
     min_kps_score_2d: float = 0.3
 
     smpl_color_override: tuple[float, float, float] = None
+    smpl_skeleton_2d_color_override: tuple[float, float, float] = None
 
     skeleton_color_override: tuple[float, float, float] = None
     image_plane_distance: float = 0.2
@@ -84,6 +85,7 @@ class RerunExportRuntimeConfig:
     log_pred_skeletons_3d: bool = False
 
     log_pred_smpl: bool = False
+    log_pred_smpl_skeleton_2d: bool = False
     log_gt_keypoints_2d: bool = False
     log_gt_keypoints_3d: bool = False
     log_gt_skeletons_2d: bool = False
@@ -314,6 +316,12 @@ class RerunExportStage(PipelineStage[RerunExportRuntimeConfig]):
                 smpl_color_override=runtime_cfg.smpl_color_override,
                 start_frame_idx=runtime_cfg.start_frame_idx,
                 end_frame_idx=runtime_cfg.end_frame_idx,
+                log_pred_smpl_skeleton_2d=runtime_cfg.log_pred_smpl_skeleton_2d,
+                projection_camera_extrinsics=pred_camera_extrinsics,
+                projection_camera_intrinsics=pred_camera_intrinsics,
+                skeleton_joint_radius_2d=runtime_cfg.skeleton_joint_radius_2d,
+                skeleton_bones_thickness_2d=runtime_cfg.skeleton_bones_thickness_2d,
+                smpl_skeleton_2d_color_override=runtime_cfg.smpl_skeleton_2d_color_override,
             )
 
         if runtime_cfg.log_pred_keypoints_3d and pred_keypoints_3d is not None:
@@ -625,6 +633,12 @@ def log_smpl(
         gt_camera_extrinsics: CameraExtrinsicsAnnotations | None = None,
         start_frame_idx: int = 0,
         end_frame_idx: int = -1,
+        log_pred_smpl_skeleton_2d: bool = False,
+        projection_camera_extrinsics: CameraExtrinsicsAnnotations | None = None,
+        projection_camera_intrinsics: CameraIntrinsicsAnnotations | None = None,
+        skeleton_joint_radius_2d: float = 0.01,
+        skeleton_bones_thickness_2d: float = 0.01,
+        smpl_skeleton_2d_color_override: tuple[float, float, float] | None = None,
 ):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     smpl_layer = smpl_layer.to(device)
@@ -632,6 +646,11 @@ def log_smpl(
     smpl_pose = smpl_pose.to(device)
 
     subjects_ids = smpl_shape.subjects_ids
+
+    if smpl_skeleton_2d_color_override is not None:
+        subject_2d_colors = {subject_id: smpl_skeleton_2d_color_override + (1,) for subject_id in subjects_ids}
+    else:
+        subject_2d_colors = {subject_id: get_subject_color_rgba(subject_id) for subject_id in subjects_ids}
 
     if smpl_color_override is not None:
         subject_colors = {subject_id: smpl_color_override + (1,) for subject_id in subjects_ids}
@@ -687,6 +706,57 @@ def log_smpl(
                     albedo_factor=subject_colors[subject_id],
                 ),
             )
+
+            if log_pred_smpl_skeleton_2d and projection_camera_extrinsics is not None and projection_camera_intrinsics is not None:
+                n_body_joints = smpl_layer.NUM_BODY_JOINTS + 1
+                joints_3d = apply_similarity_transform_to_points(
+                    smpl_result.joints[:, :n_body_joints], R, T, s
+                ).squeeze(0)  # (J, 3)
+
+                parents = smpl_layer.parents[:n_body_joints].cpu().numpy()
+
+                for view_id in projection_camera_extrinsics.views_ids:
+                    cam_ext = projection_camera_extrinsics.filter_by_view_id(view_id).first_or_default()
+                    cam_int = projection_camera_intrinsics.filter_by_view_id(view_id).first_or_default()
+
+                    Rt_cam = cam_ext.Rt.to(device)
+                    K = cam_int.K.to(device)
+
+                    joints_cam = (Rt_cam[:3, :3] @ joints_3d.T + Rt_cam[:3, 3:4]).T  # (J, 3)
+                    valid = joints_cam[:, 2] > 0
+
+                    joints_2d_hom = (K @ joints_cam.T).T  # (J, 3)
+                    joints_2d = joints_2d_hom[:, :2] / joints_2d_hom[:, 2:3]  # (J, 2)
+
+                    valid_joints_2d = joints_2d[valid].cpu().numpy()
+                    rr.log(
+                        f"{prefix}/cameras/{view_id}/smpl_2d_joints_{subject_id}",
+                        rr.Points2D(
+                            positions=valid_joints_2d,
+                            colors=[int(c * 255) for c in subject_2d_colors[subject_id]],
+                            radii=skeleton_joint_radius_2d,
+                        ),
+                    )
+
+                    line_strips_2d = []
+                    for j in range(n_body_joints):
+                        parent = parents[j]
+                        if parent >= 0 and valid[j] and valid[parent]:
+                            line_strips_2d.append([
+                                joints_2d[j].cpu().numpy(),
+                                joints_2d[parent].cpu().numpy(),
+                            ])
+
+                    if line_strips_2d:
+                        line_strips_2d = np.array(line_strips_2d).reshape(-1, 2, 2)
+                        rr.log(
+                            f"{prefix}/cameras/{view_id}/smpl_2d_bones_{subject_id}",
+                            rr.LineStrips2D(
+                                strips=line_strips_2d,
+                                colors=[int(c * 255) for c in subject_2d_colors[subject_id]],
+                                radii=skeleton_bones_thickness_2d,
+                            ),
+                        )
 
 
 def log_keypoints_2d(
