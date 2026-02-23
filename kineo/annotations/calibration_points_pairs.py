@@ -38,6 +38,7 @@ class CalibrationPointsAnnotation:
     points1: torch.Tensor  # (n_points, 2)
     points2: torch.Tensor  # (n_points, 2)
     confidence_scores: torch.Tensor  # (n_points,)
+    frame_indices: torch.Tensor  # (n_points,)
 
     def __post_init__(self):
         self.check_validity()
@@ -59,6 +60,7 @@ class CalibrationPointsAnnotation:
             "points_i": self.points1.tolist(),
             "points_j": self.points2.tolist(),
             "confidence_scores": self.confidence_scores.tolist(),
+            "frame_indices": self.frame_indices.tolist(),
         }
 
     @staticmethod
@@ -69,6 +71,7 @@ class CalibrationPointsAnnotation:
             points1=torch.tensor(dict_data["points_i"]),
             points2=torch.tensor(dict_data["points_j"]),
             confidence_scores=torch.tensor(dict_data["confidence_scores"]),
+            frame_indices=torch.tensor(dict_data["frame_indices"]),
         )
     
     def to(self, device: torch.device) -> CalibrationPointsAnnotation:
@@ -78,6 +81,7 @@ class CalibrationPointsAnnotation:
             points1=self.points1.to(device),
             points2=self.points2.to(device),
             confidence_scores=self.confidence_scores.to(device),
+            frame_indices=self.frame_indices.to(device),
         )
 
     def cpu(self) -> CalibrationPointsAnnotation:

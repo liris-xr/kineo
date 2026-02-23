@@ -1,5 +1,5 @@
-output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/infer_dwpose_single_person"
-cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/infer_dwpose_single_person"
+output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/infer_dwpose_single_person_pairwise_calib"
+cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/infer_dwpose_single_person_pairwise_calib"
 use_cache: False
 batch_size: 32
 use_half_precision: True
@@ -56,7 +56,20 @@ pipeline:
         _target_: kineo.pipeline.stages.keypoints_pairs_sampling.KeypointsPairsSamplingRuntimeConfig
         max_points_pairs: 4000
         pair_avg_conf_score_thr: 0.5
-        keypoints_indices: null
+        keypoints_indices: ${keypoints_indices}
+
+    # calibration_points_video_export:
+    #   _target_: kineo.pipeline.stages.calibration_points_video_export.CalibrationPointsVideoExportStage
+    #   name: "Export calibration points video"
+    #   order: 45
+    #   runtime_cfg:
+    #     _target_: kineo.pipeline.stages.calibration_points_video_export.CalibrationPointsVideoExportRuntimeConfig
+    #     view1_id: "view_0"
+    #     view2_id: "view_1"
+    #     point_radius: 5
+    #     line_thickness: 1
+    #     show: False
+    #     keypoints_indices: ${keypoints_indices}
 
     sfm_camera_extrinsics_initialization:
       _target_: kineo.pipeline.stages.sfm_camera_extrinsics_initialization.SfMCameraExtrinsicsInitializationStage
@@ -141,7 +154,7 @@ pipeline:
       runtime_cfg:
         _target_: kineo.pipeline.stages.mvs_triangulation.MVSTriangulationRuntimeConfig
         use_eigendecomposition: True
-
+    
     moge_global_scale_estimation:
       _target_: kineo.pipeline.stages.moge_global_scale_estimation.MoGeGlobalScaleEstimationStage
       name: "MoGe Global Scale Estimation"
@@ -165,6 +178,14 @@ pipeline:
         _target_: kineo.pipeline.stages.scene_reorientation.SceneReorientationRuntimeConfig
         min_kps_quantile: 0.01
 
+    # bundle_adjustment_history_rerun_export:
+    #   _target_: kineo.pipeline.stages.bundle_adjustment_history_rerun_export.BundleAdjustmentHistoryRerunExportStage
+    #   name: "Bundle Adjustment History Rerun Export"
+    #   order: 121
+    #   runtime_cfg:
+    #     _target_: kineo.pipeline.stages.bundle_adjustment_history_rerun_export.BundleAdjustmentHistoryRerunExportRuntimeConfig
+    #     output_path_template: "./outputs/rerun/{sequence_name}_ba_history.rrd"
+    
     background_subtraction:
       _target_: kineo.pipeline.stages.background_subtraction.BackgroundSubtractionStage
       name: "Background Subtraction"
@@ -173,55 +194,53 @@ pipeline:
         _target_: kineo.pipeline.stages.background_subtraction.BackgroundSubtractionRuntimeConfig
         run_skyseg: False
 
-    moge_scene_reconstruction:
-      _target_: kineo.pipeline.stages.moge_scene_reconstruction.MoGeSceneReconstructionStage
+    vggt_scene_reconstruction:
+      _target_: kineo.pipeline.stages.vggt_scene_reconstruction.VGGTSceneReconstructionStage
       name: "Scene Reconstruction"
       order: 130
-      model_name_or_path: "Ruicheng/moge-2-vitl"
+      model_name_or_path: "./checkpoints/vggt-1b.pt"
       runtime_cfg:
-        _target_: kineo.pipeline.stages.moge_scene_reconstruction.MoGeSceneReconstructionRuntimeConfig
-        use_half_precision: ${use_half_precision}
-        use_background_image: True
-        view_idx: 1
+        _target_: kineo.pipeline.stages.vggt_scene_reconstruction.VGGTSceneReconstructionRuntimeConfig
 
     rerun_export:
       _target_: kineo.pipeline.stages.rerun_export.RerunExportStage
       name: "Rerun Export"
       order: 160
-      smpl_model_path: null
       runtime_cfg:
         _target_: kineo.pipeline.stages.rerun_export.RerunExportRuntimeConfig
         output_path_template: "${output_root_dir}/offline_demo/{sequence_name}.rrd"
         max_world_points_to_show: 1000000
         world_points_confidence_threshold: 0.5
-        world_z_clipping_threshold: 1.5
+        world_z_clipping_threshold: 1.7
         remove_world_points_outside_scene_radius: True
 
-        start_frame_idx: 1164
+        keypoints_radius_2d: 1
+        keypoints_radius_3d: 0.02
 
-        skeleton_joint_radius_3d: 0.010
-        skeleton_joint_radius_2d: 6.0
-        skeleton_bones_thickness_3d: 0.005
-        skeleton_bones_thickness_2d: 3.0
+        skeleton_bones_thickness_3d: 0.010
+        skeleton_joint_radius_3d: 0.020
 
-        min_kps_score_3d: 0.15
-        min_kps_score_2d: 0.15
+        skeleton_bones_thickness_2d: 1.0
+        skeleton_joint_radius_2d: 2.5
+
+        min_kps_score_3d: 0.2
+        min_kps_score_2d: 0.2
 
         video_quality: 25
         image_plane_distance: 0.2
 
-        log_disconnected_joints: True
+        log_disconnected_joints: False
 
         log_videos: True
-        video_view_ids: "view_1"
 
         log_world_reconstruction: True
         log_pred_cameras: True
-        log_pred_keypoints_2d: False
-        log_pred_keypoints_3d: False
+        log_pred_keypoints_2d: True
+        log_pred_keypoints_3d: True
         log_pred_skeletons_2d: True
         log_pred_skeletons_3d: True
-        log_pred_smpl: False
+        log_pred_smpl: True
+        log_pred_smpl_skeleton_2d: True
 
         log_gt_keypoints_2d: False
         log_gt_keypoints_3d: False

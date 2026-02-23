@@ -147,6 +147,7 @@ class KeypointsPairsSamplingStage(PipelineStage[KeypointsPairsSamplingRuntimeCon
             pair_points_i = kps_xy_view_i[picked_indices]
             pair_points_j = kps_xy_view_j[picked_indices]
             pair_avg_conf_scores = pair_avg_conf_scores[picked_indices]
+            pair_frame_indices = picked_indices // (n_subjects * n_selected_keypoints)
 
             calibration_points_annotations.append(
                 CalibrationPointsAnnotation(
@@ -155,6 +156,7 @@ class KeypointsPairsSamplingStage(PipelineStage[KeypointsPairsSamplingRuntimeCon
                     points1=pair_points_i,
                     points2=pair_points_j,
                     confidence_scores=pair_avg_conf_scores,
+                    frame_indices=pair_frame_indices,
                 )
             )
             calibration_points_annotations.append(
@@ -164,6 +166,7 @@ class KeypointsPairsSamplingStage(PipelineStage[KeypointsPairsSamplingRuntimeCon
                     points1=pair_points_j,
                     points2=pair_points_i,
                     confidence_scores=pair_avg_conf_scores,
+                    frame_indices=pair_frame_indices,
                 )
             )
 
