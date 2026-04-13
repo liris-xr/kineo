@@ -11,18 +11,11 @@ authors = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "torch>=2.6.0",
-    "torchvision",
-    "torchaudio",
-    "moge @ git+https://github.com/microsoft/MoGe.git",
-    "vggt @ git+https://github.com/facebookresearch/vggt.git",
-    "aitviewer @ git+https://github.com/cjaverliat/aitviewer.git",
-    "sam2 @ git+https://github.com/cjaverliat/sam2.git",
+    "numpy",
     "onnxruntime-gpu",
     "orjson",
     "kornia",
     "tqdm",
-    "numpy",
     "pyglet",
     "roma",
     "opencv-python",
@@ -32,6 +25,7 @@ dependencies = [
     "spacepy",
     "rerun-sdk",
     "cv2-enumerate-cameras",
+    "smplx",
 ]
 
 classifiers = [
@@ -42,13 +36,7 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-dev = [
-    "mmpretrain",
-    "mmengine",
-    "mmcv @ git+https://github.com/cjaverliat/mmcv.git",
-    "mmpose @ git+https://github.com/cjaverliat/mmpose.git",
-    "mmdet @ git+https://github.com/cjaverliat/mmdetection.git",
-]
+dev = ["ruff", "pytest", "pyrefly", "google-api-python-client"]
 
 [project.scripts]
 kineo-offline = "kineo.demo.offline.demo:cli"
@@ -57,3 +45,118 @@ kineo-online = "kineo.demo.online.demo:cli"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["kineo*"]
+
+[tool.pixi.workspace]
+channels = ["conda-forge", "nvidia"]
+platforms = ["linux-64", "win-64"]
+
+[tool.pixi.feature.cuda129.activation]
+env = { CUDA_HOME = "$CONDA_PREFIX", PATH = "$CONDA_PREFIX/bin:$PATH" }
+
+[tool.pixi.pypi-options]
+no-build-isolation = ["sam2", "chumpy"]
+
+[tool.pixi.pypi-dependencies]
+kineo = { path = ".", editable = true }
+moge = { git = "https://github.com/microsoft/MoGe.git" }
+
+sam2 = { git = "https://github.com/cjaverliat/sam2.git" }
+torch = { version = "==2.10.*", index = "https://download.pytorch.org/whl/cu129" }
+torchvision = { version = ">=0.22.0", index = "https://download.pytorch.org/whl/cu129" }
+torchaudio = { version = "==2.10.*", index = "https://download.pytorch.org/whl/cu129" }
+onnxruntime-gpu = "*"
+soundfile = "*"
+cv2-enumerate-cameras = "*"
+
+mmpretrain = "*"
+mmengine = "*"
+mmcv = { git = "https://github.com/cjaverliat/mmcv.git" }
+mmpose = { git = "https://github.com/cjaverliat/mmpose.git" }
+mmdet = { git = "https://github.com/cjaverliat/mmdetection.git" }
+mmdeploy = "*"
+
+[tool.pixi.dependencies]
+python = "3.10.*"
+pip = "*"
+hf-transfer = "*"
+huggingface_hub = "*"
+curl = "*"
+unzip = "*"
+git = "*"
+
+[tool.pixi.pypi-options.dependency-overrides]
+iopath = ">=0.1.10"
+
+[tool.pixi.feature.dev]
+platforms = ["linux-64"]
+channels = ["conda-forge"]
+
+[tool.pixi.feature.dev.dependencies]
+ruff = "*"
+pytest = "*"
+pyrefly = "*"
+google-api-python-client = "*"
+
+[tool.pixi.feature.cuda129]
+platforms = ["linux-64"]
+channels = ["conda-forge", "nvidia"]
+
+[tool.pixi.feature.cuda129.system-requirements]
+cuda = "12.9"
+
+[tool.pixi.feature.cuda129.dependencies]
+cuda-version = "12.9.*"
+cuda-nvcc = "*"
+cuda-nvrtc = "*"
+cuda-nvtx = "*"
+cuda-profiler-api = "*"
+cudnn = "*"
+libcublas-dev = "*"
+libcufft-dev = "*"
+libcurand-dev = "*"
+libcusolver-dev = "*"
+libcusparse-dev = "*"
+libnvjitlink = "*"
+
+[tool.pixi.environments]
+
+[tool.pixi.environments.default]
+features = ["cuda129"]
+solve-group = "default"
+
+[tool.pixi.environments.dev]
+features = ["dev", "cuda129"]
+solve-group = "default"
+
+[tool.pixi.tasks]
+_download_nlf = { cmd = "test -f checkpoints/nlf_l_multi_0.3.2.torchscript || (mkdir -p checkpoints && curl -L https://github.com/isarandi/nlf/releases/download/v0.3.2/nlf_l_multi_0.3.2.torchscript -o checkpoints/nlf_l_multi_0.3.2.torchscript)", outputs = [
+    "checkpoints/nlf_l_multi_0.3.2.torchscript",
+], description = "Download NLF TorchScript model" }
+_download_efficienttam_cfg = { cmd = "test -f configs/efficienttam/efficienttam_s.yaml || (mkdir -p configs/efficienttam && curl -L https://raw.githubusercontent.com/yformer/EfficientTAM/main/efficient_track_anything/configs/efficienttam/efficienttam_s.yaml -o configs/efficienttam/efficienttam_s.yaml)", outputs = [
+    "configs/efficienttam/efficienttam_s.yaml",
+], description = "Download EfficientTAM config" }
+_download_efficienttam_weights = { cmd = "bash -lc 'if [ ! -f checkpoints/efficienttam_s.pt ]; then mkdir -p checkpoints && huggingface-cli download yunyangx/efficient-track-anything efficienttam_s.pt --repo-type model --local-dir checkpoints --local-dir-use-symlinks False && mv -f checkpoints/efficienttam_s.pt checkpoints/efficienttam_s.pt; fi'", outputs = [
+    "checkpoints/efficienttam_s.pt",
+], description = "Download EfficientTAM weights" }
+_download_moge = { cmd = "bash -lc 'if [ ! -f checkpoints/moge-2-vitl-normal.pt ]; then mkdir -p checkpoints && huggingface-cli download Ruicheng/moge-2-vitl-normal model.pt --repo-type model --local-dir checkpoints --local-dir-use-symlinks False && mv -f checkpoints/model.pt checkpoints/moge-2-vitl-normal.pt; fi'", outputs = [
+    "checkpoints/moge-2-vitl-normal.pt",
+], description = "Download MoGe model" }
+_download_yolox = { cmd = "python -c \"from kineo.pipeline.stages.rtmlib.tools.file import download_checkpoint; print(download_checkpoint('https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/yolox_tiny_8xb8-300e_humanart-6f3252f9.zip', progress=True))\"", outputs = [
+    "**/yolox_tiny_8xb8-300e_humanart-6f3252f9.onnx",
+], description = "Prefetch YOLOX ONNX for rtmlib" }
+download-checkpoints = { depends-on = [
+    "_download_nlf",
+    "_download_efficienttam_cfg",
+    "_download_efficienttam_weights",
+    "_download_moge",
+    "_download_yolox",
+    "_download_body_models",
+], description = "Download all public checkpoints" }
+kineo-offline = { depends-on = ["download-checkpoints"], cmd = "kineo-offline" }
+kineo-online = { depends-on = ["download-checkpoints"], cmd = "kineo-online" }
+lock = { cmd = "pixi lock", description = "Refresh pixi lockfiles" }
+
+_download_body_models = { cmd = "hf download pablovela5620/body SMPLX_NEUTRAL.npz SMPLX_NEUTRAL.pkl --repo-type dataset --local-dir body_models/smplx", outputs = [
+    "body_models/smplx/SMPLX_NEUTRAL.npz",
+    "body_models/smplx/SMPLX_NEUTRAL.pkl",
+], description = "Download SMPL-X body parameters from private HF dataset (requires hf auth)" }
