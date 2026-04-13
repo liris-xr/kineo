@@ -91,8 +91,8 @@ class MoGeSceneReconstructionStage(PipelineStage[MoGeSceneReconstructionRuntimeC
         points_colors: list[torch.Tensor] = []
         points_confidences: list[torch.Tensor] = []
 
-        if runtime_cfg.view_idx is not None:
-            views_ids = [views_ids[runtime_cfg.view_idx]]
+        # if runtime_cfg.view_idx is not None:
+        #     views_ids = [views_ids[runtime_cfg.view_idx]]
 
         for view_idx, view_id in tqdm(
             enumerate(views_ids),
@@ -100,6 +100,9 @@ class MoGeSceneReconstructionStage(PipelineStage[MoGeSceneReconstructionRuntimeC
             total=len(views_ids),
             leave=False,
         ):
+            if runtime_cfg.view_idx is not None and view_idx != runtime_cfg.view_idx:
+                continue
+
             intrinsics_annotation = camera_intrinsics.filter_by_view_id(
                 view_id
             ).first_or_default()
