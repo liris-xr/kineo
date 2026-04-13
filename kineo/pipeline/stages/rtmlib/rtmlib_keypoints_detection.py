@@ -224,6 +224,9 @@ class RtmlibKeypointsDetectionStage(
             view_id = view["view_id"]
             view_n_frames = frame_loader.n_frames
 
+            view_bboxes_annotations: list[BBox2DAnnotation] = bboxes_annotations.filter_by_view_id(view_id)
+            view_keypoints_annotations: list[Keypoints2DAnnotation] = []
+
             inference_frames = _get_frames_batch(view_n_frames, frame_step)
 
             for batch_start in range(0, len(inference_frames), batch_size):
@@ -372,6 +375,38 @@ def detect_keypoints(
         metadata=keypoints_metadata,
         annotations=annotations,
     )
+
+
+def _create_keypoints_annotations(
+    keypoints_result: KeypointsDetectionResult,
+    view_id: str,
+    frame_idx: int,
+    keypoints_format_name: str,
+    default_subject_id: str,
+) -> list[Keypoints2DAnnotation]:
+    """Create keypoints annotations from inference results."""
+    annotations = []
+    n_instances = len(keypoints_result.keypoints)
+
+    for instance_idx in range(n_instances):
+        keypoints_xy = keypoints_result.keypoints[instance_idx]
+        keypoints_scores = keypoints_result.scores[instance_idx]
+
+        kps_xy = torch.from_numpy(keypoints_xy).to(torch.float32)
+        scores = torch.from_numpy(keypoints_scores).to(torch.float32)
+
+        keypoint_annotation = Keypoints2DAnnotation(
+            view_id=view_id,
+            frame_idx=frame_idx,
+            subject_id=default_subject_id,
+            xy=kps_xy.cpu(),
+            scores=scores.cpu(),
+            annotated=torch.ones(keypoints_xy.shape[0], dtype=torch.bool),
+            format=keypoints_format_name,
+        )
+        annotations.append(keypoint_annotation)
+
+    return annotations
 
 def _get_frames_batch(n_frames: int, frame_step: int) -> list[int]:
     """Get list of frame indices to run inference on."""
