@@ -46,14 +46,24 @@ import roma
 from tqdm import tqdm
 
 # Fix to properly load smpl model without errors
-np.bool = np.bool_
-np.int = np.int_
-np.float = np.float_
-np.long = np.int_
-np.complex = np.complex_
-np.object = np.object_
-np.str = np.str_
-np.unicode = np.unicode_
+if np.__version__ < "2":
+    np.bool = np.bool_
+    np.int = np.int_
+    np.float = np.float_
+    np.long = np.int_
+    np.complex = np.complex_
+    np.object = np.object_
+    np.str = np.str_
+    np.unicode = np.unicode_
+else:
+    np.bool = np.bool_
+    np.int = np.int_
+    np.float = np.float64
+    np.long = np.int_
+    np.complex = np.complex128
+    np.object = np.object_
+    np.str = np.str_
+    np.unicode = np.str_
 
 
 @dataclass
