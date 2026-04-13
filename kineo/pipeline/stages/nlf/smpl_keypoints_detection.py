@@ -287,6 +287,9 @@ class NLFSMPLKeypointsDetectionStage(PipelineStage[NLFSMPLKeypointsDetectionRunt
                             dim=0,
                         )
 
+                        if kps_xy.numel() == 0:
+                            continue
+
                         keypoints_annotation = Keypoints2DAnnotation(
                             view_id=view_id,
                             frame_idx=frame_idx,
