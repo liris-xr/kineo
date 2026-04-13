@@ -45,7 +45,7 @@ from tqdm import tqdm
 @dataclass(frozen=True)
 class VGGTSceneReconstructionRuntimeConfig:
     target_image_size: int = 518
-
+    use_background_image: bool = False
 
 class VGGTSceneReconstructionStage(PipelineStage[VGGTSceneReconstructionRuntimeConfig]):
     def __init__(
@@ -102,7 +102,6 @@ class VGGTSceneReconstructionStage(PipelineStage[VGGTSceneReconstructionRuntimeC
         camera_extrinsics: CameraExtrinsicsAnnotations = annotations[
             "camera_extrinsics"
         ]
-        background_images: BackgroundImageAnnotations = annotations["background_images"]
 
         views_ids = [v["view_id"] for v in views]
 
@@ -122,14 +121,35 @@ class VGGTSceneReconstructionStage(PipelineStage[VGGTSceneReconstructionRuntimeC
                 view_id
             ).first_or_default()
 
-            background_image_annotation: BackgroundImageAnnotation = (
-                background_images.filter_by_view_id(view_id).first_or_default()
-            )
-
-            if intrinsics_annotation is None or background_image_annotation is None:
+            if intrinsics_annotation is None or extrinsics_annotation is None:
                 raise ValueError(
-                    f"View {view_id} is missing intrinsics, extrinsics or background image"
+                    f"View {view_id} is missing intrinsics or extrinsics"
                 )
+            
+            if runtime_cfg.use_background_image:
+                if "background_images" not in annotations:
+                    raise ValueError(
+                        "Background images are not available. Use runtime_cfg.use_background_image=False to use the frame loader instead."
+                    )
+
+                background_images: BackgroundImageAnnotations = annotations[
+                    "background_images"
+                ]
+                background_image_annotation: BackgroundImageAnnotation = (
+                    background_images.filter_by_view_id(view_id).first_or_default()
+                )
+                background_image_rgb = background_image_annotation.image.to(device)
+                background_image_rgb = background_image_rgb / 255.0
+                background_mask = background_image_annotation.mask.to(device)
+                background_sky_mask = background_image_annotation.sky_mask.to(device)
+            else:
+                background_image_rgb = (
+                    views[view_idx]["frame_loader"].load_frame_at(0).to(device)
+                )
+                background_image_rgb = background_image_rgb / 255.0
+                background_mask = torch.ones_like(background_image_rgb[0], dtype=torch.bool)
+                background_sky_mask = torch.zeros_like(background_image_rgb[0], dtype=torch.bool)
+
 
             resolution_hw = intrinsics_annotation.resolution_hw
 
@@ -156,6 +176,9 @@ class VGGTSceneReconstructionStage(PipelineStage[VGGTSceneReconstructionRuntimeC
                 ..., roi_xyxy[1] : roi_xyxy[3], roi_xyxy[0] : roi_xyxy[2]
             ]
             background_mask = background_mask[
+                ..., roi_xyxy[1] : roi_xyxy[3], roi_xyxy[0] : roi_xyxy[2]
+            ]
+            background_sky_mask = background_sky_mask[
                 ..., roi_xyxy[1] : roi_xyxy[3], roi_xyxy[0] : roi_xyxy[2]
             ]
 
