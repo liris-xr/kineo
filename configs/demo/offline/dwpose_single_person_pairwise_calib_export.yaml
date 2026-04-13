@@ -1,5 +1,5 @@
-output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/infer_dwpose_single_person_sam2"
-cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/infer_dwpose_single_person_sam2"
+output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/infer_dwpose_single_person_pairwise_calib"
+cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/infer_dwpose_single_person_pairwise_calib"
 use_cache: False
 batch_size: 32
 use_half_precision: True
@@ -8,52 +8,36 @@ shared_intrinsics: True
 # This is because hands and faces are often noisy, yet their score is anormaly high giving false positives.
 keypoints_indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
 
-sam2_bbox_detection_frame_step: 5
-rtmlib_keypoints_detection_frame_step: 1
+rtmlib_bbox_keypoints_detection_frame_step: 1
 
 pipeline:
   seed: 19
 
   stages:
-    sam2_semiauto_bbox_detection_rtmlib:
-      _target_: kineo.pipeline.stages.sam2_semiauto_bbox_detection_rtmlib.SAM2SemiAutoBboxDetectionRtmlibStage
-      name: "SAM2 Semi-Auto Bbox Detection"
+    rtmlib_bbox_keypoints_detection:
+      _target_: kineo.pipeline.stages.rtmlib.rtmlib_bbox_keypoints_detection.RtmlibBboxKeypointsDetectionStage
+      name: "Rtmlib Bbox Keypoints Detection"
       order: 5
-      det_model: "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/yolox_tiny_8xb8-300e_humanart-6f3252f9.zip"
-      det_model_input_shape_hw: [416, 416]
-      sam2_model_cfg: "configs/efficienttam/efficienttam_s.yaml"
-      sam2_model_weights: "./checkpoints/efficienttam_s.pt"
-      sam2_vos_optimized: False
+      keypoints_model: "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-l_simcc-ucoco_dw-ucoco_270e-384x288-2438fd99_20230728.zip"
+      keypoints_model_input_shape_hw: [288, 384]
       runtime_cfg:
-        _target_: kineo.pipeline.stages.sam2_semiauto_bbox_detection_rtmlib.SAM2SemiAutoBboxDetectionRtmlibRuntimeConfig
+        _target_: kineo.pipeline.stages.rtmlib.rtmlib_bbox_keypoints_detection.RtmlibBboxKeypointsDetectionRuntimeConfig
         use_cache: ${use_cache}
-        use_half_precision: ${use_half_precision}
-        frame_step: ${sam2_bbox_detection_frame_step}
+        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
+        show: False
+        frame_step: ${rtmlib_bbox_keypoints_detection_frame_step}
 
     # Infer intrinsics before NLF to provide it to the model
     moge_intrinsics_estimation:
       _target_: kineo.pipeline.stages.moge_intrinsics_estimation.MoGeIntrinsicsEstimationStage
       name: "MoGe Intrinsics Estimation"
       model_name_or_path: "Ruicheng/moge-2-vitl"
-      order: 8
+      order: 20
       runtime_cfg:
         _target_: kineo.pipeline.stages.moge_intrinsics_estimation.MoGeIntrinsicsEstimationRuntimeConfig
         use_cache: ${use_cache}
         use_half_precision: ${use_half_precision}
         cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
-
-    rtmlib_keypoints_detection:
-      _target_: kineo.pipeline.stages.rtmlib.rtmlib_keypoints_detection.RtmlibKeypointsDetectionStage
-      name: "Rtmlib Keypoints Detection"
-      order: 10
-      keypoints_model: "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-l_simcc-ucoco_dw-ucoco_270e-384x288-2438fd99_20230728.zip"
-      keypoints_model_input_shape_hw: [288, 384]
-      runtime_cfg:
-        _target_: kineo.pipeline.stages.rtmlib.rtmlib_keypoints_detection.RtmlibKeypointsDetectionRuntimeConfig
-        use_cache: ${use_cache}
-        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
-        show: False
-        frame_step: ${rtmlib_keypoints_detection_frame_step}
 
     global_time_resampling:
       _target_: kineo.pipeline.stages.global_time_resampling.GlobalTimeResamplingStage
@@ -63,7 +47,7 @@ pipeline:
         _target_: kineo.pipeline.stages.global_time_resampling.GlobalTimeResamplingRuntimeConfig
         target_fps: 50
         interpolation_dt_thr_s: 0.3
-
+  
     keypoints_pairs_sampling:
       _target_: kineo.pipeline.stages.keypoints_pairs_sampling.KeypointsPairsSamplingStage
       name: "Keypoints Pairs Sampling"
@@ -72,7 +56,20 @@ pipeline:
         _target_: kineo.pipeline.stages.keypoints_pairs_sampling.KeypointsPairsSamplingRuntimeConfig
         max_points_pairs: 4000
         pair_avg_conf_score_thr: 0.5
-        keypoints_indices: null
+        keypoints_indices: ${keypoints_indices}
+
+    # calibration_points_video_export:
+    #   _target_: kineo.pipeline.stages.calibration_points_video_export.CalibrationPointsVideoExportStage
+    #   name: "Export calibration points video"
+    #   order: 45
+    #   runtime_cfg:
+    #     _target_: kineo.pipeline.stages.calibration_points_video_export.CalibrationPointsVideoExportRuntimeConfig
+    #     view1_id: "view_0"
+    #     view2_id: "view_1"
+    #     point_radius: 5
+    #     line_thickness: 1
+    #     show: False
+    #     keypoints_indices: ${keypoints_indices}
 
     sfm_camera_extrinsics_initialization:
       _target_: kineo.pipeline.stages.sfm_camera_extrinsics_initialization.SfMCameraExtrinsicsInitializationStage
@@ -181,14 +178,14 @@ pipeline:
         _target_: kineo.pipeline.stages.scene_reorientation.SceneReorientationRuntimeConfig
         min_kps_quantile: 0.01
 
-    bundle_adjustment_history_rerun_export:
-      _target_: kineo.pipeline.stages.bundle_adjustment_history_rerun_export.BundleAdjustmentHistoryRerunExportStage
-      name: "Bundle Adjustment History Rerun Export"
-      order: 121
-      runtime_cfg:
-        _target_: kineo.pipeline.stages.bundle_adjustment_history_rerun_export.BundleAdjustmentHistoryRerunExportRuntimeConfig
-        output_path_template: "./outputs/rerun/{sequence_name}_ba_history.rrd"
-
+    # bundle_adjustment_history_rerun_export:
+    #   _target_: kineo.pipeline.stages.bundle_adjustment_history_rerun_export.BundleAdjustmentHistoryRerunExportStage
+    #   name: "Bundle Adjustment History Rerun Export"
+    #   order: 121
+    #   runtime_cfg:
+    #     _target_: kineo.pipeline.stages.bundle_adjustment_history_rerun_export.BundleAdjustmentHistoryRerunExportRuntimeConfig
+    #     output_path_template: "./outputs/rerun/{sequence_name}_ba_history.rrd"
+    
     background_subtraction:
       _target_: kineo.pipeline.stages.background_subtraction.BackgroundSubtractionStage
       name: "Background Subtraction"
@@ -197,16 +194,13 @@ pipeline:
         _target_: kineo.pipeline.stages.background_subtraction.BackgroundSubtractionRuntimeConfig
         run_skyseg: False
 
-    moge_scene_reconstruction:
-      _target_: kineo.pipeline.stages.moge_scene_reconstruction.MoGeSceneReconstructionStage
+    vggt_scene_reconstruction:
+      _target_: kineo.pipeline.stages.vggt_scene_reconstruction.VGGTSceneReconstructionStage
       name: "Scene Reconstruction"
       order: 130
-      model_name_or_path: "Ruicheng/moge-2-vitl"
+      model_name_or_path: "./checkpoints/vggt-1b.pt"
       runtime_cfg:
-        _target_: kineo.pipeline.stages.moge_scene_reconstruction.MoGeSceneReconstructionRuntimeConfig
-        use_half_precision: ${use_half_precision}
-        use_background_image: True
-        view_idx: 1
+        _target_: kineo.pipeline.stages.vggt_scene_reconstruction.VGGTSceneReconstructionRuntimeConfig
 
     rerun_export:
       _target_: kineo.pipeline.stages.rerun_export.RerunExportStage
@@ -217,7 +211,7 @@ pipeline:
         output_path_template: "${output_root_dir}/offline_demo/{sequence_name}.rrd"
         max_world_points_to_show: 1000000
         world_points_confidence_threshold: 0.5
-        world_z_clipping_threshold: 2.0
+        world_z_clipping_threshold: 1.7
         remove_world_points_outside_scene_radius: True
 
         keypoints_radius_2d: 1

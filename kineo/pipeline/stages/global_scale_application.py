@@ -17,6 +17,11 @@ from kineo.annotations.camera_extrinsics import CameraExtrinsicsAnnotation
 from kineo.annotations.keypoints_3d import Keypoints3DAnnotations
 from kineo.annotations.keypoints_3d import Keypoints3DAnnotation
 from kineo.annotations.global_scale import GlobalScaleAnnotation
+from kineo.annotations.bundle_adjustment_history import (
+    BundleAdjustmentHistoryAnnotation,
+    BundleAdjustmentHistoryAnnotations,
+    BundleAdjustmentHistoryAnnotationsMetadata,
+)
 
 
 class GlobalScaleApplicationStage(PipelineStage):
@@ -81,3 +86,26 @@ class GlobalScaleApplicationStage(PipelineStage):
             metadata=camera_extrinsics.metadata,
             annotations=new_camera_extrinsics,
         ).cpu()
+
+        ba_history: BundleAdjustmentHistoryAnnotations | None = annotations.get(
+            "bundle_adjustment_history"
+        )
+        if ba_history is not None:
+            new_history = []
+            for entry in ba_history:
+                scaled_Rts = entry.Rts.clone()
+                scaled_Rts[:, :3, 3] = scaled_Rts[:, :3, 3] * global_scale_factor
+                new_history.append(BundleAdjustmentHistoryAnnotation(
+                    stage_name=entry.stage_name,
+                    stage_order=entry.stage_order,
+                    iteration=entry.iteration,
+                    view_ids=entry.view_ids,
+                    Ks=entry.Ks,
+                    dist_coeffs=entry.dist_coeffs,
+                    Rts=scaled_Rts,
+                    loss=entry.loss,
+                ))
+            annotations["bundle_adjustment_history"] = BundleAdjustmentHistoryAnnotations(
+                metadata=BundleAdjustmentHistoryAnnotationsMetadata(),
+                annotations=new_history,
+            )

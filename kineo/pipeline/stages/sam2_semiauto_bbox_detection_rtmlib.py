@@ -222,6 +222,7 @@ def _infer_bboxes(
     show: bool = False,
     bbox_thr: float = 0.3,
     nms_iou_thr: float = 0.65,
+    default_subject_id="subject_0"
 ) -> BBox2DAnnotations:
 
     all_bboxes_annotations: list[BBox2DAnnotation] = []
@@ -239,7 +240,6 @@ def _infer_bboxes(
     for view, state in zip(views, states):
         view_bboxes_annotations: list[BBox2DAnnotation] = []
 
-        subject_id = 0
         frame_loader = view["frame_loader"]
         view_n_frames = frame_loader.n_frames
         inference_frames = _get_frames_batch(view_n_frames, frame_step)
@@ -267,7 +267,7 @@ def _infer_bboxes(
                     reverse_tracking=False,
                     create_memory=True,
                 )
-                obj_results = results.get(subject_id, None)
+                obj_results = results.get(0, None)
 
                 if obj_results is None:
                     continue
@@ -306,7 +306,7 @@ def _infer_bboxes(
                     bbox_annotation = BBox2DAnnotation(
                         view_id=view["view_id"],
                         frame_idx=frame_idx,
-                        subject_id=str(subject_id),
+                        subject_id=default_subject_id,
                         xyxy=best_bbox.reshape(4).cpu(),
                         score=best_bbox_score.item(),
                         category_id=0,

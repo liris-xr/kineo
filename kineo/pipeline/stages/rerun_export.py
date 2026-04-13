@@ -41,6 +41,7 @@ try:
 except ImportError:
     av = None
 
+
 @dataclass(frozen=True)
 class RerunExportRuntimeConfig:
     start_frame_idx: int = 0
@@ -56,12 +57,15 @@ class RerunExportRuntimeConfig:
     skeleton_joint_radius_2d: float = 0.01
     skeleton_bones_thickness_3d: float = 0.01
     skeleton_bones_thickness_2d: float = 0.01
-    skeleton_bones_thickness: float = 0.01
+
+    keypoints_radius_2d: float = 0.01
+    keypoints_radius_3d: float = 0.01
 
     min_kps_score_3d: float = 0.5
     min_kps_score_2d: float = 0.3
 
     smpl_color_override: tuple[float, float, float] = None
+    smpl_skeleton_2d_color_override: tuple[float, float, float] = None
 
     skeleton_color_override: tuple[float, float, float] = None
     image_plane_distance: float = 0.2
@@ -81,6 +85,7 @@ class RerunExportRuntimeConfig:
     log_pred_skeletons_3d: bool = False
 
     log_pred_smpl: bool = False
+    log_pred_smpl_skeleton_2d: bool = False
     log_gt_keypoints_2d: bool = False
     log_gt_keypoints_3d: bool = False
     log_gt_skeletons_2d: bool = False
@@ -92,17 +97,17 @@ class RerunExportRuntimeConfig:
 
 class RerunExportStage(PipelineStage[RerunExportRuntimeConfig]):
     def __init__(
-        self,
-        name: str,
-        order: int,
-        runtime_cfg: RerunExportRuntimeConfig,
-        dynamic_runtime_cfg: dict[str, RerunExportRuntimeConfig] | None = None,
-        smpl_model_path: str | None = "./body_models/smplx/SMPLX_NEUTRAL.npz",
-        smpl_model_type: str = "smplx",
-        smpl_num_betas: int = 10,
-        smpl_gender: str = "neutral",
-        smpl_use_face_contour: bool = False,
-        smpl_use_pca: bool = True,
+            self,
+            name: str,
+            order: int,
+            runtime_cfg: RerunExportRuntimeConfig,
+            dynamic_runtime_cfg: dict[str, RerunExportRuntimeConfig] | None = None,
+            smpl_model_path: str | None = "./body_models/smplx/SMPLX_NEUTRAL.npz",
+            smpl_model_type: str = "smplx",
+            smpl_num_betas: int = 10,
+            smpl_gender: str = "neutral",
+            smpl_use_face_contour: bool = False,
+            smpl_use_pca: bool = True,
     ):
         super().__init__(
             name=name,
@@ -124,13 +129,13 @@ class RerunExportStage(PipelineStage[RerunExportRuntimeConfig]):
             self.smpl_layer = self.smpl_layer.eval()
 
     def align_predictions_to_gt(
-        self,
-        pred_keypoints_3d: Keypoints3DAnnotations,
-        pred_camera_extrinsics: CameraExtrinsicsAnnotations,
-        gt_camera_extrinsics: CameraExtrinsicsAnnotations,
-        pred_world_reconstruction: WorldReconstructedSceneAnnotations | None = None,
+            self,
+            pred_keypoints_3d: Keypoints3DAnnotations,
+            pred_camera_extrinsics: CameraExtrinsicsAnnotations,
+            gt_camera_extrinsics: CameraExtrinsicsAnnotations,
+            pred_world_reconstruction: WorldReconstructedSceneAnnotations | None = None,
     ) -> tuple[Keypoints3DAnnotations, CameraExtrinsicsAnnotations, WorldReconstructedSceneAnnotations]:
-        
+
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         pred_camera_extrinsics = pred_camera_extrinsics.to(device)
         gt_camera_extrinsics = gt_camera_extrinsics.to(device)
@@ -143,7 +148,7 @@ class RerunExportStage(PipelineStage[RerunExportRuntimeConfig]):
         pred_camera_extrinsics = pred_camera_extrinsics.apply_similarity_transform(R, T, s)
         if pred_world_reconstruction is not None:
             pred_world_reconstruction = pred_world_reconstruction.apply_similarity_transform(R, T, s)
-        
+
         pred_keypoints_3d = pred_keypoints_3d.cpu()
         pred_camera_extrinsics = pred_camera_extrinsics.cpu()
         gt_camera_extrinsics = gt_camera_extrinsics.cpu()
@@ -151,15 +156,15 @@ class RerunExportStage(PipelineStage[RerunExportRuntimeConfig]):
             pred_world_reconstruction = pred_world_reconstruction.cpu()
 
         return pred_keypoints_3d, pred_camera_extrinsics, pred_world_reconstruction
-        
+
     def forward(
-        self,
-        sequence_name: str,
-        pipeline: Pipeline,
-        views: list[ViewInput],
-        annotations: dict[str, Annotations],
-        gt_annotations: dict[str, Annotations],
-        runtime_cfg: RerunExportRuntimeConfig,
+            self,
+            sequence_name: str,
+            pipeline: Pipeline,
+            views: list[ViewInput],
+            annotations: dict[str, Annotations],
+            gt_annotations: dict[str, Annotations],
+            runtime_cfg: RerunExportRuntimeConfig,
     ):
         global_time_reference: GlobalTimeReferenceAnnotation = annotations.get(
             "global_time_reference"
@@ -221,12 +226,11 @@ class RerunExportStage(PipelineStage[RerunExportRuntimeConfig]):
                 image_plane_distance=runtime_cfg.image_plane_distance,
             )
 
-
         if runtime_cfg.log_gt_keypoints_2d and gt_keypoints_2d is not None:
             log_keypoints_2d(
                 keypoints_2d=gt_keypoints_2d,
                 prefix="ground_truth",
-                radius=runtime_cfg.skeleton_joint_radius_2d,
+                radius=runtime_cfg.keypoints_radius_2d,
                 color_override=runtime_cfg.skeleton_color_override,
                 min_kps_score_2d=0,
                 fps=target_fps,
@@ -238,7 +242,7 @@ class RerunExportStage(PipelineStage[RerunExportRuntimeConfig]):
             log_keypoints_3d(
                 keypoints_3d=gt_keypoints_3d,
                 prefix="ground_truth",
-                radius=runtime_cfg.skeleton_joint_radius_3d,
+                radius=runtime_cfg.keypoints_radius_3d,
                 color_override=runtime_cfg.skeleton_color_override,
                 min_kps_score_3d=0,
                 fps=target_fps,
@@ -273,7 +277,6 @@ class RerunExportStage(PipelineStage[RerunExportRuntimeConfig]):
                 start_frame_idx=runtime_cfg.start_frame_idx,
                 end_frame_idx=runtime_cfg.end_frame_idx,
             )
-
 
         ### Predictions ###
 
@@ -313,13 +316,19 @@ class RerunExportStage(PipelineStage[RerunExportRuntimeConfig]):
                 smpl_color_override=runtime_cfg.smpl_color_override,
                 start_frame_idx=runtime_cfg.start_frame_idx,
                 end_frame_idx=runtime_cfg.end_frame_idx,
+                log_pred_smpl_skeleton_2d=runtime_cfg.log_pred_smpl_skeleton_2d,
+                projection_camera_extrinsics=pred_camera_extrinsics,
+                projection_camera_intrinsics=pred_camera_intrinsics,
+                skeleton_joint_radius_2d=runtime_cfg.skeleton_joint_radius_2d,
+                skeleton_bones_thickness_2d=runtime_cfg.skeleton_bones_thickness_2d,
+                smpl_skeleton_2d_color_override=runtime_cfg.smpl_skeleton_2d_color_override,
             )
 
         if runtime_cfg.log_pred_keypoints_3d and pred_keypoints_3d is not None:
             log_keypoints_3d(
                 keypoints_3d=pred_keypoints_3d,
                 prefix="kineo",
-                radius=runtime_cfg.skeleton_joint_radius_3d,
+                radius=runtime_cfg.keypoints_radius_3d,
                 color_override=runtime_cfg.skeleton_color_override,
                 min_kps_score_3d=runtime_cfg.min_kps_score_3d,
                 fps=target_fps,
@@ -331,9 +340,8 @@ class RerunExportStage(PipelineStage[RerunExportRuntimeConfig]):
             log_keypoints_2d(
                 keypoints_2d=pred_keypoints_2d,
                 prefix="kineo",
-                radius=runtime_cfg.skeleton_joint_radius_2d,
+                radius=runtime_cfg.keypoints_radius_2d,
                 color_override=runtime_cfg.skeleton_color_override,
-                bones_thickness=runtime_cfg.skeleton_bones_thickness_2d,
                 fps=target_fps,
                 min_kps_score_2d=runtime_cfg.min_kps_score_2d,
                 start_frame_idx=runtime_cfg.start_frame_idx,
@@ -390,22 +398,26 @@ class RerunExportStage(PipelineStage[RerunExportRuntimeConfig]):
                     start_frame_idx=runtime_cfg.start_frame_idx,
                     end_frame_idx=runtime_cfg.end_frame_idx,
                 )
-            except ImportError:
-                warnings.warn("av is not installed. Videos cannot be logged.")
+            except Exception as e:
+                warnings.warn("Unable to log video")
+                print("Unable to log video")
+                print(e)
 
         print("Exported sequence as rerun file at", formatted_output_path)
+
 
 def quality_to_crf(quality: int, min_crf: int = 18, max_crf: int = 30) -> int:
     quality = max(0, min(100, quality))
     return round(max_crf - (max_crf - min_crf) * (quality / 100))
 
+
 def log_videos(
-    views: list[ViewInput],
-    prefix: str,
-    global_time_reference: GlobalTimeReferenceAnnotation,
-    video_quality: int = 75,
-    start_frame_idx: int = 0,
-    end_frame_idx: int = -1,
+        views: list[ViewInput],
+        prefix: str,
+        global_time_reference: GlobalTimeReferenceAnnotation,
+        video_quality: int = 75,
+        start_frame_idx: int = 0,
+        end_frame_idx: int = -1,
 ):
     if av is None:
         raise ImportError("av is not installed. Videos cannot be logged.")
@@ -415,9 +427,8 @@ def log_videos(
     try:
         codec = rr.VideoCodec.H264
     except (AttributeError, NameError):
-        warnings.warn("Can't find rerun H264 codec. Video will not be logged.")
-        return
-    
+        raise Exception("Can't find rerun H264 codec. Video will not be logged.")
+
     format = "h264"
     encoder = "libx264"
 
@@ -470,16 +481,16 @@ def log_videos(
 
 
 def log_world_reconstruction(
-    cameras_extrinsics: CameraExtrinsicsAnnotations,
-    world_reconstruction: WorldReconstructedSceneAnnotation,
-    world_points_size: float = 7.0,
-    max_world_points_to_show: int = 1_000_000,
-    world_points_confidence_threshold: float = 0.5,
-    remove_world_points_outside_scene_radius: bool = True,
-    scene_radius_multiplier: float = 1.5,
-    world_translation: tuple[float, float, float] = (0.0, 0.0, 0.0),
-    world_z_clipping_threshold: float = None,
-    prefix: str = "kineo",
+        cameras_extrinsics: CameraExtrinsicsAnnotations,
+        world_reconstruction: WorldReconstructedSceneAnnotation,
+        world_points_size: float = 7.0,
+        max_world_points_to_show: int = 1_000_000,
+        world_points_confidence_threshold: float = 0.5,
+        remove_world_points_outside_scene_radius: bool = True,
+        scene_radius_multiplier: float = 1.5,
+        world_translation: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        world_z_clipping_threshold: float = None,
+        prefix: str = "kineo",
 ):
     views_ids = cameras_extrinsics.views_ids
     cameras_poses = torch.zeros((len(views_ids), 3))
@@ -548,10 +559,10 @@ def log_world_reconstruction(
 
 
 def log_cameras(
-    cameras_extrinsics: CameraExtrinsicsAnnotations,
-    cameras_intrinsics: CameraIntrinsicsAnnotations,
-    prefix: str = "kineo",
-    image_plane_distance: float = 0.2,
+        cameras_extrinsics: CameraExtrinsicsAnnotations,
+        cameras_intrinsics: CameraIntrinsicsAnnotations,
+        prefix: str = "kineo",
+        image_plane_distance: float = 0.2,
 ):
     views_ids = cameras_extrinsics.views_ids
 
@@ -587,12 +598,13 @@ def log_cameras(
             ),
         )
 
+
 def compute_vertex_normals(
-    faces: np.ndarray,
-    verts: np.ndarray,
-    eps: float = 1e-8,
+        faces: np.ndarray,
+        verts: np.ndarray,
+        eps: float = 1e-8,
 ) -> np.ndarray:
-    v0 = verts[faces[:, 0], :] 
+    v0 = verts[faces[:, 0], :]
     v1 = verts[faces[:, 1], :]
     v2 = verts[faces[:, 2], :]
 
@@ -604,22 +616,29 @@ def compute_vertex_normals(
         np.add.at(vert_normals, faces[:, i], face_normals)
 
     norms = np.linalg.norm(vert_normals, axis=1, keepdims=True)
-    norms[norms < eps] = 1.0 
+    norms[norms < eps] = 1.0
     vert_normals = vert_normals / norms
 
     return vert_normals
 
+
 def log_smpl(
-    smpl_layer: SMPLLayer,
-    smpl_shape: SMPLShapeAnnotations,
-    smpl_pose: SMPLPoseAnnotations,
-    smpl_color_override: tuple[float, float, float] | None = None,
-    prefix: str = "kineo",
-    fps: float = 25,
-    pred_camera_extrinsics: CameraExtrinsicsAnnotations | None = None,
-    gt_camera_extrinsics: CameraExtrinsicsAnnotations | None = None,
-    start_frame_idx: int = 0,
-    end_frame_idx: int = -1,
+        smpl_layer: SMPLLayer,
+        smpl_shape: SMPLShapeAnnotations,
+        smpl_pose: SMPLPoseAnnotations,
+        smpl_color_override: tuple[float, float, float] | None = None,
+        prefix: str = "kineo",
+        fps: float = 25,
+        pred_camera_extrinsics: CameraExtrinsicsAnnotations | None = None,
+        gt_camera_extrinsics: CameraExtrinsicsAnnotations | None = None,
+        start_frame_idx: int = 0,
+        end_frame_idx: int = -1,
+        log_pred_smpl_skeleton_2d: bool = False,
+        projection_camera_extrinsics: CameraExtrinsicsAnnotations | None = None,
+        projection_camera_intrinsics: CameraIntrinsicsAnnotations | None = None,
+        skeleton_joint_radius_2d: float = 0.01,
+        skeleton_bones_thickness_2d: float = 0.01,
+        smpl_skeleton_2d_color_override: tuple[float, float, float] | None = None,
 ):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     smpl_layer = smpl_layer.to(device)
@@ -627,6 +646,11 @@ def log_smpl(
     smpl_pose = smpl_pose.to(device)
 
     subjects_ids = smpl_shape.subjects_ids
+
+    if smpl_skeleton_2d_color_override is not None:
+        subject_2d_colors = {subject_id: smpl_skeleton_2d_color_override + (1,) for subject_id in subjects_ids}
+    else:
+        subject_2d_colors = {subject_id: get_subject_color_rgba(subject_id) for subject_id in subjects_ids}
 
     if smpl_color_override is not None:
         subject_colors = {subject_id: smpl_color_override + (1,) for subject_id in subjects_ids}
@@ -658,7 +682,7 @@ def log_smpl(
             frame_timestamp = frame_idx / fps
 
             global_orient = pose_annotation.pose[0]
-            body_pose = pose_annotation.pose[1:smpl_layer.NUM_BODY_JOINTS+1]
+            body_pose = pose_annotation.pose[1:smpl_layer.NUM_BODY_JOINTS + 1]
 
             smpl_result = smpl_layer.forward(
                 betas=subject_smpl_shape_betas.reshape(1, -1),
@@ -683,15 +707,67 @@ def log_smpl(
                 ),
             )
 
+            if log_pred_smpl_skeleton_2d and projection_camera_extrinsics is not None and projection_camera_intrinsics is not None:
+                n_body_joints = smpl_layer.NUM_BODY_JOINTS + 1
+                joints_3d = apply_similarity_transform_to_points(
+                    smpl_result.joints[:, :n_body_joints], R, T, s
+                ).squeeze(0)  # (J, 3)
+
+                parents = smpl_layer.parents[:n_body_joints].cpu().numpy()
+
+                for view_id in projection_camera_extrinsics.views_ids:
+                    cam_ext = projection_camera_extrinsics.filter_by_view_id(view_id).first_or_default()
+                    cam_int = projection_camera_intrinsics.filter_by_view_id(view_id).first_or_default()
+
+                    Rt_cam = cam_ext.Rt.to(device)
+                    K = cam_int.K.to(device)
+
+                    joints_cam = (Rt_cam[:3, :3] @ joints_3d.T + Rt_cam[:3, 3:4]).T  # (J, 3)
+                    valid = joints_cam[:, 2] > 0
+
+                    joints_2d_hom = (K @ joints_cam.T).T  # (J, 3)
+                    joints_2d = joints_2d_hom[:, :2] / joints_2d_hom[:, 2:3]  # (J, 2)
+
+                    valid_joints_2d = joints_2d[valid].cpu().numpy()
+                    rr.log(
+                        f"{prefix}/cameras/{view_id}/smpl_2d_joints_{subject_id}",
+                        rr.Points2D(
+                            positions=valid_joints_2d,
+                            colors=[int(c * 255) for c in subject_2d_colors[subject_id]],
+                            radii=skeleton_joint_radius_2d,
+                        ),
+                    )
+
+                    line_strips_2d = []
+                    for j in range(n_body_joints):
+                        parent = parents[j]
+                        if parent >= 0 and valid[j] and valid[parent]:
+                            line_strips_2d.append([
+                                joints_2d[j].cpu().numpy(),
+                                joints_2d[parent].cpu().numpy(),
+                            ])
+
+                    if line_strips_2d:
+                        line_strips_2d = np.array(line_strips_2d).reshape(-1, 2, 2)
+                        rr.log(
+                            f"{prefix}/cameras/{view_id}/smpl_2d_bones_{subject_id}",
+                            rr.LineStrips2D(
+                                strips=line_strips_2d,
+                                colors=[int(c * 255) for c in subject_2d_colors[subject_id]],
+                                radii=skeleton_bones_thickness_2d,
+                            ),
+                        )
+
+
 def log_keypoints_2d(
-    keypoints_2d: Keypoints2DAnnotations,
-    prefix: str = "kineo",
-    radius: float = 0.01,
-    color_override: tuple[float, float, float] | None = None,
-    min_kps_score_2d: float = 0.3,
-    fps: float = 25,
-    start_frame_idx: int = 0,
-    end_frame_idx: int = -1,
+        keypoints_2d: Keypoints2DAnnotations,
+        prefix: str = "kineo",
+        radius: float = 0.01,
+        color_override: tuple[float, float, float] | None = None,
+        min_kps_score_2d: float = 0.3,
+        fps: float = 25,
+        start_frame_idx: int = 0,
+        end_frame_idx: int = -1,
 ):
     frames = keypoints_2d.frames
     formats = keypoints_2d.metadata.formats
@@ -744,15 +820,16 @@ def log_keypoints_2d(
                     ),
                 )
 
+
 def log_keypoints_3d(
-    keypoints_3d: Keypoints3DAnnotations,
-    prefix: str = "kineo",
-    radius: float = 0.01,
-    color_override: tuple[float, float, float] | None = None,
-    fps: float = 25,
-    min_kps_score_3d: float = 0.5,
-    start_frame_idx: int = 0,
-    end_frame_idx: int = -1,
+        keypoints_3d: Keypoints3DAnnotations,
+        prefix: str = "kineo",
+        radius: float = 0.01,
+        color_override: tuple[float, float, float] | None = None,
+        fps: float = 25,
+        min_kps_score_3d: float = 0.5,
+        start_frame_idx: int = 0,
+        end_frame_idx: int = -1,
 ):
     frames = keypoints_3d.frames
     formats = keypoints_3d.metadata.formats
@@ -803,16 +880,16 @@ def log_keypoints_3d(
 
 
 def log_skeletons_3d(
-    keypoints_3d: Keypoints3DAnnotations,
-    prefix: str = "kineo",
-    joint_radius: float = 0.01,
-    bones_thickness: float = 0.01,
-    color_override: tuple[float, float, float] | None = None,
-    fps: float = 25,
-    min_kps_score_3d: float = 0.5,
-    log_disconnected_joints: bool = False,
-    start_frame_idx: int = 0,
-    end_frame_idx: int = -1,
+        keypoints_3d: Keypoints3DAnnotations,
+        prefix: str = "kineo",
+        joint_radius: float = 0.01,
+        bones_thickness: float = 0.01,
+        color_override: tuple[float, float, float] | None = None,
+        fps: float = 25,
+        min_kps_score_3d: float = 0.5,
+        log_disconnected_joints: bool = False,
+        start_frame_idx: int = 0,
+        end_frame_idx: int = -1,
 ):
     frames = keypoints_3d.frames
     formats = keypoints_3d.metadata.formats
@@ -875,7 +952,8 @@ def log_skeletons_3d(
             for connection in kps_connectivity:
                 i, j = connection
                 if i in subject_kps_3d_valid_indices and j in subject_kps_3d_valid_indices:
-                    line_strips_3d.append([kps_xyz[subject_idx][i].cpu().numpy(), kps_xyz[subject_idx][j].cpu().numpy()])
+                    line_strips_3d.append(
+                        [kps_xyz[subject_idx][i].cpu().numpy(), kps_xyz[subject_idx][j].cpu().numpy()])
 
             line_strips_3d = np.array(line_strips_3d).reshape(-1, 2, 3)  # (N, 2, 3)
 
@@ -890,16 +968,16 @@ def log_skeletons_3d(
 
 
 def log_skeletons_2d(
-    keypoints_2d: Keypoints2DAnnotations,
-    prefix: str = "kineo",
-    joint_radius: float = 0.01,
-    bones_thickness: float = 0.01,
-    color_override: tuple[float, float, float] | None = None,
-    min_kps_score_2d: float = 0.3,
-    fps: float = 25,
-    log_disconnected_joints: bool = False,
-    start_frame_idx: int = 0,
-    end_frame_idx: int = -1,
+        keypoints_2d: Keypoints2DAnnotations,
+        prefix: str = "kineo",
+        joint_radius: float = 0.01,
+        bones_thickness: float = 0.01,
+        color_override: tuple[float, float, float] | None = None,
+        min_kps_score_2d: float = 0.3,
+        fps: float = 25,
+        log_disconnected_joints: bool = False,
+        start_frame_idx: int = 0,
+        end_frame_idx: int = -1,
 ):
     frames = keypoints_2d.frames
     formats = keypoints_2d.metadata.formats
@@ -965,7 +1043,8 @@ def log_skeletons_2d(
                 for connection in kps_connectivity:
                     i, j = connection
                     if i in subject_kps_2d_valid_indices and j in subject_kps_2d_valid_indices:
-                        line_strips_2d.append([kps_xy[view_idx, subject_idx][i].cpu().numpy(), kps_xy[view_idx, subject_idx][j].cpu().numpy()])
+                        line_strips_2d.append([kps_xy[view_idx, subject_idx][i].cpu().numpy(),
+                                               kps_xy[view_idx, subject_idx][j].cpu().numpy()])
 
                 line_strips_2d = np.array(line_strips_2d).reshape(-1, 2, 2)  # (N, 2, 2)
 

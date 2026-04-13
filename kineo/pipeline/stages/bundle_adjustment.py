@@ -38,6 +38,11 @@ from kineo.annotations.bundle_adjustment_keypoints import (
     BundleAdjustmentKeypointsAnnotations,
     BundleAdjustmentKeypointsAnnotationsMetadata,
 )
+from kineo.annotations.bundle_adjustment_history import (
+    BundleAdjustmentHistoryAnnotation,
+    BundleAdjustmentHistoryAnnotations,
+    BundleAdjustmentHistoryAnnotationsMetadata,
+)
 from dataclasses import dataclass
 
 
@@ -58,7 +63,6 @@ class BundleAdjustmentRuntimeConfig:
     use_lbfgs: bool = True
     lr: float = 1.0
 
-
 class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
     """
     Graph-based stage for refining the camera extrinsics parameters.
@@ -67,11 +71,11 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
     """
 
     def __init__(
-        self,
-        name: str,
-        order: int,
-        runtime_cfg: BundleAdjustmentRuntimeConfig,
-        dynamic_runtime_cfg: dict[str, BundleAdjustmentRuntimeConfig] | None = None,
+            self,
+            name: str,
+            order: int,
+            runtime_cfg: BundleAdjustmentRuntimeConfig,
+            dynamic_runtime_cfg: dict[str, BundleAdjustmentRuntimeConfig] | None = None,
     ):
         super().__init__(
             name=name,
@@ -81,20 +85,20 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
         )
 
     def forward(
-        self,
-        sequence_name: str,
-        pipeline: Pipeline,
-        views: list[ViewInput],
-        annotations: dict[str, Annotations],
-        gt_annotations: dict[str, Annotations],
-        runtime_cfg: BundleAdjustmentRuntimeConfig,
+            self,
+            sequence_name: str,
+            pipeline: Pipeline,
+            views: list[ViewInput],
+            annotations: dict[str, Annotations],
+            gt_annotations: dict[str, Annotations],
+            runtime_cfg: BundleAdjustmentRuntimeConfig,
     ):
         # -------------------------------------------------------------------------
         # TODO: Consider replacing this dense optimization with sparse bundle adjustment
         # using a solver like Ceres. This could significantly improve efficiency and
         # scalability for large-scale multi-view setups.
         # -------------------------------------------------------------------------
-        
+
         device = pipeline.device
 
         cameras_intrinsics: CameraIntrinsicsAnnotations = annotations[
@@ -112,7 +116,7 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
         views_ids = [views["view_id"] for views in views]
 
         if not set(views_ids) <= set(cameras_intrinsics.views_ids) or not set(
-            views_ids
+                views_ids
         ) <= set(cameras_extrinsics.views_ids):
             raise ValueError(
                 "Views ids must be included in the cameras_intrinsics and cameras_extrinsics"
@@ -153,7 +157,7 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
         sampled_frame_kps_scores = bundle_adjustment_keypoints.kps_2d_scores.to(device)
         sampled_frame_kps_3d = bundle_adjustment_keypoints.kps_3d.to(device)
 
-        Ks, dist_coeffs, Rts, kps_3d_opt = _bundle_adjustment(
+        Ks, dist_coeffs, Rts, kps_3d_opt, history_entries = self._bundle_adjustment(
             Ks=Ks,
             dist_coeffs=dist_coeffs,
             distortion_model=distortion_model,
@@ -162,6 +166,7 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
             kps_2d_xy=sampled_frame_kps_xy,
             kps_2d_scores=sampled_frame_kps_scores,
             kps_3d=sampled_frame_kps_3d,
+            view_ids=views_ids,
             optimize_distortion_coefficients=runtime_cfg.optimize_distortion_coefficients,
             optimize_focal_length=runtime_cfg.optimize_focal_length,
             optimize_principal_point=runtime_cfg.optimize_principal_point,
@@ -219,189 +224,251 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
             ).cpu()
         )
 
+        existing_history: BundleAdjustmentHistoryAnnotations | None = annotations.get(
+            "bundle_adjustment_history"
+        )
+        existing_entries = list(existing_history) if existing_history is not None else []
+        existing_entries.extend(history_entries)
+        annotations["bundle_adjustment_history"] = BundleAdjustmentHistoryAnnotations(
+            metadata=BundleAdjustmentHistoryAnnotationsMetadata(),
+            annotations=existing_entries,
+        )
 
-def _bundle_adjustment(
-    Ks: torch.Tensor,
-    dist_coeffs: torch.Tensor,
-    distortion_model: CameraDistortionModel,
-    Rts: torch.Tensor,
-    cameras_resolutions_hw: list[tuple[int, int]],
-    kps_2d_xy: torch.Tensor,
-    kps_2d_scores: torch.Tensor,
-    kps_3d: torch.Tensor,
-    optimize_distortion_coefficients: bool = True,
-    optimize_focal_length: bool = True,
-    optimize_principal_point: bool = True,
-    optimize_rotation: bool = True,
-    optimize_translation: bool = True,
-    n_iters: int = 5,
-    shared_intrinsics: bool = False,
-    huber_delta: float = 1.0,
-    tolerance_grad: float = 1e-05,
-    tolerance_change: float = 1e-09,
-    patience: int = 5,
-    dist_coeffs_regularization_weight: float = 1.0,
-    use_lbfgs: bool = True,
-    lr: float = 1.0,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    if (
-        not optimize_distortion_coefficients
-        and not optimize_focal_length
-        and not optimize_principal_point
-        and not optimize_rotation
-        and not optimize_translation
-    ):
-        return Ks, dist_coeffs, Rts, kps_3d
 
-    device = Ks.device
+    def _bundle_adjustment(
+            self,
+            Ks: torch.Tensor,
+            dist_coeffs: torch.Tensor,
+            distortion_model: CameraDistortionModel,
+            Rts: torch.Tensor,
+            cameras_resolutions_hw: list[tuple[int, int]],
+            kps_2d_xy: torch.Tensor,
+            kps_2d_scores: torch.Tensor,
+            kps_3d: torch.Tensor,
+            view_ids: list[str],
+            optimize_distortion_coefficients: bool = True,
+            optimize_focal_length: bool = True,
+            optimize_principal_point: bool = True,
+            optimize_rotation: bool = True,
+            optimize_translation: bool = True,
+            n_iters: int = 5,
+            shared_intrinsics: bool = False,
+            huber_delta: float = 1.0,
+            tolerance_grad: float = 1e-05,
+            tolerance_change: float = 1e-09,
+            patience: int = 5,
+            dist_coeffs_regularization_weight: float = 1.0,
+            use_lbfgs: bool = True,
+            lr: float = 1.0,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, list[BundleAdjustmentHistoryAnnotation]]:
 
-    n_views, n_samples, _ = kps_2d_xy.shape
+        if (
+                not optimize_distortion_coefficients
+                and not optimize_focal_length
+                and not optimize_principal_point
+                and not optimize_rotation
+                and not optimize_translation
+        ):
+            return Ks, dist_coeffs, Rts, kps_3d, []
 
-    kps_3d_opt = kps_3d.clone()
-    kps_3d_opt.requires_grad = True
+        device = Ks.device
 
-    # We lock the first camera in place to restrict the solutions
-    origin_camera_extrinsics = CameraExtrinsicsParameters(
-        batch_size=1,
-        device=device,
-    )
-    origin_camera_extrinsics.Rt = Rts[0].unsqueeze(0)
+        n_views, n_samples, _ = kps_2d_xy.shape
 
-    other_cameras_extrinsics = CameraExtrinsicsParameters(
-        batch_size=n_views - 1,
-        device=device,
-    )
-    other_cameras_extrinsics.Rt = Rts[1:]
+        kps_3d_opt = kps_3d.clone()
+        kps_3d_opt.requires_grad = True
 
-    camera_intrinsics = CameraIntrinsicsParameters(
-        batch_size=n_views,
-        image_size_hw_px=cameras_resolutions_hw,
-        fx_and_fy=False if optimize_focal_length else True,
-        shared_parameters=shared_intrinsics,
-        distortion_model=distortion_model.value,
-        device=device,
-    )
+        # We lock the first camera in place to restrict the solutions
+        origin_camera_extrinsics = CameraExtrinsicsParameters(
+            batch_size=1,
+            device=device,
+        )
+        origin_camera_extrinsics.Rt = Rts[0].unsqueeze(0)
 
-    camera_intrinsics.K = Ks
-    camera_intrinsics.distortion_coefficients = dist_coeffs
+        other_cameras_extrinsics = CameraExtrinsicsParameters(
+            batch_size=n_views - 1,
+            device=device,
+        )
+        other_cameras_extrinsics.Rt = Rts[1:]
 
-    camera_intrinsics.set_optimized_parameters(
-        distortion_coefficients=optimize_distortion_coefficients,
-        focal_length=optimize_focal_length,
-        principal_point=optimize_principal_point,
-    )
+        camera_intrinsics = CameraIntrinsicsParameters(
+            batch_size=n_views,
+            image_size_hw_px=cameras_resolutions_hw,
+            fx_and_fy=False if optimize_focal_length else True,
+            shared_parameters=shared_intrinsics,
+            distortion_model=distortion_model.value,
+            device=device,
+        )
 
-    other_cameras_extrinsics.set_optimized_parameters(
-        rotation=optimize_rotation,
-        translation=optimize_translation,
-    )
+        camera_intrinsics.K = Ks
+        camera_intrinsics.distortion_coefficients = dist_coeffs
 
-    if optimize_distortion_coefficients:
-        assert (
-            distortion_model == CameraDistortionModel.BROWN_CONRADY
-        ), "Only brown_conrady distortion model is supported for now"
+        camera_intrinsics.set_optimized_parameters(
+            distortion_coefficients=optimize_distortion_coefficients,
+            focal_length=optimize_focal_length,
+            principal_point=optimize_principal_point,
+        )
 
-    def opt_closure():
-        optimizer.zero_grad()
+        other_cameras_extrinsics.set_optimized_parameters(
+            rotation=optimize_rotation,
+            translation=optimize_translation,
+        )
 
-        if shared_intrinsics:
-            Ks = camera_intrinsics.K.expand(n_views, -1, -1)
-            dist_coeffs = camera_intrinsics.distortion_coefficients.expand(n_views, -1)
+        if optimize_distortion_coefficients:
+            assert (
+                    distortion_model == CameraDistortionModel.BROWN_CONRADY
+            ), "Only brown_conrady distortion model is supported for now"
+
+        def opt_closure():
+            optimizer.zero_grad()
+
+            if shared_intrinsics:
+                Ks = camera_intrinsics.K.expand(n_views, -1, -1)
+                dist_coeffs = camera_intrinsics.distortion_coefficients.expand(n_views, -1)
+            else:
+                Ks = camera_intrinsics.K.reshape(n_views, 3, 3)
+                dist_coeffs = camera_intrinsics.distortion_coefficients.reshape(n_views, -1)
+
+            Rts = torch.cat(
+                [origin_camera_extrinsics.Rt, other_cameras_extrinsics.Rt], dim=0
+            )
+
+            residuals, _ = compute_reprojection_residuals(
+                kps_3d=kps_3d_opt,
+                kps_2d=kps_2d_xy,
+                Ks=Ks,
+                Rts=Rts,
+                Ds=dist_coeffs,
+                distortion_model=distortion_model.value,
+            )
+
+            residuals_huber = torch.nn.functional.huber_loss(
+                input=residuals,
+                target=torch.zeros_like(residuals),
+                reduction="none",
+                delta=huber_delta,
+            )
+
+            weights = kps_2d_scores.view(n_views, -1)
+
+            valid_mask = residuals_huber.isfinite()
+            residuals_huber = residuals_huber[valid_mask]
+            weights = weights[valid_mask]
+            reprojection_loss = weighted_mean(residuals_huber, weights)
+
+            total_loss = reprojection_loss
+
+            if optimize_distortion_coefficients:
+                dist_coeffs_regularization = (dist_coeffs ** 2).mean()
+                total_loss += dist_coeffs_regularization_weight * dist_coeffs_regularization
+
+            total_loss.backward()
+
+            if torch.isnan(total_loss) or torch.isinf(total_loss):
+                raise ValueError("Loss is NaN or inf")
+
+            return total_loss
+
+        if use_lbfgs:
+            optimizer = torch.optim.LBFGS(
+                camera_intrinsics.optimized_parameters
+                + other_cameras_extrinsics.optimized_parameters
+                + [kps_3d_opt],
+                lr=lr,
+                line_search_fn="strong_wolfe",
+            )
         else:
-            Ks = camera_intrinsics.K.reshape(n_views, 3, 3)
-            dist_coeffs = camera_intrinsics.distortion_coefficients.reshape(n_views, -1)
+            optimizer = torch.optim.AdamW(
+                camera_intrinsics.optimized_parameters
+                + other_cameras_extrinsics.optimized_parameters
+                + [kps_3d_opt],
+                lr=lr,
+            )
 
-        Rts = torch.cat(
+        pbar = tqdm(range(n_iters), desc="Refining camera parameters", leave=False)
+
+        prev_losses = []
+        history_entries = []
+
+        # Capture initial state for history
+        if shared_intrinsics:
+            _init_Ks = camera_intrinsics.K.expand(n_views, -1, -1)
+            _init_dist_coeffs = camera_intrinsics.distortion_coefficients.expand(n_views, -1)
+        else:
+            _init_Ks = camera_intrinsics.K.reshape(n_views, 3, 3)
+            _init_dist_coeffs = camera_intrinsics.distortion_coefficients.reshape(n_views, -1)
+
+        _init_Rts = torch.cat(
             [origin_camera_extrinsics.Rt, other_cameras_extrinsics.Rt], dim=0
         )
 
-        residuals, _ = compute_reprojection_residuals(
-            kps_3d=kps_3d_opt,
-            kps_2d=kps_2d_xy,
-            Ks=Ks,
-            Rts=Rts,
-            Ds=dist_coeffs,
-            distortion_model=distortion_model.value,
+        history_entries.append(BundleAdjustmentHistoryAnnotation(
+            stage_name=self.name,
+            stage_order=self.order,
+            iteration=0,
+            view_ids=view_ids,
+            Ks=_init_Ks.detach().clone().cpu(),
+            dist_coeffs=_init_dist_coeffs.detach().clone().cpu(),
+            Rts=_init_Rts.detach().clone().cpu(),
+            loss=None,
+        ))
+
+        for iter in pbar:
+            loss = optimizer.step(opt_closure)
+            pbar.set_postfix(loss=loss.item())
+
+            if shared_intrinsics:
+                _iter_Ks = camera_intrinsics.K.expand(n_views, -1, -1)
+                _iter_dist_coeffs = camera_intrinsics.distortion_coefficients.expand(n_views, -1)
+            else:
+                _iter_Ks = camera_intrinsics.K.reshape(n_views, 3, 3)
+                _iter_dist_coeffs = camera_intrinsics.distortion_coefficients.reshape(n_views, -1)
+
+            _iter_Rts = torch.cat(
+                [origin_camera_extrinsics.Rt, other_cameras_extrinsics.Rt], dim=0
+            )
+
+            history_entries.append(BundleAdjustmentHistoryAnnotation(
+                stage_name=self.name,
+                stage_order=self.order,
+                iteration=iter + 1,
+                view_ids=view_ids,
+                Ks=_iter_Ks.detach().clone().cpu(),
+                dist_coeffs=_iter_dist_coeffs.detach().clone().cpu(),
+                Rts=_iter_Rts.detach().clone().cpu(),
+                loss=loss.item(),
+            ))
+
+            if optimizer_should_stop(
+                    optimizer,
+                    loss,
+                    prev_losses,
+                    patience=patience,
+                    tolerance_grad=tolerance_grad,
+                    tolerance_change=tolerance_change,
+            ):
+                # Stop early if no improvement can be made
+                break
+
+            prev_losses.append(loss.detach())
+
+        pbar.close()
+
+        Ks_opt = camera_intrinsics.K.detach().expand(n_views, -1, -1).clone()
+        dist_coeffs_opt = (
+            camera_intrinsics.distortion_coefficients.detach().expand(n_views, -1).clone()
         )
-
-        residuals_huber = torch.nn.functional.huber_loss(
-            input=residuals,
-            target=torch.zeros_like(residuals),
-            reduction="none",
-            delta=huber_delta,
+        Rts_opt = (
+            torch.cat([origin_camera_extrinsics.Rt, other_cameras_extrinsics.Rt], dim=0)
+            .detach()
+            .clone()
         )
+        kps_3d_opt = kps_3d_opt.detach().clone()
 
-        weights = kps_2d_scores.view(n_views, -1)
-
-        valid_mask = residuals_huber.isfinite()
-        residuals_huber = residuals_huber[valid_mask]
-        weights = weights[valid_mask]
-        reprojection_loss = weighted_mean(residuals_huber, weights)
-
-        total_loss = reprojection_loss
-
-        if optimize_distortion_coefficients:
-            dist_coeffs_regularization = (dist_coeffs**2).mean()
-            total_loss += dist_coeffs_regularization_weight * dist_coeffs_regularization
-
-        total_loss.backward()
-
-        if torch.isnan(total_loss) or torch.isinf(total_loss):
-            raise ValueError("Loss is NaN or inf")
-
-        return total_loss
-
-    if use_lbfgs:
-        optimizer = torch.optim.LBFGS(
-            camera_intrinsics.optimized_parameters
-            + other_cameras_extrinsics.optimized_parameters
-            + [kps_3d_opt],
-            lr=lr,
-            line_search_fn="strong_wolfe",
+        return (
+            Ks_opt,
+            dist_coeffs_opt,
+            Rts_opt,
+            kps_3d_opt,
+            history_entries,
         )
-    else:
-        optimizer = torch.optim.AdamW(
-            camera_intrinsics.optimized_parameters
-            + other_cameras_extrinsics.optimized_parameters
-            + [kps_3d_opt],
-            lr=lr,
-        )
-
-    pbar = tqdm(range(n_iters), desc="Refining camera parameters", leave=False)
-
-    prev_losses = []
-
-    for iter in pbar:
-        loss = optimizer.step(opt_closure)
-        pbar.set_postfix(loss=loss.item())
-
-        if optimizer_should_stop(
-            optimizer,
-            loss,
-            prev_losses,
-            patience=patience,
-            tolerance_grad=tolerance_grad,
-            tolerance_change=tolerance_change,
-        ):
-            # Stop early if no improvement can be made
-            break
-
-        prev_losses.append(loss.detach())
-
-    Ks_opt = camera_intrinsics.K.detach().expand(n_views, -1, -1).clone()
-    dist_coeffs_opt = (
-        camera_intrinsics.distortion_coefficients.detach().expand(n_views, -1).clone()
-    )
-    Rts_opt = (
-        torch.cat([origin_camera_extrinsics.Rt, other_cameras_extrinsics.Rt], dim=0)
-        .detach()
-        .clone()
-    )
-    kps_3d_opt = kps_3d_opt.detach().clone()
-
-    return (
-        Ks_opt,
-        dist_coeffs_opt,
-        Rts_opt,
-        kps_3d_opt,
-    )

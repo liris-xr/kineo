@@ -167,6 +167,9 @@ class GlobalTimeResamplingStage(PipelineStage[GlobalTimeResamplingRuntimeConfig]
             kps_2d_subject = kps_2d.filter_by_subject_id(subject_id)
             bboxes_2d_subject = bboxes_2d.filter_by_subject_id(subject_id)
 
+            if len(bboxes_2d_subject.annotations) == 0:
+                raise ValueError("No bboxes for subject " + subject_id)
+
             # Here we assume that the keypoints format doesn't for a given subject.
             # In reality, we might have different formats (e.g. body, hand, face),
             # but this isn't implemented yet.

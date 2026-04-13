@@ -18,23 +18,23 @@ from smplx import build_layer
 from smplx.joint_names import SMPLH_JOINT_NAMES, JOINT_NAMES
 
 # Fix to properly load smpl model without errors
-if np.__version__ < "2":
-    np.bool = np.bool_
-    np.int = np.int_
+np.bool = np.bool_
+np.int = np.int_
+np.long = np.int_
+np.object = np.object_
+np.str = np.str_
+
+try:
     np.float = np.float_
-    np.long = np.int_
-    np.complex = np.complex_
-    np.object = np.object_
-    np.str = np.str_
-    np.unicode = np.unicode_
-else:
-    np.bool = np.bool_
-    np.int = np.int_
+except AttributeError:
     np.float = np.float64
-    np.long = np.int_
+try:
+    np.complex = np.complex_
+except AttributeError:
     np.complex = np.complex128
-    np.object = np.object_
-    np.str = np.str_
+try:
+    np.unicode = np.unicode_
+except AttributeError:
     np.unicode = np.str_
 
 @dataclass(frozen=True)

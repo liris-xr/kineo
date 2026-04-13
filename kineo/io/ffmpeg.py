@@ -61,17 +61,13 @@ def extract_audio(
 ) -> tuple[torch.Tensor | None, int | None]:
     audio_metadata = get_audio_stream_info(video_path)
 
-    audio_backends = torchaudio.list_audio_backends()
-
-    if len(audio_backends) == 0:
-        raise ValueError("No audio backend found.")
-
     # No audio stream found
     if audio_metadata is None:
         return None, None
 
     # Extract audio to temporary file
-    output_path = tempfile.mktemp(suffix=".wav")
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
+        output_path = tmp_file.name
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
     extract_audio_cmd = [
@@ -127,7 +123,7 @@ def extract_audio(
     if p.returncode != 0:
         raise Exception("ffmpeg command failed.")
 
-    audio, sample_rate = torchaudio.load(output_path, format="wav")
+    audio, sample_rate = torchaudio.load(output_path)
 
     # Remove temporary file
     os.remove(output_path)

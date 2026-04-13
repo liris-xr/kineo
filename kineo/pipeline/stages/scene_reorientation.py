@@ -14,7 +14,13 @@ from kineo.pipeline.pipeline import ViewInput
 from kineo.pipeline.pipeline import Annotations
 from kineo.annotations.camera_extrinsics import CameraExtrinsicsAnnotations
 from kineo.annotations.keypoints_3d import Keypoints3DAnnotations
+from kineo.annotations.bundle_adjustment_history import (
+    BundleAdjustmentHistoryAnnotation,
+    BundleAdjustmentHistoryAnnotations,
+    BundleAdjustmentHistoryAnnotationsMetadata,
+)
 from kineo.geometry.conversions import OPENCV_WORLD_UP_VECTOR, OPENCV_CAMERA_UP_VECTOR
+from kineo.geometry.transformations import apply_similarity_transform_to_Rt
 import torch
 from dataclasses import dataclass
 
@@ -109,6 +115,36 @@ class SceneReorientationStage(PipelineStage[SceneReorientationRuntimeConfig]):
 
         annotations["keypoints_3d"] = new_keypoints_3d.cpu()
         annotations["camera_extrinsics"] = new_camera_extrinsics.cpu()
+
+        ba_history: BundleAdjustmentHistoryAnnotations | None = annotations.get(
+            "bundle_adjustment_history"
+        )
+        if ba_history is not None:
+            new_history = []
+            for entry in ba_history:
+                Rts = entry.Rts.to(device)
+                # Apply rotation
+                Rts = apply_similarity_transform_to_Rt(
+                    Rts, R, torch.zeros(3, device=device), torch.ones(1, device=device)
+                )
+                # Apply floor translation
+                Rts = apply_similarity_transform_to_Rt(
+                    Rts, torch.eye(3, device=device), t_vector, torch.ones(1, device=device)
+                )
+                new_history.append(BundleAdjustmentHistoryAnnotation(
+                    stage_name=entry.stage_name,
+                    stage_order=entry.stage_order,
+                    iteration=entry.iteration,
+                    view_ids=entry.view_ids,
+                    Ks=entry.Ks,
+                    dist_coeffs=entry.dist_coeffs,
+                    Rts=Rts.cpu(),
+                    loss=entry.loss,
+                ))
+            annotations["bundle_adjustment_history"] = BundleAdjustmentHistoryAnnotations(
+                metadata=BundleAdjustmentHistoryAnnotationsMetadata(),
+                annotations=new_history,
+            )
 
 
 def _compute_floor_position(
