@@ -190,6 +190,13 @@ def export_bvh(
         trans[frame_idx] = annotation.trans.detach().cpu().numpy()
         rots[frame_idx] = annotation.pose[:24].detach().cpu().numpy()
 
+    # --- Prepend rest frame: zero pose (identity rotation), root at origin ---
+    rest_rots = np.zeros((1, 24, 3))   # all axis-angles = 0 → identity
+    rest_trans = np.zeros((1, 3))       # root at origin
+    rots = np.concatenate([rest_rots, rots], axis=0)
+    trans = np.concatenate([rest_trans, trans], axis=0)
+    # -------------------------------------------------------------------------
+
     rots = quat.from_axis_angle(rots)
 
     order = "zyx"
