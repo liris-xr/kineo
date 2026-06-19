@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "kineo"
 version = "0.1.0"
-description = "Kineo: A toolkit for 3D human pose estimation"
+description = "Kineo: Calibration-Free Metric Motion Capture From Sparse RGB Cameras"
 authors = [
     { name = "Charles JAVERLIAT", email = "charles.javerliat@gmail.com" },
 ]
@@ -25,7 +25,7 @@ dependencies = [
     "spacepy",
     "rerun-sdk",
     "cv2-enumerate-cameras",
-    "smplx",
+    "smplx", "google-auth", "google-auth-oauthlib>=1.4.0,<2", "google-api-python-client",
 ]
 
 classifiers = [
@@ -50,20 +50,18 @@ include = ["kineo*"]
 channels = ["conda-forge", "nvidia"]
 platforms = ["linux-64", "win-64"]
 
-[tool.pixi.pypi-options]
-no-build-isolation = ["sam2", "chumpy"]
-
 [tool.pixi.pypi-dependencies]
 kineo = { path = ".", editable = true }
 moge = { git = "https://github.com/microsoft/MoGe.git" }
 
-sam2 = { git = "https://github.com/cjaverliat/sam2.git" }
 torch = { version = "==2.10.*", index = "https://download.pytorch.org/whl/cu128" }
 torchvision = { version = ">=0.22.0", index = "https://download.pytorch.org/whl/cu128" }
 torchaudio = { version = "==2.10.*", index = "https://download.pytorch.org/whl/cu128" }
 onnxruntime-gpu = "*"
 soundfile = "*"
 cv2-enumerate-cameras = "*"
+
+sam2 = { git = "https://github.com/cjaverliat/sam2.git" }
 
 mmpretrain = "*"
 mmengine = "*"
@@ -72,20 +70,23 @@ mmpose = { git = "https://github.com/cjaverliat/mmpose.git" }
 mmdet = { git = "https://github.com/cjaverliat/mmdetection.git" }
 mmdeploy = "*"
 
+[tool.pixi.pypi-options]
+no-build-isolation = ["sam2", "chumpy"]
+
 [tool.pixi.dependencies]
 python = "3.10.*"
 pip = "*"
 hf-transfer = "*"
 huggingface_hub = "*"
 curl = "*"
-unzip = "*"
 git = "*"
+requests = ">=2.34.2,<3"
 
 [tool.pixi.pypi-options.dependency-overrides]
 iopath = ">=0.1.10"
 
 [tool.pixi.feature.dev]
-platforms = ["linux-64"]
+platforms = ["linux-64", "win-64"]
 channels = ["conda-forge"]
 
 [tool.pixi.feature.dev.dependencies]
@@ -95,7 +96,7 @@ pyrefly = "*"
 google-api-python-client = "*"
 
 [tool.pixi.feature.cuda128]
-platforms = ["linux-64"]
+platforms = ["linux-64", "win-64"]
 channels = ["conda-forge", "nvidia"]
 
 [tool.pixi.feature.cuda128.system-requirements]
@@ -130,16 +131,16 @@ _download_efficienttam_cfg = { cmd = "test -f configs/efficienttam/efficienttam_
     "configs/efficienttam/efficienttam_s.yaml",
 ], description = "Download EfficientTAM config" }
 
-_download_efficienttam_weights = { cmd = "bash -lc 'if [ ! -f checkpoints/efficienttam_s.pt ]; then mkdir -p checkpoints && hf download yunyangx/efficient-track-anything efficienttam_s.pt --repo-type model --local-dir checkpoints; fi'", outputs = [
+_download_efficienttam_weights = { cmd = "test -f checkpoints/efficienttam_s.pt || (mkdir -p checkpoints && hf download yunyangx/efficient-track-anything efficienttam_s.pt --repo-type model --local-dir checkpoints)", outputs = [
     "checkpoints/efficienttam_s.pt",
 ], description = "Download EfficientTAM weights" }
 
-_download_moge = { cmd = "bash -lc 'if [ ! -f checkpoints/moge-2-vitl-normal.pt ]; then mkdir -p checkpoints && hf download Ruicheng/moge-2-vitl-normal model.pt --repo-type model --local-dir checkpoints && mv -f checkpoints/model.pt checkpoints/moge-2-vitl-normal.pt; fi'", outputs = [
+_download_moge = { cmd = "test -f checkpoints/moge-2-vitl-normal.pt || (mkdir -p checkpoints && hf download Ruicheng/moge-2-vitl-normal model.pt --repo-type model --local-dir checkpoints && mv checkpoints/model.pt checkpoints/moge-2-vitl-normal.pt)", outputs = [
     "checkpoints/moge-2-vitl-normal.pt",
 ], description = "Download MoGe model" }
 
-_download_yolox = { cmd = "python -c \"from kineo.pipeline.stages.rtmlib.tools.file import download_checkpoint; print(download_checkpoint('https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/yolox_tiny_8xb8-300e_humanart-6f3252f9.zip', progress=True))\"", outputs = [
-    "**/yolox_tiny_8xb8-300e_humanart-6f3252f9.onnx",
+_download_yolox = { cmd = "python -c \"from kineo.pipeline.stages.rtmlib.tools.file import download_checkpoint; print(download_checkpoint('https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/yolox_tiny_8xb8-300e_humanart-6f3252f9.zip', dst_dir='checkpoints/', progress=True))\"", outputs = [
+    "checkpoints/yolox_tiny_8xb8-300e_humanart-6f3252f9.onnx",
 ], description = "Prefetch YOLOX ONNX for rtmlib" }
 
 download-checkpoints = { depends-on = [
@@ -148,9 +149,35 @@ download-checkpoints = { depends-on = [
     "_download_efficienttam_weights",
     "_download_moge",
     "_download_yolox",
-], description = "Download all public checkpoints" }
+    "_download-smpl",
+], description = "Download all checkpoints" }
 
 kineo-offline = { depends-on = ["download-checkpoints"], cmd = "kineo-offline" }
 kineo-online = { depends-on = ["download-checkpoints"], cmd = "kineo-online" }
 
 lock = { cmd = "pixi lock", description = "Refresh pixi lockfiles" }
+
+[tool.pixi.tasks.h36m-download]
+args = ["dataset_dir"]
+cmd = "python scripts/download_h36m_dataset.py {{ dataset_dir }}"
+
+[tool.pixi.tasks.h36m-preprocess]
+args = ["dataset_dir"]
+cmd = "test -f {{ dataset_dir }}/annotations/protocol1/val/ || python scripts/preprocess_h36m_dataset.py {{ dataset_dir }}"
+
+[tool.pixi.tasks.h36m-benchmark]
+args = ["dataset_dir"]
+cmd = "python experiments/h36m_eval.py {{ dataset_dir }} --config-file configs/experiments/benchmarks/h36m_benchmark_nlf_estRt_estK_estD.yaml"
+
+[tool.pixi.tasks.egohumans-download]
+args = ["dataset_dir"]
+cmd = "python scripts/download_egohumans_dataset.py {{ dataset_dir }}"
+
+[tool.pixi.tasks.egohumans-preprocess]
+args = ["dataset_dir"]
+cmd = "python scripts/preprocess_egohumans_dataset.py {{ dataset_dir }}"
+
+[tool.pixi.tasks.egohumans-benchmark]
+depends-on = ["download-checkpoints"]
+args = ["dataset_dir"]
+cmd = "python experiments/egohumans_eval.py {{ dataset_dir }} --config-file configs/experiments/benchmarks/egohumans_benchmark_nlf_estRt_estK_estD.yaml"
