@@ -43,7 +43,7 @@ You will be prompted to provide SMPL and SMPL-X credentials.
 In offline mode, Kineo uses the full video sequence to produce high-accuracy calibration of camera parameters and 3D motion reconstructions. This mode can be used on any video by running the following command:
 
 ```sh
-pixi run kineo-offline -- --sequence-name stone_quarry --batch-size 16 --target-fps 50 --shared-intrinsics ./assets/stone_quarry/
+pixi run kineo-offline --sequence-name stone_quarry --batch-size 16 --target-fps 50 --shared-intrinsics ./assets/stone_quarry/
 ```
 
 A window will appear prompting you to select the person to track. Once selected, you can use the slider to verify that the track remains accurate throughout the video. When you press Continue, a new window will open for the next view, and this process repeats until the person has been selected in all views.
