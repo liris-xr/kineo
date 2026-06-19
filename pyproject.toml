@@ -166,8 +166,12 @@ args = ["dataset_dir"]
 cmd = "test -f {{ dataset_dir }}/annotations/protocol1/val/ || python scripts/preprocess_h36m_dataset.py {{ dataset_dir }}"
 
 [tool.pixi.tasks.h36m-benchmark]
-args = ["dataset_dir"]
-cmd = "python experiments/h36m_eval.py {{ dataset_dir }} --config-file configs/experiments/benchmarks/h36m_benchmark_nlf_estRt_estK_estD.yaml"
+depends-on = ["download-checkpoints"]
+args = [
+    { "arg" = "dataset_dir" },
+    { "arg" = "config_file", "default" = "configs/experiments/benchmarks/h36m_benchmark_nlf_estRt_estK_estD.yaml" },
+]
+cmd = "python experiments/h36m_eval.py {{ dataset_dir }} --config-file {{config_file}}"
 
 [tool.pixi.tasks.egohumans-download]
 args = ["dataset_dir"]
@@ -179,5 +183,8 @@ cmd = "python scripts/preprocess_egohumans_dataset.py {{ dataset_dir }}"
 
 [tool.pixi.tasks.egohumans-benchmark]
 depends-on = ["download-checkpoints"]
-args = ["dataset_dir"]
-cmd = "python experiments/egohumans_eval.py {{ dataset_dir }} --config-file configs/experiments/benchmarks/egohumans_benchmark_nlf_estRt_estK_estD.yaml"
+args = [
+    { "arg" = "dataset_dir" },
+    { "arg" = "config_file", "default" = "configs/experiments/benchmarks/egohumans_benchmark_nlf_estRt_estK_estD.yaml" },
+]
+cmd = "python experiments/egohumans_eval.py {{ dataset_dir }} --config-file {{config_file}}"
