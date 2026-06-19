@@ -120,6 +120,8 @@ features = ["dev", "cuda128"]
 solve-group = "default"
 
 [tool.pixi.tasks]
+_download-smpl = { cmd = "test -f body_models/smpl/SMPL_NEUTRAL.pkl || python scripts/download_smpl.py" }
+
 _download_nlf = { cmd = "test -f checkpoints/nlf_l_multi_0.3.2.torchscript || (mkdir -p checkpoints && curl -L https://github.com/isarandi/nlf/releases/download/v0.3.2/nlf_l_multi_0.3.2.torchscript -o checkpoints/nlf_l_multi_0.3.2.torchscript)", outputs = [
     "checkpoints/nlf_l_multi_0.3.2.torchscript",
 ], description = "Download NLF TorchScript model" }
