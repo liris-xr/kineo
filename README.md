@@ -19,28 +19,11 @@ Kineo is a calibration-free metric motion capture system that reconstructs 3D mo
 
 ## ⚡Quick Install
 
-Kineo requires `python>=3.10` and `torch>=2.6.0` and was tested with CUDA 12.x:
+Kineo uses Pixi for environment management. Install pixi [here](https://pixi.prefix.dev/latest/installation/).
 
-### Windows
-
+Once Pixi is available, install the environment with:
 ```sh
-conda create -n kineo python=3.10
-pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu126
-git clone https://github.com/liris-xr/kineo.git && cd kineo
-set SAM2_BUILD_ALLOW_ERRORS=0
-set SAM2_BUILD_CUDA=1
-pip install --no-build-isolation -v .
-```
-
-### Linux
-
-```sh
-conda create -n kineo python=3.10
-pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu126
-git clone https://github.com/liris-xr/kineo.git && cd kineo
-export SAM2_BUILD_ALLOW_ERRORS=0
-export SAM2_BUILD_CUDA=1
-pip install --no-build-isolation -v .
+pixi install
 ```
 
 ## 🚀 How to use
@@ -49,36 +32,18 @@ Kineo provides two processing modes: offline and online. The offline mode is the
 
 ### Prerequisites
 
-To run Kineo's demo, you will need to download:
-
-- SMPL-X body model from [here](https://smpl-x.is.tue.mpg.de/)
-- NLF model from [here](https://github.com/isarandi/nlf/releases/tag/v0.3.2)
-- EfficientTAM model from [here](https://huggingface.co/yunyangx/efficient-track-anything/tree/main)
-
-Your directory structure should look like:
+Download the required model checkpoints:
+```sh
+pixi run download-checkpoints
 ```
-checkpoints/
-├── nlf_l_multi_0.3.2.torchscript
-├── efficienttam_s.pt
-body_models/
-├── smplx/
-│   ├── SMPLX_NEUTRAL.npz
-│   ├── SMPLX_NEUTRAL.pkl
-│   └── J_regressor_55.pt
-```
+You will be prompted to provide SMPL and SMPL-X credentials.
 
 ### Offline
 
 In offline mode, Kineo uses the full video sequence to produce high-accuracy calibration of camera parameters and 3D motion reconstructions. This mode can be used on any video by running the following command:
 
 ```sh
-kineo-offline --sequence-name stone_quarry --batch-size 16 --target-fps 50 --shared-intrinsics \
-./assets/stone_quarry_1.mp4 \
-./assets/stone_quarry_2.mp4 \
-./assets/stone_quarry_3.mp4 \
-./assets/stone_quarry_4.mp4 \
-./assets/stone_quarry_5.mp4 \
-./assets/stone_quarry_6.mp4
+pixi run kineo-offline -- --sequence-name stone_quarry --batch-size 16 --target-fps 50 --shared-intrinsics ./assets/stone_quarry/
 ```
 
 A window will appear prompting you to select the person to track. Once selected, you can use the slider to verify that the track remains accurate throughout the video. When you press Continue, a new window will open for the next view, and this process repeats until the person has been selected in all views.
@@ -108,14 +73,28 @@ The pipeline will output results in the `outputs/infer_nlf_single_person_sam2/of
 In online mode, Kineo first performs a short calibration sequence to estimate the camera parameters. After this initial step, the video streams are processed in real time to produce the 3D output. By default, the program uses all available webcams.
 
 ```sh
-kineo-online
+pixi run kineo-online
 ```
 
 ## 📊 Evaluation
 
 Kineo sets a new state-of-the-art on EgoHumans and Human3.6M, reducing camera translation error by ~83–85%, camera angular error by ~86–92%, and world mean-per-joint error (W-MPJPE) by ~83–91% compared to prior methods, while efficiently handling multi-view sequences.
 
-To reproduce the results presented in the paper, please refer to the [evaluation](./EVALUATION.md) instructions.
+To reproduce our results, download, preprocess then benchmark on the datasets using the provided commands:
+```sh
+# For H3.65M
+pixi run h36m-download <path-to-h36m-dataset>
+pixi run h36m-preprocess <path-to-h36m-dataset>
+pixi run h36m-benchmark <path-to-h36m-dataset> [path-to-config.yaml]
+
+# For EgoHumans
+pixi run egohumans-download <path-to-egohumans-dataset>
+pixi run egohumans-preprocess <path-to-egohumans-dataset>
+pixi run egohumans-benchmark <path-to-egohumans-dataset> [path-to-config.yaml]
+```
+
+If no `path-to-config.yaml` is not given, uses `configs/experiments/benchmarks/*_benchmark_nlf_estRt_estK_estD.yaml` by default.
+All configurations used in the paper are available in the `configs` directory.
 
 ## 🤝 Contributing
 

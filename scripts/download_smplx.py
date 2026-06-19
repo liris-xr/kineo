@@ -1,6 +1,6 @@
-"""Download the SMPL neutral body model.
+"""Download the SMPLX neutral body model.
 
-Requires a free account at https://smpl.is.tue.mpg.de/register.php
+Requires a free account at https://smplx.is.tue.mpg.de/register.php
 """
 import getpass
 import os
@@ -10,12 +10,14 @@ import urllib.parse
 import zipfile
 from tqdm import tqdm
 
-DOWNLOAD_URL = "https://download.is.tue.mpg.de/download.php?domain=smpl&sfile=SMPL_python_v.1.1.0.zip&resume=1"
-PKL_IN_ZIP = "SMPL_python_v.1.1.0/smpl/models/basicmodel_neutral_lbs_10_207_0_v1.1.0.pkl"
+DOWNLOAD_URL = "https://download.is.tue.mpg.de/download.php?domain=smplx&sfile=models_smplx_v1_1.zip&resume=1"
+PKL_IN_ZIP = "models/smplx/SMPLX_NEUTRAL.pkl"
+NPZ_IN_ZIP = "models/smplx/SMPLX_NEUTRAL.npz"
 
-DEST_DIR = os.path.join("body_models", "smpl")
-DEST_PKL = os.path.join(DEST_DIR, "SMPL_NEUTRAL.pkl")
-ZIP_PATH = os.path.join(DEST_DIR, "SMPL_python_v.1.1.0.zip")
+DEST_DIR = os.path.join("body_models", "smplx")
+DEST_PKL = os.path.join(DEST_DIR, "SMPLX_NEUTRAL.pkl")
+DEST_NPZ = os.path.join(DEST_DIR, "SMPLX_NEUTRAL.npz")
+ZIP_PATH = os.path.join(DEST_DIR, "models_smplx_v1_1.zip")
 
 
 def main():
@@ -25,11 +27,11 @@ def main():
         print("ERROR: pip install requests")
         sys.exit(1)
 
-    if os.path.exists(DEST_PKL):
-        print(f"{DEST_PKL} already exists, skipping.")
+    if os.path.exists(DEST_PKL) and os.path.exists(DEST_NPZ):
+        print(f"{DEST_PKL} and {DEST_NPZ} already exist, skipping.")
         return
 
-    print("SMPL — register at https://smpl.is.tue.mpg.de/register.php")
+    print("SMPL-X — register at https://smplx.is.tue.mpg.de/register.php")
     username = urllib.parse.quote(input("  Email: ").strip(), safe="")
     password = urllib.parse.quote(getpass.getpass("  Password: "), safe="")
 
@@ -92,12 +94,15 @@ def main():
         with zipfile.ZipFile(ZIP_PATH, "r") as zf:
             with zf.open(PKL_IN_ZIP) as src, open(DEST_PKL, "wb") as dst:
                 shutil.copyfileobj(src, dst)
+                print(f"  Saved to {DEST_PKL}")
+            with zf.open(NPZ_IN_ZIP) as src, open(DEST_NPZ, "wb") as dst:
+                shutil.copyfileobj(src, dst)
+                print(f"  Saved to {DEST_NPZ}")
     except KeyError as e:
         os.remove(ZIP_PATH)
         print(f"  ERROR: Expected file not found in ZIP: {e}")
         sys.exit(1)
     os.remove(ZIP_PATH)
-    print(f"  Saved to {DEST_PKL}")
 
 
 if __name__ == "__main__":

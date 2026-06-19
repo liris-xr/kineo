@@ -122,6 +122,7 @@ solve-group = "default"
 
 [tool.pixi.tasks]
 _download-smpl = { cmd = "test -f body_models/smpl/SMPL_NEUTRAL.pkl || python scripts/download_smpl.py" }
+_download-smplx = { cmd = "(test -f body_models/smplx/SMPLX_NEUTRAL.pkl && test -f body_models/smplx/SMPLX_NEUTRAL.npz) || python scripts/download_smplx.py" }
 
 _download_nlf = { cmd = "test -f checkpoints/nlf_l_multi_0.3.2.torchscript || (mkdir -p checkpoints && curl -L https://github.com/isarandi/nlf/releases/download/v0.3.2/nlf_l_multi_0.3.2.torchscript -o checkpoints/nlf_l_multi_0.3.2.torchscript)", outputs = [
     "checkpoints/nlf_l_multi_0.3.2.torchscript",
@@ -150,6 +151,7 @@ download-checkpoints = { depends-on = [
     "_download_moge",
     "_download_yolox",
     "_download-smpl",
+    "_download-smplx"
 ], description = "Download all checkpoints" }
 
 kineo-offline = { depends-on = ["download-checkpoints"], cmd = "kineo-offline" }
