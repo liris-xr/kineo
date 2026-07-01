@@ -366,6 +366,11 @@ def _create_uniform_timestamp_grid(
     max_timestamp = min([timestamps.max() for timestamps in view_frame_timestamps])
     duration = max_timestamp - min_timestamp
     n_frames = int(duration * fps)
+    if n_frames < 1:
+        raise ValueError(
+            f"Degenerate time overlap: duration={float(duration):.4f}s across views "
+            f"at {fps} Hz (a view likely has <2 frames). Cannot build a uniform grid."
+        )
     return torch.arange(
         min_timestamp, max_timestamp, duration / n_frames, device=device
     )
