@@ -6,8 +6,6 @@ environments:
     - url: https://conda.anaconda.org/nvidia/
     indexes:
     - https://pypi.org/simple
-    options:
-      pypi-prerelease-mode: if-necessary-or-explicit
     packages:
       linux-64:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/_openmp_mutex-4.5-20_gnu.conda
@@ -231,7 +229,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/bf/d3/1bbf2fc3ffcc4b829ade554b574af68cec898c9b5ad6420a923c75a073d3/orjson-3.11.8-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/40/a8/4dac1f8f8235e5d25b9955d02ff6f29396191d4e665d71122c3722ca83c5/pandas-2.3.3-cp310-cp310-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/b5/42/bbcb6051030e1e421d103ce7a8ecadf837aa2f39b8f82ef1a8d37c3d4ebc/pillow-12.2.0-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
-      - pypi: git+https://github.com/EasternJournalist/pipeline.git#866f059d2a05cde05e4a52211ec5051fd5f276d6
+      - pypi: git+https://github.com/EasternJournalist/pipeline.git?rev=866f059d2a05cde05e4a52211ec5051fd5f276d6#866f059d2a05cde05e4a52211ec5051fd5f276d6
       - pypi: https://files.pythonhosted.org/packages/75/a6/a0a304dc33b49145b21f4808d763822111e67d1c3a32b524a1baf947b6e1/platformdirs-4.9.6-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/4b/a6/38c8e2f318bf67d338f4d629e93b0b4b9af331f455f0390ea8ce4a099b26/portalocker-3.2.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/f8/82/c40b68001dbec8a3faa4c08cd8c200798ac732d2854537c5449dc859f55a/pyarrow-23.0.1-cp310-cp310-manylinux_2_28_x86_64.whl
@@ -247,7 +245,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/37/21/6519a5e4b4a885d2b08213a915250f81432200677273efc909c21fcb60f0/rerun_sdk-0.31.2-cp310-abi3-manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/55/bd/dd56edc2680df7658c7bdeeb58270ab35dfcdc0e2670899ce9771604b436/roma-1.5.6-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/2e/a3/0f0b7d78e2f1eb9e8e1afbff1d2bff8d60144aee17aca51c065b516743dd/safehttpx-0.1.7-py3-none-any.whl
-      - pypi: git+https://github.com/cjaverliat/sam2.git#9f6fa2401b6a3f58376b75a327ab15616b82038d
+      - pypi: git+https://github.com/cjaverliat/sam2.git#6f43c2eb3db1da4811a8165f64ac23616f16dd36
       - pypi: https://files.pythonhosted.org/packages/8e/6d/41991e503e51fc1134502694c5fa7a1671501a17ffa12716a4a9151af3df/scipy-1.15.3-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/6a/23/8146aad7d88f4fcb3a6218f41a60f6c2d4e3a72de72da1825dc7c8f7877c/semantic_version-2.10.0-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/50/8a/0ab1f7433a2a85d9e9aea5b1fbb333f3b09b309e7817309250b4b7b2cc7a/shapely-2.1.2-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
@@ -266,7 +264,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/8c/f7/f1c9d3424ab199ac53c2da567b859bcddbb9c9e7154805119f8bd95ec36f/triton-3.6.0-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/dc/9b/47798a6c91d8bdb567fe2698fe81e0c6b7cb7ef4d13da4114b41d239f65d/typing_inspection-0.4.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/b0/70/d460bd685a170790ec89317e9bd33047988e4bce507b831f5db771e142de/tzdata-2026.1-py2.py3-none-any.whl
-      - pypi: git+https://github.com/EasternJournalist/utils3d.git#3fab839f0be9931dac7c8488eb0e1600c236e183
+      - pypi: git+https://github.com/EasternJournalist/utils3d.git?rev=3fab839f0be9931dac7c8488eb0e1600c236e183#3fab839f0be9931dac7c8488eb0e1600c236e183
       - pypi: https://files.pythonhosted.org/packages/b7/23/a5bbd9600dd607411fa644c06ff4951bec3a4d82c4b852374024359c19c0/uvicorn-0.44.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/71/0b/c67774d4101fd2c79bb2d0ef9246518222cfd78fde1ff16e38cd1f600026/xtcocotools-1.14.3-cp310-cp310-manylinux1_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/38/4f/fe9a4d472aa867878ce3bb7efb16654c5d63672b86dc0e6e953a67018433/yacs-0.1.8-py3-none-any.whl
@@ -453,7 +451,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/ae/d8/b64600f9083c7f151ad39717a5877fccbeb0ef6d7efcb55f971ce00b6bee/orjson-3.11.9-cp310-cp310-win_amd64.whl
       - pypi: https://files.pythonhosted.org/packages/85/72/530900610650f54a35a19476eca5104f38555afccda1aa11a92ee14cb21d/pandas-2.3.3-cp310-cp310-win_amd64.whl
       - pypi: https://files.pythonhosted.org/packages/e7/34/fc4cb5204896465842767b96d250c08410f01f2f28afc43b257de842eed5/pillow-12.2.0-cp310-cp310-win_amd64.whl
-      - pypi: git+https://github.com/EasternJournalist/pipeline.git#866f059d2a05cde05e4a52211ec5051fd5f276d6
+      - pypi: git+https://github.com/EasternJournalist/pipeline.git?rev=866f059d2a05cde05e4a52211ec5051fd5f276d6#866f059d2a05cde05e4a52211ec5051fd5f276d6
       - pypi: https://files.pythonhosted.org/packages/81/e6/cd9575ac904136b3cbf7aa7ee819ef86eedb7274e46f230e94ea4342e729/platformdirs-4.10.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/4b/a6/38c8e2f318bf67d338f4d629e93b0b4b9af331f455f0390ea8ce4a099b26/portalocker-3.2.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/b4/90/e2159492b5426be0c1fef7acba807a03511f97c5f86b3caeda6ad92351a7/psutil-7.2.2-cp37-abi3-win_amd64.whl
@@ -473,7 +471,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/14/a5/0cac294d16aff6c9a2f183f838428a0380b4d2fd9e053bb37b3041999ad5/rerun_sdk-0.33.0-cp310-abi3-win_amd64.whl
       - pypi: https://files.pythonhosted.org/packages/55/bd/dd56edc2680df7658c7bdeeb58270ab35dfcdc0e2670899ce9771604b436/roma-1.5.6-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/2e/a3/0f0b7d78e2f1eb9e8e1afbff1d2bff8d60144aee17aca51c065b516743dd/safehttpx-0.1.7-py3-none-any.whl
-      - pypi: git+https://github.com/cjaverliat/sam2.git#9f6fa2401b6a3f58376b75a327ab15616b82038d
+      - pypi: git+https://github.com/cjaverliat/sam2.git#6f43c2eb3db1da4811a8165f64ac23616f16dd36
       - pypi: https://files.pythonhosted.org/packages/d1/84/55bc4881973d3f79b479a5a2e2df61c8c9a04fcb986a213ac9c02cfb659b/scipy-1.15.3-cp310-cp310-win_amd64.whl
       - pypi: https://files.pythonhosted.org/packages/6a/23/8146aad7d88f4fcb3a6218f41a60f6c2d4e3a72de72da1825dc7c8f7877c/semantic_version-2.10.0-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/e1/89/6db795b8dd3919851856bd2ddd13ce434a748072f6fdee42ff30cbd3afa3/shapely-2.1.2-cp310-cp310-win_amd64.whl
@@ -491,7 +489,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/05/98/716a473cfb24750858ddd5d14e6527539dd206583a46408d08eeb2844a75/trimesh-4.12.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/dc/9b/47798a6c91d8bdb567fe2698fe81e0c6b7cb7ef4d13da4114b41d239f65d/typing_inspection-0.4.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/ce/e4/dccd7f47c4b64213ac01ef921a1337ee6e30e8c6466046018326977efd95/tzdata-2026.2-py2.py3-none-any.whl
-      - pypi: git+https://github.com/EasternJournalist/utils3d.git#3fab839f0be9931dac7c8488eb0e1600c236e183
+      - pypi: git+https://github.com/EasternJournalist/utils3d.git?rev=3fab839f0be9931dac7c8488eb0e1600c236e183#3fab839f0be9931dac7c8488eb0e1600c236e183
       - pypi: https://files.pythonhosted.org/packages/88/fa/e1388bbcf24ef3274f45c0c1c7b501fd14971037c1b6ee23610553307497/uvicorn-0.49.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/fd/05/84c3863331b1532748d9e82996e6457e05373e3668498811a93deab7c630/xtcocotools-1.14.3-cp310-cp310-win_amd64.whl
       - pypi: https://files.pythonhosted.org/packages/38/4f/fe9a4d472aa867878ce3bb7efb16654c5d63672b86dc0e6e953a67018433/yacs-0.1.8-py3-none-any.whl
@@ -504,8 +502,6 @@ environments:
     - url: https://conda.anaconda.org/nvidia/
     indexes:
     - https://pypi.org/simple
-    options:
-      pypi-prerelease-mode: if-necessary-or-explicit
     packages:
       linux-64:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/_openmp_mutex-4.5-20_gnu.conda
@@ -735,7 +731,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/bf/d3/1bbf2fc3ffcc4b829ade554b574af68cec898c9b5ad6420a923c75a073d3/orjson-3.11.8-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/40/a8/4dac1f8f8235e5d25b9955d02ff6f29396191d4e665d71122c3722ca83c5/pandas-2.3.3-cp310-cp310-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/b5/42/bbcb6051030e1e421d103ce7a8ecadf837aa2f39b8f82ef1a8d37c3d4ebc/pillow-12.2.0-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
-      - pypi: git+https://github.com/EasternJournalist/pipeline.git#866f059d2a05cde05e4a52211ec5051fd5f276d6
+      - pypi: git+https://github.com/EasternJournalist/pipeline.git?rev=866f059d2a05cde05e4a52211ec5051fd5f276d6#866f059d2a05cde05e4a52211ec5051fd5f276d6
       - pypi: https://files.pythonhosted.org/packages/75/a6/a0a304dc33b49145b21f4808d763822111e67d1c3a32b524a1baf947b6e1/platformdirs-4.9.6-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/4b/a6/38c8e2f318bf67d338f4d629e93b0b4b9af331f455f0390ea8ce4a099b26/portalocker-3.2.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/f8/82/c40b68001dbec8a3faa4c08cd8c200798ac732d2854537c5449dc859f55a/pyarrow-23.0.1-cp310-cp310-manylinux_2_28_x86_64.whl
@@ -752,7 +748,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/37/21/6519a5e4b4a885d2b08213a915250f81432200677273efc909c21fcb60f0/rerun_sdk-0.31.2-cp310-abi3-manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/55/bd/dd56edc2680df7658c7bdeeb58270ab35dfcdc0e2670899ce9771604b436/roma-1.5.6-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/2e/a3/0f0b7d78e2f1eb9e8e1afbff1d2bff8d60144aee17aca51c065b516743dd/safehttpx-0.1.7-py3-none-any.whl
-      - pypi: git+https://github.com/cjaverliat/sam2.git#9f6fa2401b6a3f58376b75a327ab15616b82038d
+      - pypi: git+https://github.com/cjaverliat/sam2.git#6f43c2eb3db1da4811a8165f64ac23616f16dd36
       - pypi: https://files.pythonhosted.org/packages/8e/6d/41991e503e51fc1134502694c5fa7a1671501a17ffa12716a4a9151af3df/scipy-1.15.3-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/6a/23/8146aad7d88f4fcb3a6218f41a60f6c2d4e3a72de72da1825dc7c8f7877c/semantic_version-2.10.0-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/50/8a/0ab1f7433a2a85d9e9aea5b1fbb333f3b09b309e7817309250b4b7b2cc7a/shapely-2.1.2-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
@@ -771,7 +767,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/8c/f7/f1c9d3424ab199ac53c2da567b859bcddbb9c9e7154805119f8bd95ec36f/triton-3.6.0-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/dc/9b/47798a6c91d8bdb567fe2698fe81e0c6b7cb7ef4d13da4114b41d239f65d/typing_inspection-0.4.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/b0/70/d460bd685a170790ec89317e9bd33047988e4bce507b831f5db771e142de/tzdata-2026.1-py2.py3-none-any.whl
-      - pypi: git+https://github.com/EasternJournalist/utils3d.git#3fab839f0be9931dac7c8488eb0e1600c236e183
+      - pypi: git+https://github.com/EasternJournalist/utils3d.git?rev=3fab839f0be9931dac7c8488eb0e1600c236e183#3fab839f0be9931dac7c8488eb0e1600c236e183
       - pypi: https://files.pythonhosted.org/packages/b7/23/a5bbd9600dd607411fa644c06ff4951bec3a4d82c4b852374024359c19c0/uvicorn-0.44.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/71/0b/c67774d4101fd2c79bb2d0ef9246518222cfd78fde1ff16e38cd1f600026/xtcocotools-1.14.3-cp310-cp310-manylinux1_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/38/4f/fe9a4d472aa867878ce3bb7efb16654c5d63672b86dc0e6e953a67018433/yacs-0.1.8-py3-none-any.whl
@@ -963,7 +959,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/ae/d8/b64600f9083c7f151ad39717a5877fccbeb0ef6d7efcb55f971ce00b6bee/orjson-3.11.9-cp310-cp310-win_amd64.whl
       - pypi: https://files.pythonhosted.org/packages/85/72/530900610650f54a35a19476eca5104f38555afccda1aa11a92ee14cb21d/pandas-2.3.3-cp310-cp310-win_amd64.whl
       - pypi: https://files.pythonhosted.org/packages/e7/34/fc4cb5204896465842767b96d250c08410f01f2f28afc43b257de842eed5/pillow-12.2.0-cp310-cp310-win_amd64.whl
-      - pypi: git+https://github.com/EasternJournalist/pipeline.git#866f059d2a05cde05e4a52211ec5051fd5f276d6
+      - pypi: git+https://github.com/EasternJournalist/pipeline.git?rev=866f059d2a05cde05e4a52211ec5051fd5f276d6#866f059d2a05cde05e4a52211ec5051fd5f276d6
       - pypi: https://files.pythonhosted.org/packages/81/e6/cd9575ac904136b3cbf7aa7ee819ef86eedb7274e46f230e94ea4342e729/platformdirs-4.10.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/4b/a6/38c8e2f318bf67d338f4d629e93b0b4b9af331f455f0390ea8ce4a099b26/portalocker-3.2.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/b4/90/e2159492b5426be0c1fef7acba807a03511f97c5f86b3caeda6ad92351a7/psutil-7.2.2-cp37-abi3-win_amd64.whl
@@ -984,7 +980,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/14/a5/0cac294d16aff6c9a2f183f838428a0380b4d2fd9e053bb37b3041999ad5/rerun_sdk-0.33.0-cp310-abi3-win_amd64.whl
       - pypi: https://files.pythonhosted.org/packages/55/bd/dd56edc2680df7658c7bdeeb58270ab35dfcdc0e2670899ce9771604b436/roma-1.5.6-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/2e/a3/0f0b7d78e2f1eb9e8e1afbff1d2bff8d60144aee17aca51c065b516743dd/safehttpx-0.1.7-py3-none-any.whl
-      - pypi: git+https://github.com/cjaverliat/sam2.git#9f6fa2401b6a3f58376b75a327ab15616b82038d
+      - pypi: git+https://github.com/cjaverliat/sam2.git#6f43c2eb3db1da4811a8165f64ac23616f16dd36
       - pypi: https://files.pythonhosted.org/packages/d1/84/55bc4881973d3f79b479a5a2e2df61c8c9a04fcb986a213ac9c02cfb659b/scipy-1.15.3-cp310-cp310-win_amd64.whl
       - pypi: https://files.pythonhosted.org/packages/6a/23/8146aad7d88f4fcb3a6218f41a60f6c2d4e3a72de72da1825dc7c8f7877c/semantic_version-2.10.0-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/e1/89/6db795b8dd3919851856bd2ddd13ce434a748072f6fdee42ff30cbd3afa3/shapely-2.1.2-cp310-cp310-win_amd64.whl
@@ -1002,7 +998,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/05/98/716a473cfb24750858ddd5d14e6527539dd206583a46408d08eeb2844a75/trimesh-4.12.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/dc/9b/47798a6c91d8bdb567fe2698fe81e0c6b7cb7ef4d13da4114b41d239f65d/typing_inspection-0.4.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/ce/e4/dccd7f47c4b64213ac01ef921a1337ee6e30e8c6466046018326977efd95/tzdata-2026.2-py2.py3-none-any.whl
-      - pypi: git+https://github.com/EasternJournalist/utils3d.git#3fab839f0be9931dac7c8488eb0e1600c236e183
+      - pypi: git+https://github.com/EasternJournalist/utils3d.git?rev=3fab839f0be9931dac7c8488eb0e1600c236e183#3fab839f0be9931dac7c8488eb0e1600c236e183
       - pypi: https://files.pythonhosted.org/packages/88/fa/e1388bbcf24ef3274f45c0c1c7b501fd14971037c1b6ee23610553307497/uvicorn-0.49.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/fd/05/84c3863331b1532748d9e82996e6457e05373e3668498811a93deab7c630/xtcocotools-1.14.3-cp310-cp310-win_amd64.whl
       - pypi: https://files.pythonhosted.org/packages/38/4f/fe9a4d472aa867878ce3bb7efb16654c5d63672b86dc0e6e953a67018433/yacs-0.1.8-py3-none-any.whl
@@ -3165,6 +3161,7 @@ packages:
   - pyrefly ; extra == 'dev'
   - google-api-python-client ; extra == 'dev'
   requires_python: '>=3.10'
+  editable: true
 - pypi: https://files.pythonhosted.org/packages/75/2b/3f641dfcbe72e222175d626bacf2f72c3b34312afec949dd1c50afa400f5/kiwisolver-1.5.0-cp310-cp310-win_amd64.whl
   name: kiwisolver
   version: 1.5.0
@@ -4867,7 +4864,7 @@ packages:
   - pkg:pypi/pip?source=hash-mapping
   size: 1203173
   timestamp: 1780262795392
-- pypi: git+https://github.com/EasternJournalist/pipeline.git#866f059d2a05cde05e4a52211ec5051fd5f276d6
+- pypi: git+https://github.com/EasternJournalist/pipeline.git?rev=866f059d2a05cde05e4a52211ec5051fd5f276d6#866f059d2a05cde05e4a52211ec5051fd5f276d6
   name: pipeline
   version: 1.0.0
   requires_python: '>=3.8'
@@ -5671,21 +5668,39 @@ packages:
   - httpx
   - pytest ; extra == 'dev'
   requires_python: '>3.9'
-- pypi: git+https://github.com/cjaverliat/sam2.git#9f6fa2401b6a3f58376b75a327ab15616b82038d
+- pypi: git+https://github.com/cjaverliat/sam2.git#6f43c2eb3db1da4811a8165f64ac23616f16dd36
   name: sam2
-  version: 1.0.3
+  version: 1.2.0
   requires_dist:
-  - torch>=2.5.1
-  - torchvision>=0.20.1
   - numpy>=1.24.4
   - tqdm>=4.66.1
   - hydra-core>=1.3.2
   - iopath>=0.1.10
   - pillow>=9.4.0
+  - opencv-python>=4.7.0
+  - torch>=2.5.1
+  - torchvision>=0.20.1
   - matplotlib>=3.9.1 ; extra == 'notebooks'
   - jupyter>=1.0.0 ; extra == 'notebooks'
-  - opencv-python>=4.7.0 ; extra == 'notebooks'
   - eva-decord>=0.6.1 ; extra == 'notebooks'
+  - onnx>=1.17.0 ; extra == 'onnx'
+  - onnxscript>=0.2.0 ; extra == 'onnx'
+  - onnxruntime>=1.17 ; extra == 'onnx'
+  - onnxconverter-common>=1.14.0 ; extra == 'onnx'
+  - onnx>=1.17.0 ; extra == 'onnx-gpu-cu12'
+  - onnxscript>=0.2.0 ; extra == 'onnx-gpu-cu12'
+  - onnxruntime-gpu>=1.20,<1.23 ; extra == 'onnx-gpu-cu12'
+  - onnx>=1.17.0 ; extra == 'onnx-tensorrt-cu12'
+  - onnxscript>=0.2.0 ; extra == 'onnx-tensorrt-cu12'
+  - onnxruntime-gpu>=1.20,<1.23 ; extra == 'onnx-tensorrt-cu12'
+  - tensorrt-cu12>=10.0.0,<11 ; extra == 'onnx-tensorrt-cu12'
+  - onnx>=1.17.0 ; extra == 'onnx-gpu-cu13'
+  - onnxscript>=0.2.0 ; extra == 'onnx-gpu-cu13'
+  - onnxruntime-gpu>=1.23 ; extra == 'onnx-gpu-cu13'
+  - onnx>=1.17.0 ; extra == 'onnx-tensorrt-cu13'
+  - onnxscript>=0.2.0 ; extra == 'onnx-tensorrt-cu13'
+  - onnxruntime-gpu>=1.23 ; extra == 'onnx-tensorrt-cu13'
+  - tensorrt-cu13>=10.0.0,<11 ; extra == 'onnx-tensorrt-cu13'
   - flask>=3.0.3 ; extra == 'interactive-demo'
   - flask-cors>=5.0.0 ; extra == 'interactive-demo'
   - av>=13.0.0 ; extra == 'interactive-demo'
@@ -5704,7 +5719,6 @@ packages:
   - tensorboard>=2.17.0 ; extra == 'dev'
   - pycocotools>=2.0.8 ; extra == 'dev'
   - tensordict>=0.6.0 ; extra == 'dev'
-  - opencv-python>=4.7.0 ; extra == 'dev'
   - submitit>=1.5.1 ; extra == 'dev'
   requires_python: '>=3.10.0'
 - pypi: https://files.pythonhosted.org/packages/8e/6d/41991e503e51fc1134502694c5fa7a1671501a17ffa12716a4a9151af3df/scipy-1.15.3-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
@@ -6402,7 +6416,7 @@ packages:
   - pkg:pypi/urllib3?source=hash-mapping
   size: 103560
   timestamp: 1778188657149
-- pypi: git+https://github.com/EasternJournalist/utils3d.git#3fab839f0be9931dac7c8488eb0e1600c236e183
+- pypi: git+https://github.com/EasternJournalist/utils3d.git?rev=3fab839f0be9931dac7c8488eb0e1600c236e183#3fab839f0be9931dac7c8488eb0e1600c236e183
   name: utils3d
   version: '1.3'
   requires_dist:
