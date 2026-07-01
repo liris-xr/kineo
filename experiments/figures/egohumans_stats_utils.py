@@ -117,9 +117,29 @@ def load_predicted_annotations(
     )
 
 
+def available_pred_sequences(
+    egohumans_dataset_dir: str,
+    egohumans_annotations_dir: str,
+) -> set[str]:
+    """Sequence names that have a predicted keypoints_3d.pkl in the given dir."""
+    sequences_file = os.path.join(egohumans_dataset_dir, "egohumans_sequences.json")
+    with open(sequences_file, "rb") as f:
+        sequences = orjson.loads(f.read())
+    return {
+        s["sequence_name"]
+        for s in sequences
+        if os.path.isfile(
+            os.path.join(
+                egohumans_annotations_dir, s["sequence_name"], "keypoints_3d.pkl"
+            )
+        )
+    }
+
+
 def compute_egohumans_stats(
     egohumans_dataset_dir: str,
     egohumans_annotations_dir: str,
+    allowed_sequences: set[str] | None = None,
 ) -> dict[str, Any]:
     sequences_file = os.path.join(egohumans_dataset_dir, "egohumans_sequences.json")
     with open(sequences_file, "rb") as f:
@@ -135,6 +155,21 @@ def compute_egohumans_stats(
         pred_camera_extrinsics_per_seq,
         pred_stage_timings_per_seq,
     ) = load_predicted_annotations(egohumans_annotations_dir, sequences)
+    if allowed_sequences is not None:
+        # Restrict predictions to a common set for a fair (intersection) comparison.
+        allowed = set(allowed_sequences)
+        pred_keypoints_3d_per_seq = {
+            k: v for k, v in pred_keypoints_3d_per_seq.items() if k in allowed
+        }
+        pred_camera_intrinsics_per_seq = {
+            k: v for k, v in pred_camera_intrinsics_per_seq.items() if k in allowed
+        }
+        pred_camera_extrinsics_per_seq = {
+            k: v for k, v in pred_camera_extrinsics_per_seq.items() if k in allowed
+        }
+        pred_stage_timings_per_seq = {
+            k: v for k, v in pred_stage_timings_per_seq.items() if k in allowed
+        }
     return compute_predictions_metrics(
         gt_keypoints_3d_annotations=gt_keypoints_3d_per_seq,
         gt_cam_intrinsics_annotations=gt_camera_intrinsics_per_seq,

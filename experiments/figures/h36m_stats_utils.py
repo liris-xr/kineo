@@ -118,9 +118,28 @@ def load_predicted_annotations(
     )
 
 
+def available_pred_sequences(
+    h36m_dataset_dir: str,
+    h36m_annotations_dir: str,
+) -> set[str]:
+    """Sequence names (val split) that have a predicted keypoints_3d.pkl in the given dir."""
+    sequences_file = os.path.join(h36m_dataset_dir, "h36m_protocol1_sequences.json")
+    with open(sequences_file, "rb") as f:
+        sequences = orjson.loads(f.read())
+    sequences = [s for s in sequences if s["split"] == "val"]
+    return {
+        s["sequence_name"]
+        for s in sequences
+        if os.path.isfile(
+            os.path.join(h36m_annotations_dir, s["sequence_name"], "keypoints_3d.pkl")
+        )
+    }
+
+
 def compute_h36m_stats(
     h36m_dataset_dir: str,
     h36m_annotations_dir: str,
+    allowed_sequences: set[str] | None = None,
 ) -> dict[str, Any]:
     sequences_file = os.path.join(h36m_dataset_dir, "h36m_protocol1_sequences.json")
     with open(sequences_file, "rb") as f:
@@ -137,6 +156,21 @@ def compute_h36m_stats(
         pred_camera_extrinsics_per_seq,
         pred_stage_timings_per_seq,
     ) = load_predicted_annotations(h36m_annotations_dir, sequences)
+    if allowed_sequences is not None:
+        # Restrict predictions to a common set for a fair (intersection) comparison.
+        allowed = set(allowed_sequences)
+        pred_keypoints_3d_per_seq = {
+            k: v for k, v in pred_keypoints_3d_per_seq.items() if k in allowed
+        }
+        pred_camera_intrinsics_per_seq = {
+            k: v for k, v in pred_camera_intrinsics_per_seq.items() if k in allowed
+        }
+        pred_camera_extrinsics_per_seq = {
+            k: v for k, v in pred_camera_extrinsics_per_seq.items() if k in allowed
+        }
+        pred_stage_timings_per_seq = {
+            k: v for k, v in pred_stage_timings_per_seq.items() if k in allowed
+        }
     return compute_predictions_metrics(
         gt_keypoints_3d_annotations=gt_keypoints_3d_per_seq,
         gt_cam_intrinsics_annotations=gt_camera_intrinsics_per_seq,

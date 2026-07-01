@@ -3,8 +3,8 @@
 import os
 import argparse
 
-from h36m_stats_utils import compute_h36m_stats
-from egohumans_stats_utils import compute_egohumans_stats
+from h36m_stats_utils import compute_h36m_stats, available_pred_sequences as h36m_available_pred_sequences
+from egohumans_stats_utils import compute_egohumans_stats, available_pred_sequences as egohumans_available_pred_sequences
 
 def generate_h36m_ablation_study_confidence_rows(h36m_dataset_dir: str, kineo_eval_data_dir: str, n_decimals: int = 2, with_std: bool = True):
 
@@ -20,12 +20,29 @@ def generate_h36m_ablation_study_confidence_rows(h36m_dataset_dir: str, kineo_ev
         kineo_eval_data_dir, "h36m_enabled_confidence_rtmpose_estRt_estK_estD", "annotations"
     )
 
+    # Fair comparison: only aggregate over sequences that succeeded in BOTH configs.
+    disabled_seqs = h36m_available_pred_sequences(
+        h36m_dataset_dir, kineo_h36m_confidence_disabled_annotations_path
+    )
+    enabled_seqs = h36m_available_pred_sequences(
+        h36m_dataset_dir, kineo_h36m_confidence_enabled_annotations_path
+    )
+    common_seqs = disabled_seqs & enabled_seqs
+    dropped = (disabled_seqs | enabled_seqs) - common_seqs
+    print(
+        f"[H36M confidence ablation] intersection: {len(common_seqs)} sequences "
+        f"(disabled-only={sorted(disabled_seqs - enabled_seqs)}, "
+        f"enabled-only={sorted(enabled_seqs - disabled_seqs)}, dropped={len(dropped)})"
+    )
+
     kineo_h36m_results = {
         "Disabled": compute_h36m_stats(
-            h36m_dataset_dir, kineo_h36m_confidence_disabled_annotations_path
+            h36m_dataset_dir, kineo_h36m_confidence_disabled_annotations_path,
+            allowed_sequences=common_seqs,
         ),
         "Enabled": compute_h36m_stats(
-            h36m_dataset_dir, kineo_h36m_confidence_enabled_annotations_path
+            h36m_dataset_dir, kineo_h36m_confidence_enabled_annotations_path,
+            allowed_sequences=common_seqs,
         ),
     }
 
@@ -71,9 +88,30 @@ def generate_egohumans_ablation_study_confidence_rows(egohumans_dataset_dir: str
         kineo_eval_data_dir, "egohumans_enabled_confidence_dwpose_estRt_estK_estD", "annotations"
     )
 
+    # Fair comparison: only aggregate over sequences that succeeded in BOTH configs.
+    disabled_seqs = egohumans_available_pred_sequences(
+        egohumans_dataset_dir, kineo_egohumans_confidence_disabled_annotations_path
+    )
+    enabled_seqs = egohumans_available_pred_sequences(
+        egohumans_dataset_dir, kineo_egohumans_confidence_enabled_annotations_path
+    )
+    common_seqs = disabled_seqs & enabled_seqs
+    dropped = (disabled_seqs | enabled_seqs) - common_seqs
+    print(
+        f"[EgoHumans confidence ablation] intersection: {len(common_seqs)} sequences "
+        f"(disabled-only={sorted(disabled_seqs - enabled_seqs)}, "
+        f"enabled-only={sorted(enabled_seqs - disabled_seqs)}, dropped={len(dropped)})"
+    )
+
     kineo_egohumans_results = {
-        "Disabled": compute_egohumans_stats(egohumans_dataset_dir, kineo_egohumans_confidence_disabled_annotations_path),
-        "Enabled": compute_egohumans_stats(egohumans_dataset_dir, kineo_egohumans_confidence_enabled_annotations_path),
+        "Disabled": compute_egohumans_stats(
+            egohumans_dataset_dir, kineo_egohumans_confidence_disabled_annotations_path,
+            allowed_sequences=common_seqs,
+        ),
+        "Enabled": compute_egohumans_stats(
+            egohumans_dataset_dir, kineo_egohumans_confidence_enabled_annotations_path,
+            allowed_sequences=common_seqs,
+        ),
     }
     ablation_study_egohumans_rows = str(ablation_study_egohumans_rows_template)
     for config_name in kineo_egohumans_results:
