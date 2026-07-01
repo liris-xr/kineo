@@ -245,7 +245,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/37/21/6519a5e4b4a885d2b08213a915250f81432200677273efc909c21fcb60f0/rerun_sdk-0.31.2-cp310-abi3-manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/55/bd/dd56edc2680df7658c7bdeeb58270ab35dfcdc0e2670899ce9771604b436/roma-1.5.6-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/2e/a3/0f0b7d78e2f1eb9e8e1afbff1d2bff8d60144aee17aca51c065b516743dd/safehttpx-0.1.7-py3-none-any.whl
-      - pypi: git+https://github.com/cjaverliat/sam2.git#6f43c2eb3db1da4811a8165f64ac23616f16dd36
+      - pypi: git+https://github.com/cjaverliat/sam2.git?tag=v1.2.0#6f43c2eb3db1da4811a8165f64ac23616f16dd36
       - pypi: https://files.pythonhosted.org/packages/8e/6d/41991e503e51fc1134502694c5fa7a1671501a17ffa12716a4a9151af3df/scipy-1.15.3-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/6a/23/8146aad7d88f4fcb3a6218f41a60f6c2d4e3a72de72da1825dc7c8f7877c/semantic_version-2.10.0-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/50/8a/0ab1f7433a2a85d9e9aea5b1fbb333f3b09b309e7817309250b4b7b2cc7a/shapely-2.1.2-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
@@ -471,7 +471,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/14/a5/0cac294d16aff6c9a2f183f838428a0380b4d2fd9e053bb37b3041999ad5/rerun_sdk-0.33.0-cp310-abi3-win_amd64.whl
       - pypi: https://files.pythonhosted.org/packages/55/bd/dd56edc2680df7658c7bdeeb58270ab35dfcdc0e2670899ce9771604b436/roma-1.5.6-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/2e/a3/0f0b7d78e2f1eb9e8e1afbff1d2bff8d60144aee17aca51c065b516743dd/safehttpx-0.1.7-py3-none-any.whl
-      - pypi: git+https://github.com/cjaverliat/sam2.git#6f43c2eb3db1da4811a8165f64ac23616f16dd36
+      - pypi: git+https://github.com/cjaverliat/sam2.git?tag=v1.2.0#6f43c2eb3db1da4811a8165f64ac23616f16dd36
       - pypi: https://files.pythonhosted.org/packages/d1/84/55bc4881973d3f79b479a5a2e2df61c8c9a04fcb986a213ac9c02cfb659b/scipy-1.15.3-cp310-cp310-win_amd64.whl
       - pypi: https://files.pythonhosted.org/packages/6a/23/8146aad7d88f4fcb3a6218f41a60f6c2d4e3a72de72da1825dc7c8f7877c/semantic_version-2.10.0-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/e1/89/6db795b8dd3919851856bd2ddd13ce434a748072f6fdee42ff30cbd3afa3/shapely-2.1.2-cp310-cp310-win_amd64.whl
@@ -748,7 +748,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/37/21/6519a5e4b4a885d2b08213a915250f81432200677273efc909c21fcb60f0/rerun_sdk-0.31.2-cp310-abi3-manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/55/bd/dd56edc2680df7658c7bdeeb58270ab35dfcdc0e2670899ce9771604b436/roma-1.5.6-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/2e/a3/0f0b7d78e2f1eb9e8e1afbff1d2bff8d60144aee17aca51c065b516743dd/safehttpx-0.1.7-py3-none-any.whl
-      - pypi: git+https://github.com/cjaverliat/sam2.git#6f43c2eb3db1da4811a8165f64ac23616f16dd36
+      - pypi: git+https://github.com/cjaverliat/sam2.git?tag=v1.2.0#6f43c2eb3db1da4811a8165f64ac23616f16dd36
       - pypi: https://files.pythonhosted.org/packages/8e/6d/41991e503e51fc1134502694c5fa7a1671501a17ffa12716a4a9151af3df/scipy-1.15.3-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/6a/23/8146aad7d88f4fcb3a6218f41a60f6c2d4e3a72de72da1825dc7c8f7877c/semantic_version-2.10.0-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/50/8a/0ab1f7433a2a85d9e9aea5b1fbb333f3b09b309e7817309250b4b7b2cc7a/shapely-2.1.2-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
@@ -980,7 +980,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/14/a5/0cac294d16aff6c9a2f183f838428a0380b4d2fd9e053bb37b3041999ad5/rerun_sdk-0.33.0-cp310-abi3-win_amd64.whl
       - pypi: https://files.pythonhosted.org/packages/55/bd/dd56edc2680df7658c7bdeeb58270ab35dfcdc0e2670899ce9771604b436/roma-1.5.6-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/2e/a3/0f0b7d78e2f1eb9e8e1afbff1d2bff8d60144aee17aca51c065b516743dd/safehttpx-0.1.7-py3-none-any.whl
-      - pypi: git+https://github.com/cjaverliat/sam2.git#6f43c2eb3db1da4811a8165f64ac23616f16dd36
+      - pypi: git+https://github.com/cjaverliat/sam2.git?tag=v1.2.0#6f43c2eb3db1da4811a8165f64ac23616f16dd36
       - pypi: https://files.pythonhosted.org/packages/d1/84/55bc4881973d3f79b479a5a2e2df61c8c9a04fcb986a213ac9c02cfb659b/scipy-1.15.3-cp310-cp310-win_amd64.whl
       - pypi: https://files.pythonhosted.org/packages/6a/23/8146aad7d88f4fcb3a6218f41a60f6c2d4e3a72de72da1825dc7c8f7877c/semantic_version-2.10.0-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/e1/89/6db795b8dd3919851856bd2ddd13ce434a748072f6fdee42ff30cbd3afa3/shapely-2.1.2-cp310-cp310-win_amd64.whl
@@ -3136,7 +3136,7 @@ packages:
 - pypi: ./
   name: kineo
   version: 0.1.0
-  sha256: 4f5c746b64dd4576259dcd5ae82ec172e47d46ea21a6b2b9e97af239d9abfe36
+  sha256: 08a4802e2ce6adea7db9711d4059079ba33c8a80529181a9d795b0231a97a03c
   requires_dist:
   - numpy
   - onnxruntime-gpu
@@ -5668,7 +5668,7 @@ packages:
   - httpx
   - pytest ; extra == 'dev'
   requires_python: '>3.9'
-- pypi: git+https://github.com/cjaverliat/sam2.git#6f43c2eb3db1da4811a8165f64ac23616f16dd36
+- pypi: git+https://github.com/cjaverliat/sam2.git?tag=v1.2.0#6f43c2eb3db1da4811a8165f64ac23616f16dd36
   name: sam2
   version: 1.2.0
   requires_dist:

@@ -61,7 +61,7 @@ onnxruntime-gpu = "*"
 soundfile = "*"
 cv2-enumerate-cameras = "*"
 
-sam2 = { git = "https://github.com/cjaverliat/sam2.git" }
+sam2 = { git = "https://github.com/cjaverliat/sam2.git", tag = "v1.2.0" }
 
 mmpretrain = "*"
 mmengine = "*"
