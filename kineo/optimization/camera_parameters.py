@@ -116,6 +116,14 @@ class CameraIntrinsicsParameters(torch.nn.Module):
             requires_grad=requires_grad,
         )
 
+        # Distortion optimization mask + fixed-value snapshot (None = optimize all).
+        self.register_buffer(
+            "_distortion_coefficients_optimize_mask", None, persistent=False
+        )
+        self.register_buffer(
+            "_distortion_coefficients_fixed_values", None, persistent=False
+        )
+
     @property
     def shared_parameters(self) -> bool:
         return self._shared_parameters
@@ -220,7 +228,14 @@ class CameraIntrinsicsParameters(torch.nn.Module):
 
     @property
     def distortion_coefficients(self) -> torch.Tensor:
-        return self._distortion_coefficients
+        if self._distortion_coefficients_optimize_mask is None:
+            return self._distortion_coefficients
+        # Fixed coefficients get no gradient, so the optimizer cannot move them.
+        return torch.where(
+            self._distortion_coefficients_optimize_mask,
+            self._distortion_coefficients,
+            self._distortion_coefficients_fixed_values,
+        )
 
     @distortion_coefficients.setter
     def distortion_coefficients(self, distortion_coefficients: torch.Tensor) -> None:
@@ -273,7 +288,7 @@ class CameraIntrinsicsParameters(torch.nn.Module):
 
     def set_optimized_parameters(
         self,
-        distortion_coefficients: bool | None = None,
+        distortion_coefficients: bool | Sequence[int] | None = None,
         focal_length: bool | None = None,
         principal_point: bool | None = None,
     ) -> None:
@@ -282,11 +297,29 @@ class CameraIntrinsicsParameters(torch.nn.Module):
 
         Args:
             distortion_coefficients: Whether to optimize distortion coefficients.
+                A bool toggles all coefficients; a sequence of indices optimizes
+                only those, fixing the rest at their current value (Brown-Conrady
+                order is (k1, k2, p1, p2, k3)).
             focal_length: Whether to optimize focal length.
             principal_point: Whether to optimize principal point.
         """
         if distortion_coefficients is not None:
-            self._distortion_coefficients.requires_grad = distortion_coefficients
+            if isinstance(distortion_coefficients, bool):
+                self._distortion_coefficients.requires_grad = distortion_coefficients
+                self._distortion_coefficients_optimize_mask = None
+                self._distortion_coefficients_fixed_values = None
+            else:
+                self._distortion_coefficients.requires_grad = True
+                mask = torch.zeros(
+                    self._distortion_coefficients.shape[-1],
+                    dtype=torch.bool,
+                    device=self._distortion_coefficients.device,
+                )
+                mask[list(distortion_coefficients)] = True
+                self._distortion_coefficients_optimize_mask = mask
+                self._distortion_coefficients_fixed_values = (
+                    self._distortion_coefficients.detach().clone()
+                )
         if focal_length is not None:
             self._normalized_focal_length.requires_grad = focal_length
         if principal_point is not None:

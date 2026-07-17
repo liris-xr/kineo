@@ -48,7 +48,9 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class BundleAdjustmentRuntimeConfig:
-    optimize_distortion_coefficients: bool = True
+    # True/False optimizes all/no distortion coefficients. A list of indices
+    # optimizes only those, fixing the rest (Brown-Conrady order (k1,k2,p1,p2,k3)).
+    optimize_distortion_coefficients: bool | list[int] = True
     optimize_focal_length: bool = True
     optimize_principal_point: bool = False
     optimize_rotation: bool = True
@@ -246,7 +248,7 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
             kps_2d_scores: torch.Tensor,
             kps_3d: torch.Tensor,
             view_ids: list[str],
-            optimize_distortion_coefficients: bool = True,
+            optimize_distortion_coefficients: bool | list[int] = True,
             optimize_focal_length: bool = True,
             optimize_principal_point: bool = True,
             optimize_rotation: bool = True,
