@@ -86,9 +86,7 @@ class SfMCameraExtrinsicsInitializationStage(
         gt_annotations: dict[str, Annotations],
         runtime_cfg: SfMCameraExtrinsicsInitializationRuntimeConfig,
     ):
-        # SfM has no GPU-favorable ops (cv2 RANSAC pose + small LBFGS refinements);
-        # CPU is faster and the output extrinsics are stored on CPU anyway.
-        device = torch.device("cpu")
+        device = pipeline.device
 
         calibration_points_annotations: CalibrationPointsAnnotations = annotations[
             "calibration_points"
@@ -145,8 +143,8 @@ class SfMCameraExtrinsicsInitializationStage(
                     f"No calibration points annotation found for view pair ({views[view_i]['view_id']}, {views[view_j]['view_id']})"
                 )
 
-            points1.append(pair_calibration_points_annotation.points1.to(device))
-            points2.append(pair_calibration_points_annotation.points2.to(device))
+            points1.append(pair_calibration_points_annotation.points1)
+            points2.append(pair_calibration_points_annotation.points2)
 
         Rts_init = _estimate_camera_extrinsics(
             view_names=view_names,
