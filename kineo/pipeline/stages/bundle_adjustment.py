@@ -354,6 +354,7 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
             weights = kps_2d_scores.view(n_views, -1)
 
             valid_mask = residuals_huber.isfinite()
+            n_valid = int(valid_mask.sum())
             residuals_huber = residuals_huber[valid_mask]
             weights = weights[valid_mask]
             reprojection_loss = weighted_mean(residuals_huber, weights)
@@ -364,10 +365,12 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
                 dist_coeffs_regularization = (dist_coeffs ** 2).mean()
                 total_loss += dist_coeffs_regularization_weight * dist_coeffs_regularization
 
-            total_loss.backward()
+            # Non-finite step (e.g. points through camera plane): large loss so
+            # LBFGS backtracks instead of aborting.
+            if n_valid == 0 or not torch.isfinite(total_loss):
+                return torch.full_like(total_loss, 1e12)
 
-            if torch.isnan(total_loss) or torch.isinf(total_loss):
-                raise ValueError("Loss is NaN or inf")
+            total_loss.backward()
 
             return total_loss
 

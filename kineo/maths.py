@@ -44,7 +44,9 @@ def weighted_mean(
     """
     Compute the weighted mean of values with associated weights.
     """
-    return (values * weights).sum(dim=dim, keepdim=keepdim) / weights.sum(dim=dim, keepdim=keepdim)
+    return (values * weights).sum(dim=dim, keepdim=keepdim) / weights.sum(
+        dim=dim, keepdim=keepdim
+    ).clamp_min(torch.finfo(weights.dtype).eps)
 
 
 def weighted_variance(
