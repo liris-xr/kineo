@@ -86,7 +86,12 @@ def triangulate_points(
         _, eigvecs = torch.linalg.eigh(XtX)
         points3d_h = eigvecs[..., :, 0]
     else:
-        _, _, V = torch.svd(X)
+        try:
+            _, _, V = torch.svd(X)
+        except torch.linalg.LinAlgError:
+            # cusolver SVD can fail on ill-conditioned systems; CPU LAPACK is robust.
+            _, _, V = torch.svd(X.cpu())
+            V = V.to(X.device)
         points3d_h = V[..., -1]
 
     points3d, _ = convert_points_from_homogeneous(points3d_h)
