@@ -273,7 +273,16 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
         ):
             return Ks, dist_coeffs, Rts, kps_3d, []
 
-        device = Ks.device
+        # BA is small and sequential (LBFGS line search); CPU avoids the
+        # per-closure host<->device sync and runs faster with on-par accuracy.
+        input_device = Ks.device
+        Ks = Ks.cpu()
+        dist_coeffs = dist_coeffs.cpu()
+        Rts = Rts.cpu()
+        kps_2d_xy = kps_2d_xy.cpu()
+        kps_2d_scores = kps_2d_scores.cpu()
+        kps_3d = kps_3d.cpu()
+        device = torch.device("cpu")
 
         n_views, n_samples, _ = kps_2d_xy.shape
 
@@ -471,9 +480,9 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
         kps_3d_opt = kps_3d_opt.detach().clone()
 
         return (
-            Ks_opt,
-            dist_coeffs_opt,
-            Rts_opt,
-            kps_3d_opt,
+            Ks_opt.to(input_device),
+            dist_coeffs_opt.to(input_device),
+            Rts_opt.to(input_device),
+            kps_3d_opt.to(input_device),
             history_entries,
         )
