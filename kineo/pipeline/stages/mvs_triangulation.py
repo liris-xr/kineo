@@ -177,6 +177,9 @@ class MVSTriangulationStage(PipelineStage[MVSTriangulationRuntimeConfig]):
             points_2d = all_kps_2d_undistorted[..., subject_idx, :, :].reshape(
                 -1, n_views, n_keypoints, 2
             )
+            points_2d_distorted = all_kps_2d[..., subject_idx, :, :].reshape(
+                -1, n_views, n_keypoints, 2
+            )
             points_2d_scores = all_kps_2d_scores[..., subject_idx, :].reshape(
                 -1, n_views, n_keypoints
             )
@@ -205,14 +208,14 @@ class MVSTriangulationStage(PipelineStage[MVSTriangulationRuntimeConfig]):
                 ).reshape(-1, n_keypoints, 3)
 
                 chunk_points_3d_scores = pairwise_reprojection_consensus_score(
-                    kps_3d=chunk_points_3d.view(-1, n_subjects * n_keypoints, 3),
-                    kps_2d=chunk_points_2d.view(-1, n_views, n_subjects * n_keypoints, 2),
-                    kps_2d_scores=chunk_points_2d_scores.view(-1, n_views, n_subjects * n_keypoints),
+                    kps_3d=chunk_points_3d,
+                    kps_2d=points_2d_distorted[chunk_frames],
+                    kps_2d_scores=chunk_points_2d_scores,
                     Rts=Rts,
                     Ks=Ks,
                     Ds=dist_coeffs,
                     distortion_model=distortion_model.value,
-                ).reshape(-1, n_keypoints)
+                )
 
                 all_kps_3d[chunk_frames, subject_idx, :, :] = chunk_points_3d
                 all_kps_3d_scores[chunk_frames, subject_idx, :] = chunk_points_3d_scores
