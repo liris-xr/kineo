@@ -37,7 +37,7 @@ from typing import Optional
 @dataclass(frozen=True)
 class MVSTriangulationRuntimeConfig:
     triangulation_chunk_size: int = 200
-    use_eigendecomposition: bool = True
+    use_eigendecomposition: bool = False
 
 
 class MVSTriangulationStage(PipelineStage[MVSTriangulationRuntimeConfig]):
