@@ -367,6 +367,24 @@ class Keypoints3DAnnotations(Annotations[Keypoints3DAnnotation]):
                 metadata=Keypoints3DAnnotationsMetadata(formats=[target_format]),
                 annotations=coco_annotations,
             )
+        elif current_format.name == "smpl_24" and target_format.name == "smpl_22":
+            mapping = list(range(22))
+            smpl_annotations = []
+            for annotation in self._annotations:
+                smpl_annotations.append(
+                    Keypoints3DAnnotation(
+                        frame_idx=annotation.frame_idx,
+                        subject_id=annotation.subject_id,
+                        xyz=annotation.xyz[mapping],
+                        annotated=annotation.annotated[mapping],
+                        scores=annotation.scores[mapping],
+                        format="smpl_22",
+                    )
+                )
+            return Keypoints3DAnnotations(
+                metadata=Keypoints3DAnnotationsMetadata(formats=[target_format]),
+                annotations=smpl_annotations,
+            )
         else:
             raise NotImplementedError(
                 f"Conversion from {current_format.name} to {target_format.name} is not supported"

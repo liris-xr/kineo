@@ -61,6 +61,17 @@ SMPL_24_KEYPOINTS_FORMAT = KeypointsFormat(
     ],
 )
 
+SMPL_22_KEYPOINTS_FORMAT = KeypointsFormat(
+    name="smpl_22",
+    n_keypoints=22,
+    keypoints_names=SMPL_24_KEYPOINTS_FORMAT.keypoints_names[:22],
+    keypoints_connectivity=[
+        edge
+        for edge in SMPL_24_KEYPOINTS_FORMAT.keypoints_connectivity
+        if edge[0] < 22 and edge[1] < 22
+    ],
+)
+
 H36M_17_KEYPOINTS_FORMAT = KeypointsFormat.from_mmpose_dataset("h36m")
 
 COCO_17_KEYPOINTS_FORMAT = KeypointsFormat.from_mmpose_dataset("coco")
