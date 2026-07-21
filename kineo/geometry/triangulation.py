@@ -86,7 +86,13 @@ def triangulate_points(
         # nothing, and it always converges (unlike SVD on the zero-padded X, whose
         # repeated singular values make cusolver diverge for occluded points).
         XtX = X.transpose(-2, -1) @ X
-        _, eigvecs = torch.linalg.eigh(XtX)
+        try:
+            _, eigvecs = torch.linalg.eigh(XtX)
+        except torch.linalg.LinAlgError:
+            # cusolver eigh diverges on rank-deficient XtX (occluded points); CPU
+            # LAPACK is robust, and XtX is tiny (4x4) so the transfer is cheap.
+            _, eigvecs = torch.linalg.eigh(XtX.cpu())
+            eigvecs = eigvecs.to(X.device)
         points3d_h = eigvecs[..., :, 0]
     else:
         _, _, V = torch.svd(X)
