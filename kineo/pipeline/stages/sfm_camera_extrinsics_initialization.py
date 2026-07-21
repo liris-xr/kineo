@@ -264,12 +264,6 @@ def _estimate_camera_extrinsics(
         ransac_reproj_threshold=ransac_reproj_threshold,
     )
 
-    graph = _reject_rotation_outlier_edges(
-        graph,
-        thresh_deg=rotation_outlier_thresh_deg,
-        min_close_rate=rotation_outlier_min_close_rate,
-    )
-
     graph = _average_rotations(
         graph,
         n_iters=n_rotation_averaging_iters,
@@ -731,15 +725,19 @@ def _average_rotations(
 ) -> nx.DiGraph:
     """Robustly average edge rotations into absolute node rotations.
 
-    Seeds absolute rotations by chaining edge rotations along the MST from view
-    0, then refines with average_rotations over all surviving edges. Writes the
-    result into each node's "Rt" rotation block; the translation block is left
-    zero for the later translation-placement pass.
+    Seeds absolute rotations by chaining edge rotations along a
+    cycle-consistency-weighted MST from view 0, then refines with
+    average_rotations over all edges. No edges are rejected: outliers are
+    down-weighted, not removed (soft, threshold-free robustness). The seed MST
+    routes along the most loop-consistent edges so a single outlier edge cannot
+    corrupt it. Writes the result into each node's "Rt" rotation block; the
+    translation block is left zero for the later translation-placement pass.
 
     Args:
-        graph: SfM graph after outlier rejection.
+        graph: SfM graph with pairwise "Rt" edges.
         n_iters: Sweeps for each of the L1 and IRLS averaging phases.
-        huber_delta_rad: Huber threshold (radians) for the IRLS phase.
+        huber_delta_rad: Huber threshold (radians) for the IRLS phase; also the
+            loop-closure tolerance used to score edge cycle-consistency.
 
     Returns:
         The graph with absolute rotations stored in node "Rt".
@@ -747,10 +745,35 @@ def _average_rotations(
     n_views = graph.number_of_nodes()
     device = graph.nodes[0]["K"].device
 
-    # Cache the cost-weighted MST on the graph; _compute_absolute_Rts reuses it
-    # (edge topology is unchanged between the two passes).
-    mst = nx.minimum_spanning_tree(graph.to_undirected(), weight="cost")
+    directed = [(i, j) for i, j in graph.edges() if i != j]
+    node_pairs = torch.tensor(directed, dtype=torch.long)
+    rel_rotations = torch.stack(
+        [graph.edges[i, j]["Rt"][:3, :3] for i, j in directed]
+    )
+
+    # Cycle-consistency edge trust (SOTA: reweight, do not reject). Seed the
+    # absolute rotations along an MST that prefers loop-consistent edges, so a
+    # single gross-outlier edge cannot corrupt the seed. Cached on the graph and
+    # reused by _compute_absolute_Rts so translation placement routes the same
+    # way. All edges are kept; residual outliers are handled by the robust
+    # averaging below.
+    rates = edge_closure_rates(
+        node_pairs, rel_rotations.cpu(), n_views, huber_delta_rad
+    )
+    undirected_rate: dict[frozenset, float] = {}
+    for e, (i, j) in enumerate(directed):
+        key = frozenset((i, j))
+        undirected_rate[key] = min(
+            undirected_rate.get(key, 1.0), float(rates[e])
+        )
+    consistency = nx.Graph()
+    consistency.add_nodes_from(range(n_views))
+    for key, rate in undirected_rate.items():
+        i, j = tuple(key)
+        consistency.add_edge(i, j, cw=-math.log(rate + 1e-3))
+    mst = nx.minimum_spanning_tree(consistency, weight="cw")
     graph.graph["mst"] = mst
+
     R_seed = torch.eye(3, device=device).repeat(n_views, 1, 1)
     for view_idx in range(1, n_views):
         path = nx.shortest_path(mst, source=0, target=view_idx)
@@ -758,12 +781,6 @@ def _average_rotations(
         for a, b in zip(path[:-1], path[1:]):
             R_acc = graph.edges[a, b]["Rt"][:3, :3] @ R_acc
         R_seed[view_idx] = R_acc
-
-    directed = [(i, j) for i, j in graph.edges() if i != j]
-    node_pairs = torch.tensor(directed, dtype=torch.long)
-    rel_rotations = torch.stack(
-        [graph.edges[i, j]["Rt"][:3, :3] for i, j in directed]
-    )
 
     R_abs = average_rotations(
         node_pairs=node_pairs,
