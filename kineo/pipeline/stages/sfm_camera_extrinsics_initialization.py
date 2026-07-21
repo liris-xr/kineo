@@ -852,8 +852,7 @@ def _compute_relative_scale_factors(
             triplet_costs[triplet_idx] = torch.inf
             continue
 
-        # TODO: should change to arithmetic mean so that a single unreliable edge raises the loop cost
-        triplet_costs[triplet_idx] = (cost_ij + cost_jk + cost_ki) ** (1 / 3)
+        triplet_costs[triplet_idx] = (cost_ij + cost_jk + cost_ki) / 3
 
     non_inf_mask = ~torch.isinf(triplet_costs)
     triplet_cost_min = triplet_costs[non_inf_mask].min()
