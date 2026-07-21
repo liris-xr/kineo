@@ -69,3 +69,20 @@ def optimizer_should_stop(
         return True
 
     return False
+
+
+def huber_weights(
+    residuals: torch.Tensor, delta: float | torch.Tensor
+) -> torch.Tensor:
+    """IRLS weights for the Huber loss.
+
+    Args:
+        residuals: Per-datum residuals of any shape.
+        delta: Huber transition threshold (scalar or broadcastable tensor).
+
+    Returns:
+        Weights of the same shape: 1 where |residual| <= delta, else
+        delta / |residual|.
+    """
+    r = residuals.abs()
+    return torch.where(r <= delta, torch.ones_like(r), delta / r.clamp_min(1e-12))
