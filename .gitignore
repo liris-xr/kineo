@@ -86,6 +86,9 @@ instance/
 # Sphinx documentation
 docs/_build/
 
+# Superpowers brainstorming specs (local planning artifacts)
+docs/superpowers/
+
 # PyBuilder
 .pybuilder/
 target/
