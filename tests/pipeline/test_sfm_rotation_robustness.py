@@ -116,3 +116,35 @@ def test_robust_init_recovers_poses_on_perfect_graph():
     scale = (t_out * t_gt).sum() / (t_gt * t_gt).sum()
     rel_err = (t_out - scale * t_gt).norm() / (scale * t_gt).norm()
     assert float(rel_err) < 0.05
+
+
+def test_scale_solve_handles_rejected_edges():
+    # Rejection removes edges, so the scale solve must enumerate only surviving
+    # pairs/triplets (else KeyError on a removed pair, as on fencing_002).
+    torch.manual_seed(0)
+    n = 5
+    R_gt = project_to_so3(torch.randn(n, 3, 3))
+    R_gt = R_gt @ R_gt[0].transpose(-1, -2)
+    t_gt = torch.randn(n, 3)
+    t_gt[0] = torch.zeros(3)
+
+    g = _perfect_graph(R_gt, t_gt)
+    # Corrupt one edge's rotation so the pre-filter drops it (both directions).
+    bad = project_to_so3(torch.randn(3, 3))
+    for a, b in ((1, 3), (3, 1)):
+        Rt = g.edges[a, b]["Rt"].clone()
+        Rt[:3, :3] = bad @ Rt[:3, :3]
+        g.edges[a, b]["Rt"] = Rt
+
+    g = _reject_rotation_outlier_edges(g, thresh_deg=5.0, min_close_rate=0.5)
+    assert not g.has_edge(1, 3)  # the pair the scale solve must skip
+    g = _average_rotations(g, n_iters=30, huber_delta_rad=math.radians(5.0))
+    g = _compute_relative_scale_factors(g)
+    g = _compute_absolute_Rts(g)
+
+    R_out = torch.stack([g.nodes[v]["Rt"][:3, :3] for v in range(n)])
+    assert float(geodesic_angle(R_out, R_gt).max()) < math.radians(0.5)
+    t_out = torch.stack([g.nodes[v]["Rt"][:3, 3] for v in range(n)])
+    scale = (t_out * t_gt).sum() / (t_gt * t_gt).sum()
+    rel_err = (t_out - scale * t_gt).norm() / (scale * t_gt).norm()
+    assert float(rel_err) < 0.05

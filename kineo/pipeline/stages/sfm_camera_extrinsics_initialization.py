@@ -966,9 +966,21 @@ def _compute_relative_scale_factors(
             Updated graph with the scale factors for the relative transformations
     """
     n_views = graph.number_of_nodes()
-    pairs = list(itertools.combinations(range(n_views), 2))
+    # Only surviving edges after outlier rejection carry a scale; pairs and
+    # triplets referencing a removed edge are skipped.
+    pairs = [
+        (i, j)
+        for i, j in itertools.combinations(range(n_views), 2)
+        if graph.has_edge(i, j)
+    ]
     n_pairs = len(pairs)
-    triplets = list(itertools.combinations(range(n_views), 3))
+    triplets = [
+        (i, j, k)
+        for i, j, k in itertools.combinations(range(n_views), 3)
+        if graph.has_edge(i, j)
+        and graph.has_edge(j, k)
+        and graph.has_edge(k, i)
+    ]
     n_triplets = len(triplets)
     device = graph.nodes[0]["K"].device
 
