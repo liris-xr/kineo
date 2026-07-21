@@ -2,6 +2,7 @@ import math
 import torch
 
 from kineo.geometry.rotation_averaging import (
+    average_rotations,
     edge_closure_rates,
     geodesic_angle,
     project_to_so3,
@@ -50,3 +51,26 @@ def test_edge_closure_rates_flags_the_outlier_edge():
     assert rate_by_edge[(0, 1)] == min(rate_by_edge.values())
     others = [v for k, v in rate_by_edge.items() if k != (0, 1)]
     assert min(others) > 0.5
+
+
+def test_average_rotations_recovers_gt_despite_outliers():
+    n = 8
+    R_gt = _random_rotations(n)
+    pairs = [(i, j) for i in range(n) for j in range(n) if i != j]
+    node_pairs = torch.tensor(pairs, dtype=torch.long)
+    rel = torch.stack([R_gt[j] @ R_gt[i].transpose(-1, -2) for i, j in pairs])
+    # Corrupt ~20% of undirected edges with large (>30 deg) rotation errors.
+    torch.manual_seed(1)
+    corrupt = {frozenset((0, 3)), frozenset((2, 5)), frozenset((4, 7))}
+    for e, (i, j) in enumerate(pairs):
+        if frozenset((i, j)) in corrupt:
+            rel[e] = project_to_so3(torch.randn(3, 3)) @ rel[e]
+    # Seed = gt with 10 deg noise; anchor row 0 exactly at gt.
+    noise = project_to_so3(
+        torch.eye(3).expand(n, 3, 3) + 0.1 * torch.randn(n, 3, 3)
+    )
+    R_seed = noise @ R_gt
+    R_seed[0] = R_gt[0]
+    R_out = average_rotations(node_pairs, rel, R_seed)
+    ang = geodesic_angle(R_out, R_gt)
+    assert float(ang.max()) < math.radians(2.0)

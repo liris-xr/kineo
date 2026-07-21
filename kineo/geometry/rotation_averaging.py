@@ -99,3 +99,69 @@ def edge_closure_rates(
         if key in total:
             rates[e] = good[key] / total[key]
     return rates
+
+
+def average_rotations(
+    node_pairs: torch.Tensor,
+    rel_rotations: torch.Tensor,
+    R_seed: torch.Tensor,
+    n_l1_iters: int = 20,
+    n_irls_iters: int = 20,
+    huber_delta_rad: float = 0.0873,
+    eps: float = 1e-6,
+) -> torch.Tensor:
+    """Robustly average relative rotations into absolute orientations.
+
+    Block-coordinate descent: each sweep resets every non-anchor view to the
+    robust mean of the predictions from its incident edges (edge (i, j)
+    predicts R_i = R_ijᵀ R_j). The L1 (Weiszfeld) phase tolerates a rough
+    seed and gross outliers; the Huber IRLS phase refines. View 0 is the
+    gauge anchor, held fixed at R_seed[0]. Assumes a well-connected graph
+    (redundant edges let good edges outvote a bad seed).
+
+    Args:
+        node_pairs: Directed edges as (E, 2) long tensor of (source, target).
+        rel_rotations: (E, 3, 3) relative rotations; edge (i, j) maps view i
+            to j.
+        R_seed: (N, 3, 3) initial absolute rotations; row 0 is the fixed
+            anchor.
+        n_l1_iters: Weiszfeld sweeps.
+        n_irls_iters: Huber IRLS sweeps.
+        huber_delta_rad: Huber threshold (radians) for the IRLS phase.
+        eps: Floor on residual angle, avoids division by zero in Weiszfeld.
+
+    Returns:
+        (N, 3, 3) absolute rotations.
+    """
+    n_views = R_seed.shape[0]
+    R = R_seed.clone()
+
+    incident: list[list[tuple[int, int]]] = [[] for _ in range(n_views)]
+    for e, (a, b) in enumerate(node_pairs.tolist()):
+        incident[int(a)].append((e, int(b)))
+
+    def sweep(use_huber: bool) -> None:
+        for i in range(1, n_views):
+            edges = incident[i]
+            if not edges:
+                continue
+            preds = torch.stack(
+                [rel_rotations[e].transpose(-1, -2) @ R[b] for e, b in edges]
+            )
+            angles = geodesic_angle(preds, R[i].expand_as(preds))
+            if use_huber:
+                w = torch.where(
+                    angles <= huber_delta_rad,
+                    torch.ones_like(angles),
+                    huber_delta_rad / angles.clamp_min(eps),
+                )
+            else:
+                w = 1.0 / angles.clamp_min(eps)
+            R[i] = project_to_so3((w.view(-1, 1, 1) * preds).sum(0))
+
+    for _ in range(n_l1_iters):
+        sweep(use_huber=False)
+    for _ in range(n_irls_iters):
+        sweep(use_huber=True)
+
+    return R
