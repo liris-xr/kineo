@@ -16,6 +16,9 @@ os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 import torch
 from kineo.pipeline.pipeline import Pipeline
 from kineo.datasets.keypoints_sequence_dataset import ViewInput
+from kineo.datasets.egohumans.egohumans_smpl_gt import (
+    load_egohumans_smpl_keypoints_3d,
+)
 from kineo.io.frame_sequence_loader import ImagesLoader
 from kineo.annotations.keypoints_3d import Keypoints3DAnnotations
 from kineo.annotations.keypoints_2d import Keypoints2DAnnotations
@@ -101,6 +104,7 @@ def main(
     config_file: str,
     sequences_filter: list[str] = [],
     views_filter: list[str] = [],
+    human_gt_format: str = "coco",
 ):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print_system_info(device)
@@ -143,6 +147,20 @@ def main(
             with open(keypoints_3d_file, "rb") as f:
                 gt_keypoints_3d = Keypoints3DAnnotations.from_dict(
                     orjson.loads(f.read())
+                )
+
+            if human_gt_format == "smpl":
+                # SMPL GT lives beside the annotations dir:
+                # <seq>/annotations/keypoints_3d.json -> <seq>/processed_data/smpl
+                sequence_rel_dir = os.path.dirname(
+                    os.path.dirname(sequence["annotations"]["keypoints_3d"])
+                )
+                smpl_dir = os.path.join(
+                    dataset_dir, sequence_rel_dir, "processed_data", "smpl"
+                )
+                gt_keypoints_3d = load_egohumans_smpl_keypoints_3d(
+                    smpl_dir,
+                    valid_subject_ids=gt_keypoints_3d.subjects_ids,
                 )
 
             keypoints_2d_file = sequence["annotations"]["keypoints_2d"]
