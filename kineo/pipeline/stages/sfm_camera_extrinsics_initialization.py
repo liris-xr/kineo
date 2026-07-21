@@ -30,6 +30,7 @@ from kineo.annotations.camera_extrinsics import (
     CameraExtrinsicsAnnotationsMetadata,
 )
 from kineo.geometry.camera import inverse_Rt, multiply_Rt
+from kineo.geometry.rotation_averaging import edge_closure_rates
 from kineo.optimization.camera_parameters import CameraExtrinsicsParameters
 from kineo.geometry.transformations import undistort_points
 
@@ -623,6 +624,65 @@ def _initialize_graph(
             Rt=inverse_Rt(best_candidate_Rt),
             inliers_mask=inliers_mask,
         )
+
+    return graph
+
+
+def _reject_rotation_outlier_edges(
+    graph: nx.DiGraph,
+    thresh_deg: float,
+    min_close_rate: float,
+) -> nx.DiGraph:
+    """Drop gross rotation-outlier edges via triplet loop-closure voting.
+
+    Removes undirected edges whose loop-closure rate (see
+    kineo.geometry.rotation_averaging.edge_closure_rates) falls below
+    min_close_rate, worst-first, skipping any removal that would disconnect the
+    graph. Blunt pre-filter that protects the seed and early averaging; the fine
+    down-weighting is done later by rotation averaging.
+
+    Args:
+        graph: SfM graph with per-edge "Rt" relative poses.
+        thresh_deg: Loop-closure tolerance in degrees.
+        min_close_rate: Minimum fraction of closing triplets to keep an edge.
+
+    Returns:
+        The graph with outlier edges removed.
+    """
+    n_views = graph.number_of_nodes()
+    directed = [(i, j) for i, j in graph.edges() if i != j]
+    if not directed:
+        return graph
+
+    node_pairs = torch.tensor(directed, dtype=torch.long)
+    rel_rotations = torch.stack(
+        [graph.edges[i, j]["Rt"][:3, :3].cpu() for i, j in directed]
+    )
+    rates = edge_closure_rates(
+        node_pairs, rel_rotations, n_views, math.radians(thresh_deg)
+    )
+
+    undirected_rate: dict[frozenset, float] = {}
+    for e, (i, j) in enumerate(directed):
+        key = frozenset((i, j))
+        undirected_rate[key] = min(undirected_rate.get(key, 1.0), float(rates[e]))
+
+    candidates = sorted(
+        (rate, tuple(sorted(key)))
+        for key, rate in undirected_rate.items()
+        if rate < min_close_rate
+    )
+
+    work = graph.to_undirected()
+    work.remove_edges_from(list(nx.selfloop_edges(work)))
+
+    for _, (i, j) in candidates:
+        work.remove_edge(i, j)
+        if nx.is_connected(work):
+            graph.remove_edge(i, j)
+            graph.remove_edge(j, i)
+        else:
+            work.add_edge(i, j)
 
     return graph
 
