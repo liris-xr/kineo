@@ -1,8 +1,10 @@
+import math
 import networkx as nx
 import torch
 
-from kineo.geometry.rotation_averaging import project_to_so3
+from kineo.geometry.rotation_averaging import geodesic_angle, project_to_so3
 from kineo.pipeline.stages.sfm_camera_extrinsics_initialization import (
+    _average_rotations,
     _reject_rotation_outlier_edges,
 )
 
@@ -48,3 +50,18 @@ def test_reject_never_disconnects_even_if_all_edges_look_bad():
     g = _complete_graph(R_gt, corrupt)
     g = _reject_rotation_outlier_edges(g, thresh_deg=5.0, min_close_rate=0.5)
     assert nx.is_connected(g.to_undirected())
+
+
+def test_average_rotations_adapter_recovers_node_rotations():
+    torch.manual_seed(0)
+    R_gt = project_to_so3(torch.randn(7, 3, 3))
+    # Put node 0's frame as the world gauge: express all rotations relative to it.
+    R_gt = R_gt @ R_gt[0].transpose(-1, -2)
+    corrupt = {frozenset((0, 2)), frozenset((3, 5))}
+    g = _complete_graph(R_gt, corrupt)
+    g = _reject_rotation_outlier_edges(g, thresh_deg=5.0, min_close_rate=0.5)
+    g = _average_rotations(g, n_iters=30, huber_delta_rad=math.radians(5.0))
+    R_out = torch.stack([g.nodes[v]["Rt"][:3, :3] for v in range(7)])
+    ang = geodesic_angle(R_out, R_gt)
+    assert float(ang.max()) < math.radians(3.0)
+    assert torch.allclose(g.nodes[0]["Rt"][:3, 3], torch.zeros(3), atol=1e-6)

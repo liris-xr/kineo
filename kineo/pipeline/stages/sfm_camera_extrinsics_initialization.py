@@ -30,7 +30,10 @@ from kineo.annotations.camera_extrinsics import (
     CameraExtrinsicsAnnotationsMetadata,
 )
 from kineo.geometry.camera import inverse_Rt, multiply_Rt
-from kineo.geometry.rotation_averaging import edge_closure_rates
+from kineo.geometry.rotation_averaging import (
+    average_rotations,
+    edge_closure_rates,
+)
 from kineo.optimization.camera_parameters import CameraExtrinsicsParameters
 from kineo.geometry.transformations import undistort_points
 
@@ -683,6 +686,61 @@ def _reject_rotation_outlier_edges(
             graph.remove_edge(j, i)
         else:
             work.add_edge(i, j)
+
+    return graph
+
+
+def _average_rotations(
+    graph: nx.DiGraph,
+    n_iters: int,
+    huber_delta_rad: float,
+) -> nx.DiGraph:
+    """Robustly average edge rotations into absolute node rotations.
+
+    Seeds absolute rotations by chaining edge rotations along the MST from view
+    0, then refines with average_rotations over all surviving edges. Writes the
+    result into each node's "Rt" rotation block; the translation block is left
+    zero for the later translation-placement pass.
+
+    Args:
+        graph: SfM graph after outlier rejection.
+        n_iters: Sweeps for each of the L1 and IRLS averaging phases.
+        huber_delta_rad: Huber threshold (radians) for the IRLS phase.
+
+    Returns:
+        The graph with absolute rotations stored in node "Rt".
+    """
+    n_views = graph.number_of_nodes()
+    device = graph.nodes[0]["K"].device
+
+    mst = nx.minimum_spanning_tree(graph.to_undirected(), weight="cost")
+    R_seed = torch.eye(3, device=device).repeat(n_views, 1, 1)
+    for view_idx in range(1, n_views):
+        path = nx.shortest_path(mst, source=0, target=view_idx)
+        R_acc = torch.eye(3, device=device)
+        for a, b in zip(path[:-1], path[1:]):
+            R_acc = graph.edges[a, b]["Rt"][:3, :3] @ R_acc
+        R_seed[view_idx] = R_acc
+
+    directed = [(i, j) for i, j in graph.edges() if i != j]
+    node_pairs = torch.tensor(directed, dtype=torch.long)
+    rel_rotations = torch.stack(
+        [graph.edges[i, j]["Rt"][:3, :3] for i, j in directed]
+    )
+
+    R_abs = average_rotations(
+        node_pairs=node_pairs,
+        rel_rotations=rel_rotations,
+        R_seed=R_seed,
+        n_l1_iters=n_iters,
+        n_irls_iters=n_iters,
+        huber_delta_rad=huber_delta_rad,
+    )
+
+    for view_idx in range(n_views):
+        Rt = torch.zeros((3, 4), device=device)
+        Rt[:3, :3] = R_abs[view_idx]
+        graph.nodes[view_idx]["Rt"] = Rt
 
     return graph
 
