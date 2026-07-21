@@ -41,7 +41,7 @@ import math
 import numpy as np
 from dataclasses import dataclass
 
-from kineo.optimization.utils import optimizer_should_stop
+from kineo.optimization.utils import huber_weights, optimizer_should_stop
 
 
 @dataclass(frozen=True)
@@ -927,6 +927,7 @@ def _prune_graph(G: nx.DiGraph) -> nx.DiGraph:
 def _compute_relative_scale_factors(
     graph: nx.DiGraph,
     n_iters: int = 10,
+    n_irls_iters: int = 5,
     tolerance_grad: float = 1e-05,
     tolerance_change: float = 1e-09,
 ) -> nx.DiGraph:
@@ -946,8 +947,8 @@ def _compute_relative_scale_factors(
     n_views = graph.number_of_nodes()
     pairs = list(itertools.combinations(range(n_views), 2))
     n_pairs = len(pairs)
-    n_triplets = len(list(itertools.combinations(range(n_views), 3)))
-
+    triplets = list(itertools.combinations(range(n_views), 3))
+    n_triplets = len(triplets)
     device = graph.nodes[0]["K"].device
 
     if n_pairs == 1:
@@ -961,53 +962,27 @@ def _compute_relative_scale_factors(
         graph[i][j]["lambda_idx"] = pair_idx
         graph[j][i]["lambda_idx"] = pair_idx
 
-    triplet_costs = torch.zeros((n_triplets,), device=device)
+    # Unweighted translation loop-closure design matrix. Rotation coefficients use
+    # the averaged absolute node rotations (trustworthy) rather than raw edge
+    # rotations. A triplet is invalid when any of its edges failed pose estimation.
+    L, M = n_triplets, n_pairs
+    A_base = torch.zeros((3, L, M), device=device)
+    valid = torch.zeros(L, dtype=torch.bool, device=device)
 
-    for triplet_idx, (i, j, k) in enumerate(itertools.combinations(range(n_views), 3)):
-        cost_ij = torch.as_tensor(graph[i][j]["cost"])
-        cost_jk = torch.as_tensor(graph[j][k]["cost"])
-        cost_ki = torch.as_tensor(graph[k][i]["cost"])
-
-        # Check if any of the edges are inf
-        if torch.isinf(cost_ij) or torch.isinf(cost_jk) or torch.isinf(cost_ki):
-            triplet_costs[triplet_idx] = torch.inf
+    for triplet_idx, (i, j, k) in enumerate(triplets):
+        if any(
+            torch.isinf(torch.as_tensor(graph[a][b]["cost"]))
+            for a, b in ((i, j), (j, k), (k, i))
+        ):
             continue
+        valid[triplet_idx] = True
 
-        triplet_costs[triplet_idx] = (cost_ij + cost_jk + cost_ki) / 3
+        R_i = graph.nodes[i]["Rt"][:3, :3]
+        R_j = graph.nodes[j]["Rt"][:3, :3]
+        R_k = graph.nodes[k]["Rt"][:3, :3]
+        R_ki = R_i @ R_k.transpose(-1, -2)
+        R_jk = R_k @ R_j.transpose(-1, -2)
 
-    non_inf_mask = ~torch.isinf(triplet_costs)
-    triplet_cost_min = triplet_costs[non_inf_mask].min()
-    triplet_cost_max = triplet_costs[non_inf_mask].max()
-
-    if triplet_cost_min == triplet_cost_max:
-        # Degenrate case where all triplets have the same cost
-        triplet_costs[non_inf_mask] = 0.0
-    else:
-        # Normalize the costs to be between 0 and 1
-        triplet_costs[non_inf_mask] = (
-            triplet_costs[non_inf_mask] - triplet_cost_min
-        ) / (triplet_cost_max - triplet_cost_min)
-
-    L = n_triplets
-    M = n_pairs
-    A = torch.zeros((3, L, M), device=device)
-
-    for triplet_idx, (i, j, k) in enumerate(itertools.combinations(range(n_views), 3)):
-        lambda_ij_idx = graph[i][j]["lambda_idx"]
-        lambda_jk_idx = graph[j][k]["lambda_idx"]
-        lambda_ki_idx = graph[k][i]["lambda_idx"]
-
-        triplet_cost = triplet_costs[triplet_idx]
-
-        if torch.isinf(triplet_cost):
-            warnings.warn(f"Triplet ({i}, {j}, {k}) has infinite cost.")
-            A[:, triplet_idx, lambda_ij_idx] = 0
-            A[:, triplet_idx, lambda_jk_idx] = 0
-            A[:, triplet_idx, lambda_ki_idx] = 0
-            continue
-
-        R_ki = graph[k][i]["Rt"][:3, :3]
-        R_jk = graph[j][k]["Rt"][:3, :3]
         t_ij = graph[i][j]["Rt"][:3, 3]
         t_jk = graph[j][k]["Rt"][:3, 3]
         t_ki = graph[k][i]["Rt"][:3, 3]
@@ -1015,47 +990,54 @@ def _compute_relative_scale_factors(
         t_jk_hat = t_jk / torch.norm(t_jk)
         t_ki_hat = t_ki / torch.norm(t_ki)
 
-        triplet_weight_sq = torch.sqrt(torch.clamp(1 - triplet_cost, min=0.0))  # W^1/2
-        A[:, triplet_idx, lambda_ij_idx] = triplet_weight_sq * (R_ki @ R_jk @ t_ij_hat)
-        A[:, triplet_idx, lambda_jk_idx] = triplet_weight_sq * (R_ki @ t_jk_hat)
-        A[:, triplet_idx, lambda_ki_idx] = triplet_weight_sq * (t_ki_hat)
+        A_base[:, triplet_idx, graph[i][j]["lambda_idx"]] = R_ki @ R_jk @ t_ij_hat
+        A_base[:, triplet_idx, graph[j][k]["lambda_idx"]] = R_ki @ t_jk_hat
+        A_base[:, triplet_idx, graph[k][i]["lambda_idx"]] = t_ki_hat
+
+    log_lmb = torch.zeros((M,), device=device, requires_grad=True)
+    weights = valid.float()
 
     def closure():
         optimizer.zero_grad()
         lmb = torch.exp(log_lmb)
+        A = torch.sqrt(weights).view(1, L, 1) * A_base
         sq_error = ((A @ lmb).norm(p=2) ** 2) / (3 * L)
         reg_loss = torch.abs(1 - lmb).mean()
         total_loss = sq_error + 0.001 * reg_loss
         total_loss.backward()
         return total_loss
 
-    log_lmb = torch.zeros((M,), device=device, requires_grad=True)
-    optimizer = torch.optim.LBFGS([log_lmb], lr=1, line_search_fn="strong_wolfe")
+    pbar = tqdm(
+        range(n_irls_iters), desc="Computing relative scale factors", leave=False
+    )
+    for _ in pbar:
+        optimizer = torch.optim.LBFGS(
+            [log_lmb], lr=1, line_search_fn="strong_wolfe"
+        )
+        prev_losses = []
+        for _ in range(n_iters):
+            loss = optimizer.step(closure)
+            pbar.set_postfix(loss=loss.item())
+            if optimizer_should_stop(
+                optimizer,
+                loss,
+                prev_losses,
+                patience=5,
+                tolerance_grad=tolerance_grad,
+                tolerance_change=tolerance_change,
+            ):
+                break
+            prev_losses.append(loss.detach())
 
-    prev_losses = []
-
-    pbar = tqdm(range(n_iters), desc="Computing relative scale factors", leave=False)
-
-    for iter in pbar:
-        loss = optimizer.step(closure)
-        pbar.set_postfix(loss=loss.item())
-
-        if optimizer_should_stop(
-            optimizer,
-            loss,
-            prev_losses,
-            patience=5,
-            tolerance_grad=tolerance_grad,
-            tolerance_change=tolerance_change,
-        ):
-            break
-
-        prev_losses.append(loss.detach())
-
+        # Reweight triplets by their closure residual (Huber IRLS, adaptive scale).
+        with torch.no_grad():
+            residuals = (A_base @ torch.exp(log_lmb)).norm(dim=0)
+            if valid.any():
+                delta = 1.345 * residuals[valid].median().clamp_min(1e-9)
+                weights = valid.float() * huber_weights(residuals, delta)
     pbar.close()
 
     lmb = torch.exp(log_lmb.detach())
-
     for pair_idx, (view_i, view_j) in enumerate(pairs):
         graph[view_i][view_j]["scale"] = lmb[pair_idx]
         graph[view_j][view_i]["scale"] = lmb[pair_idx]
