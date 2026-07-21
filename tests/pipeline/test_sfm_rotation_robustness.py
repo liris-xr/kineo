@@ -5,6 +5,8 @@ import torch
 from kineo.geometry.rotation_averaging import geodesic_angle, project_to_so3
 from kineo.pipeline.stages.sfm_camera_extrinsics_initialization import (
     _average_rotations,
+    _compute_absolute_Rts,
+    _compute_relative_scale_factors,
     _reject_rotation_outlier_edges,
 )
 
@@ -65,3 +67,52 @@ def test_average_rotations_adapter_recovers_node_rotations():
     ang = geodesic_angle(R_out, R_gt)
     assert float(ang.max()) < math.radians(3.0)
     assert torch.allclose(g.nodes[0]["Rt"][:3, 3], torch.zeros(3), atol=1e-6)
+
+
+def _perfect_graph(R_gt: torch.Tensor, t_gt: torch.Tensor) -> nx.DiGraph:
+    """Complete outlier-free graph consistent with GT poses (world = node 0).
+
+    Edge (i, j) stores R_ij = R_j R_iᵀ and the unit direction of the true
+    relative translation t_ij = t_j - R_ij t_i, matching the pipeline's edge
+    convention. All edge costs are equal so no edge is a rotation outlier.
+    """
+    n = R_gt.shape[0]
+    g = nx.DiGraph()
+    for v in range(n):
+        g.add_node(v, K=torch.eye(3))
+        g.add_edge(v, v, cost=0.0, Rt=torch.eye(4)[:3, :])
+    for i in range(n):
+        for j in range(n):
+            if i == j:
+                continue
+            R_ij = R_gt[j] @ R_gt[i].transpose(-1, -2)
+            t_ij = t_gt[j] - R_ij @ t_gt[i]
+            t_hat = (t_ij / t_ij.norm()).view(3, 1)
+            g.add_edge(i, j, cost=0.01, Rt=torch.cat([R_ij, t_hat], dim=-1))
+    return g
+
+
+def test_robust_init_recovers_poses_on_perfect_graph():
+    # End-to-end reject -> average -> scale -> absolute on a clean synthetic
+    # graph: the only automated coverage for the scale/translation solve.
+    torch.manual_seed(0)
+    n = 5
+    R_gt = project_to_so3(torch.randn(n, 3, 3))
+    R_gt = R_gt @ R_gt[0].transpose(-1, -2)  # node 0 = world gauge
+    t_gt = torch.randn(n, 3)
+    t_gt[0] = torch.zeros(3)
+
+    g = _perfect_graph(R_gt, t_gt)
+    g = _reject_rotation_outlier_edges(g, thresh_deg=5.0, min_close_rate=0.5)
+    g = _average_rotations(g, n_iters=30, huber_delta_rad=math.radians(5.0))
+    g = _compute_relative_scale_factors(g)
+    g = _compute_absolute_Rts(g)
+
+    R_out = torch.stack([g.nodes[v]["Rt"][:3, :3] for v in range(n)])
+    assert float(geodesic_angle(R_out, R_gt).max()) < math.radians(0.5)
+
+    # Translations recovered up to a single global scale (gauge freedom).
+    t_out = torch.stack([g.nodes[v]["Rt"][:3, 3] for v in range(n)])
+    scale = (t_out * t_gt).sum() / (t_gt * t_gt).sum()
+    rel_err = (t_out - scale * t_gt).norm() / (scale * t_gt).norm()
+    assert float(rel_err) < 0.05

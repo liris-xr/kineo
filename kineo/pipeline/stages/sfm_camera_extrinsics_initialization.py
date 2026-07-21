@@ -54,6 +54,9 @@ class SfMCameraExtrinsicsInitializationRuntimeConfig:
     use_lbfgs: bool = True
     n_relative_scale_factors_iters: int = 10
     refinement_huber_delta: float = 1.0
+    rotation_outlier_thresh_deg: float = 7.0
+    rotation_outlier_min_close_rate: float = 0.5
+    n_rotation_averaging_iters: int = 100
 
 
 class SfMCameraExtrinsicsInitializationStage(
@@ -165,6 +168,9 @@ class SfMCameraExtrinsicsInitializationStage(
             tolerance_change=runtime_cfg.tolerance_change,
             n_relative_scale_factors_iters=runtime_cfg.n_relative_scale_factors_iters,
             refinement_huber_delta=runtime_cfg.refinement_huber_delta,
+            rotation_outlier_thresh_deg=runtime_cfg.rotation_outlier_thresh_deg,
+            rotation_outlier_min_close_rate=runtime_cfg.rotation_outlier_min_close_rate,
+            n_rotation_averaging_iters=runtime_cfg.n_rotation_averaging_iters,
         )
 
         camera_extrinsics_annotations = []
@@ -202,6 +208,9 @@ def _estimate_camera_extrinsics(
     tolerance_change: float = 1e-09,
     n_relative_scale_factors_iters: int = 10,
     refinement_huber_delta: float = 1.0,
+    rotation_outlier_thresh_deg: float = 7.0,
+    rotation_outlier_min_close_rate: float = 0.5,
+    n_rotation_averaging_iters: int = 100,
 ) -> torch.Tensor:
     """
     Estimate camera extrinsics from 2D keypoint correspondences across multiple views.
@@ -253,6 +262,18 @@ def _estimate_camera_extrinsics(
         points2=points2,
         ransac_confidence=ransac_confidence,
         ransac_reproj_threshold=ransac_reproj_threshold,
+    )
+
+    graph = _reject_rotation_outlier_edges(
+        graph,
+        thresh_deg=rotation_outlier_thresh_deg,
+        min_close_rate=rotation_outlier_min_close_rate,
+    )
+
+    graph = _average_rotations(
+        graph,
+        n_iters=n_rotation_averaging_iters,
+        huber_delta_rad=math.radians(rotation_outlier_thresh_deg),
     )
 
     graph = _compute_relative_scale_factors(
@@ -1088,7 +1109,7 @@ def _compose_path_Rt_rel(graph: nx.DiGraph, path: list[int]) -> torch.Tensor:
 
 def _compute_absolute_Rts(graph: nx.DiGraph) -> nx.DiGraph:
     """
-    Compute absolute camera poses from relative transformations.
+    Place camera translations along the MST using the fixed averaged rotations.
 
     Composes the absolute camera poses by chaining transformations along the MST.
 
@@ -1102,16 +1123,19 @@ def _compute_absolute_Rts(graph: nx.DiGraph) -> nx.DiGraph:
     """
     n_views = graph.number_of_nodes()
     device = graph.nodes[0]["K"].device
-
-    Rts = torch.eye(4, device=device)[:3, :].repeat(n_views, 1, 1)
     mst = nx.minimum_spanning_tree(graph.to_undirected(), weight="cost")
 
-    graph.nodes[0]["Rt"] = Rts[0]
+    graph.nodes[0]["Rt"][:3, 3] = torch.zeros(3, device=device)
 
     for view_idx in range(1, n_views):
         path = nx.shortest_path(mst, source=0, target=view_idx)
-        Rt_0i = _compose_path_Rt_rel(graph, path)
-        Rts[view_idx] = multiply_Rt(Rt_0i, Rts[0])
-        graph.nodes[view_idx]["Rt"] = Rts[view_idx]
+        t = torch.zeros((3, 1), device=device)
+        for a, b in zip(path[:-1], path[1:]):
+            R_a = graph.nodes[a]["Rt"][:3, :3]
+            R_b = graph.nodes[b]["Rt"][:3, :3]
+            R_ab = R_b @ R_a.transpose(-1, -2)
+            t_hat = graph.edges[a, b]["Rt"][:3, 3:]
+            t = R_ab @ t + graph.edges[a, b]["scale"] * t_hat
+        graph.nodes[view_idx]["Rt"][:3, 3] = t.squeeze(-1)
 
     return graph
