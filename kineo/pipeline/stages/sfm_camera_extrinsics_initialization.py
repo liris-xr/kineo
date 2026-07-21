@@ -362,6 +362,9 @@ def _refine_camera_extrinsics(
             sampson_loss += huber_loss.mean()
 
         total_loss = sampson_loss / len(edges_no_selfloops)
+        # Non-finite step (e.g. degenerate pose, |t|->0): large loss so LBFGS backtracks.
+        if not torch.isfinite(total_loss):
+            return torch.full_like(total_loss, 1e12)
         total_loss.backward()
         return total_loss
 
