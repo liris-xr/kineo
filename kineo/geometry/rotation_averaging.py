@@ -119,6 +119,10 @@ def average_rotations(
     gauge anchor, held fixed at R_seed[0]. Assumes a well-connected graph
     (redundant edges let good edges outvote a bad seed).
 
+    Precondition: node_pairs must contain both directed pairs of every
+    undirected edge. A view that never appears as a source is left
+    unchanged at its seed value.
+
     Args:
         node_pairs: Directed edges as (E, 2) long tensor of (source, target).
         rel_rotations: (E, 3, 3) relative rotations; edge (i, j) maps view i

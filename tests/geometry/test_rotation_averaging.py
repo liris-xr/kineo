@@ -59,7 +59,8 @@ def test_average_rotations_recovers_gt_despite_outliers():
     pairs = [(i, j) for i in range(n) for j in range(n) if i != j]
     node_pairs = torch.tensor(pairs, dtype=torch.long)
     rel = torch.stack([R_gt[j] @ R_gt[i].transpose(-1, -2) for i, j in pairs])
-    # Corrupt ~20% of undirected edges with large (>30 deg) rotation errors.
+    # Corrupt ~20% of undirected edges with large (Haar-random) rotation
+    # errors.
     torch.manual_seed(1)
     corrupt = {frozenset((0, 3)), frozenset((2, 5)), frozenset((4, 7))}
     for e, (i, j) in enumerate(pairs):
