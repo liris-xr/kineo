@@ -55,10 +55,10 @@ def edge_closure_rates(
     """Fraction of each edge's triplets whose rotation loop closes.
 
     For every triplet (i, j, k) with all three directed edges present, the loop
-    R_ki @ R_jk @ R_ij is compared to identity; the triplet closes when its angle
-    is below thresh_rad. An edge's rate is the fraction of its triplets that
-    close. Outlier edges break most of their loops and score low. The rate is
-    shared by both directions of an undirected pair.
+    R_ki @ R_jk @ R_ij is compared to identity; the triplet closes when its
+    angle is below thresh_rad. An edge's rate is the fraction of its triplets
+    that close. Outlier edges break most of their loops and score low. The rate
+    is shared by both directions of an undirected pair.
 
     Args:
         node_pairs: Directed edges as (E, 2) long tensor of (source, target).
@@ -70,7 +70,9 @@ def edge_closure_rates(
     Returns:
         (E,) closure rate in [0, 1]; edges in no complete triplet score 1.
     """
-    lookup = {(int(a), int(b)): e for e, (a, b) in enumerate(node_pairs.tolist())}
+    lookup = {
+        (int(a), int(b)): e for e, (a, b) in enumerate(node_pairs.tolist())
+    }
     good: dict[frozenset, float] = {}
     total: dict[frozenset, float] = {}
 
@@ -80,16 +82,18 @@ def edge_closure_rates(
             continue
         R_ij, R_jk, R_ki = (rel_rotations[lookup[e]] for e in edges)
         R_loop = R_ki @ R_jk @ R_ij
-        trace = R_loop.diagonal().sum()
-        closed = float(
-            torch.arccos(torch.clamp((trace - 1.0) / 2.0, -1.0, 1.0)) < thresh_rad
+        angle = geodesic_angle(
+            torch.eye(3, device=R_loop.device, dtype=R_loop.dtype), R_loop
         )
+        closed = float(angle < thresh_rad)
         for a, b in edges:
             key = frozenset((a, b))
             good[key] = good.get(key, 0.0) + closed
             total[key] = total.get(key, 0.0) + 1.0
 
-    rates = torch.ones(len(node_pairs))
+    rates = torch.ones(
+        len(node_pairs), device=rel_rotations.device, dtype=rel_rotations.dtype
+    )
     for e, (a, b) in enumerate(node_pairs.tolist()):
         key = frozenset((int(a), int(b)))
         if key in total:
