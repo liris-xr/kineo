@@ -330,7 +330,10 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
                     distortion_model == CameraDistortionModel.BROWN_CONRADY
             ), "Only brown_conrady distortion model is supported for now"
 
+        had_finite_loss = False
+
         def opt_closure():
+            nonlocal had_finite_loss
             optimizer.zero_grad()
 
             if shared_intrinsics:
@@ -374,11 +377,20 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
                 dist_coeffs_regularization = (dist_coeffs ** 2).mean()
                 total_loss += dist_coeffs_regularization_weight * dist_coeffs_regularization
 
-            # Non-finite step (e.g. points through camera plane): large loss so
-            # LBFGS backtracks instead of aborting.
+            # A non-finite step mid-optimization (e.g. points through the camera
+            # plane) gets a large finite loss so LBFGS line-search backtracks. But
+            # a non-finite / empty very first evaluation means the initial geometry
+            # is degenerate: there is no gradient to backtrack from, so fail loudly
+            # instead of silently returning the unrefined cameras.
             if n_valid == 0 or not torch.isfinite(total_loss):
+                if not had_finite_loss:
+                    raise ValueError(
+                        "Bundle adjustment initial evaluation is non-finite "
+                        "(degenerate geometry or no valid keypoints)."
+                    )
                 return torch.full_like(total_loss, 1e12)
 
+            had_finite_loss = True
             total_loss.backward()
 
             return total_loss

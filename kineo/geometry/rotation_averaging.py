@@ -10,11 +10,15 @@
 
 import itertools
 
+import roma
 import torch
 
 
 def geodesic_angle(R_a: torch.Tensor, R_b: torch.Tensor) -> torch.Tensor:
     """Geodesic (rotation) angle between two rotation matrices.
+
+    Thin wrapper over roma.rotmat_geodesic_distance (the repo standard) under
+    this module's local name, reused across the SfM adapters and tests.
 
     Args:
         R_a: Rotation matrices of shape (*, 3, 3).
@@ -23,13 +27,13 @@ def geodesic_angle(R_a: torch.Tensor, R_b: torch.Tensor) -> torch.Tensor:
     Returns:
         Angle in radians of shape (*,).
     """
-    rel = R_a.transpose(-1, -2) @ R_b
-    trace = rel.diagonal(dim1=-2, dim2=-1).sum(-1)
-    return torch.arccos(torch.clamp((trace - 1.0) / 2.0, -1.0, 1.0))
+    return roma.rotmat_geodesic_distance(R_a, R_b)
 
 
 def project_to_so3(M: torch.Tensor) -> torch.Tensor:
     """Nearest rotation matrix to M (special orthogonal Procrustes).
+
+    Thin wrapper over roma.special_procrustes under this module's local name.
 
     Args:
         M: Matrices of shape (*, 3, 3).
@@ -37,13 +41,7 @@ def project_to_so3(M: torch.Tensor) -> torch.Tensor:
     Returns:
         Rotation matrices of shape (*, 3, 3) with det = +1.
     """
-    U, _, Vh = torch.linalg.svd(M)
-    det = torch.linalg.det(U @ Vh)
-    D = torch.eye(3, device=M.device, dtype=M.dtype).expand(
-        M.shape[:-2] + (3, 3)
-    ).clone()
-    D[..., 2, 2] = det
-    return U @ D @ Vh
+    return roma.special_procrustes(M)
 
 
 def edge_closure_rates(

@@ -29,7 +29,7 @@ from kineo.annotations.camera_extrinsics import (
     CameraExtrinsicsAnnotation,
     CameraExtrinsicsAnnotationsMetadata,
 )
-from kineo.geometry.camera import inverse_Rt, multiply_Rt
+from kineo.geometry.camera import inverse_Rt
 from kineo.geometry.rotation_averaging import (
     average_rotations,
     edge_closure_rates,
@@ -346,7 +346,10 @@ def _refine_camera_extrinsics(
 
     print(f"Refining camera extrinsics using {len(edges_no_selfloops)} edges.")
 
+    had_finite_loss = False
+
     def opt_closure():
+        nonlocal had_finite_loss
         optimizer.zero_grad()
 
         Rts = torch.cat(
@@ -387,9 +390,19 @@ def _refine_camera_extrinsics(
             sampson_loss += huber_loss.mean()
 
         total_loss = sampson_loss / len(edges_no_selfloops)
-        # Non-finite step (e.g. degenerate pose, |t|->0): large loss so LBFGS backtracks.
+        # A non-finite step mid-optimization (e.g. degenerate pose, |t|->0) gets a
+        # large finite loss so LBFGS line-search backtracks. But a non-finite very
+        # first evaluation means the seed geometry itself is degenerate: there is
+        # no gradient to backtrack from, so fail loudly instead of silently
+        # returning the unrefined extrinsics.
         if not torch.isfinite(total_loss):
+            if not had_finite_loss:
+                raise ValueError(
+                    "Initial camera extrinsics produce a non-finite refinement "
+                    "loss (degenerate seed geometry)."
+                )
             return torch.full_like(total_loss, 1e12)
+        had_finite_loss = True
         total_loss.backward()
         return total_loss
 
@@ -734,7 +747,10 @@ def _average_rotations(
     n_views = graph.number_of_nodes()
     device = graph.nodes[0]["K"].device
 
+    # Cache the cost-weighted MST on the graph; _compute_absolute_Rts reuses it
+    # (edge topology is unchanged between the two passes).
     mst = nx.minimum_spanning_tree(graph.to_undirected(), weight="cost")
+    graph.graph["mst"] = mst
     R_seed = torch.eye(3, device=device).repeat(n_views, 1, 1)
     for view_idx in range(1, n_views):
         path = nx.shortest_path(mst, source=0, target=view_idx)
@@ -1078,47 +1094,6 @@ def _compute_relative_scale_factors(
     return graph
 
 
-def _compose_path_Rt_rel(graph: nx.DiGraph, path: list[int]) -> torch.Tensor:
-    """
-    Compose a sequence of relative camera transformations along a path.
-
-    Given a path of camera indices and their pairwise relative transformations,
-    this function computes the cumulative transformation by chaining the individual
-    transformations along the path. The translations are scaled according to the
-    provided scale factors.
-
-    Args:
-        graph: nx.DiGraph
-            Graph containing the camera transformations
-        path: list[int]
-            Sequence of camera indices representing the path
-
-    Returns:
-        torch.Tensor of shape (3, 4)
-            Composed camera transformation matrix representing the cumulative
-            transformation along the path
-    """
-    device = graph.nodes[0]["K"].device
-    Rt_rel = torch.eye(4, device=device)[:3, :]
-
-    for i in range(len(path) - 1):
-        scale_ij = graph[path[i]][path[i + 1]]["scale"]
-        Rt_ij = graph[path[i]][path[i + 1]]["Rt"]
-
-        rotation = Rt_ij[:3, :3]
-        translation = Rt_ij[:3, 3:]
-        scaled_translation = scale_ij * translation
-
-        RT = torch.cat(
-            [rotation, scaled_translation],
-            dim=-1,
-        )
-
-        Rt_rel = multiply_Rt(RT, Rt_rel)
-
-    return Rt_rel
-
-
 def _compute_absolute_Rts(graph: nx.DiGraph) -> nx.DiGraph:
     """
     Place camera translations along the MST using the fixed averaged rotations.
@@ -1135,7 +1110,9 @@ def _compute_absolute_Rts(graph: nx.DiGraph) -> nx.DiGraph:
     """
     n_views = graph.number_of_nodes()
     device = graph.nodes[0]["K"].device
-    mst = nx.minimum_spanning_tree(graph.to_undirected(), weight="cost")
+    mst = graph.graph.get("mst")
+    if mst is None:
+        mst = nx.minimum_spanning_tree(graph.to_undirected(), weight="cost")
 
     graph.nodes[0]["Rt"][:3, 3] = torch.zeros(3, device=device)
 
