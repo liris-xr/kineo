@@ -266,6 +266,13 @@ if __name__ == "__main__":
         default=[],
         help="List of views to process",
     )
+    parser.add_argument(
+        "--human-gt-format",
+        type=str,
+        default="coco",
+        choices=["coco", "smpl"],
+        help="GT joint set for human metrics: coco (default) or smpl (SMPL-22).",
+    )
     args = parser.parse_args()
     dataset_dir = args.dataset_dir
     config_file = args.config_file
@@ -275,4 +282,5 @@ if __name__ == "__main__":
         config_file,
         args.sequences_filter,
         args.views_filter,
+        args.human_gt_format,
     )
