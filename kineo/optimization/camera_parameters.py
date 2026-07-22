@@ -189,7 +189,12 @@ class CameraIntrinsicsParameters(torch.nn.Module):
         )
 
         if not self._fx_and_fy:
-            focal_length_rnorm = focal_length_rnorm.mean(dim=-1, keepdim=True)
+            # Single shared focal: keep fx/width to stay consistent with the K
+            # getter (which reconstructs fx = fy = f_rnorm * width). Averaging
+            # fx/width and fy/height is non-idempotent for non-square images —
+            # it scales the focal by (1 + width/height)/2 on every set->get
+            # round-trip, inflating it across bundle-adjustment passes.
+            focal_length_rnorm = focal_length_x_rnorm.unsqueeze(-1)
 
         principal_point_x_rnorm = K[..., 0, 2] / self._image_size_hw_px[..., 1]
         principal_point_y_rnorm = K[..., 1, 2] / self._image_size_hw_px[..., 0]
