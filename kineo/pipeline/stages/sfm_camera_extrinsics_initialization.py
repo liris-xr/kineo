@@ -324,8 +324,6 @@ def _refine_camera_extrinsics(
     )
     other_cameras_extrinsics.Rt = Rts[1:]
 
-    # pruned_graph = _prune_graph(graph)
-
     # Remove self loops
     graph_undirected = graph.to_undirected()
 
@@ -840,82 +838,6 @@ def _refine_fundamental_matrix(
     return F_refined
 
 
-def _prune_graph(G: nx.DiGraph) -> nx.DiGraph:
-    """
-    Prune the graph by removing edges. Keeps the graph rigid and with its original MST.
-
-    In practice, we do the opposite, i.e. build a rigid graph using Henneberg I algorithm.
-    """
-    undirected_graph: nx.Graph = G.to_undirected()
-    selfloop_edges = list(nx.selfloop_edges(undirected_graph))
-    undirected_graph.remove_edges_from(selfloop_edges)
-
-    n = undirected_graph.number_of_nodes()
-
-    mst: nx.Graph = nx.minimum_spanning_tree(undirected_graph, weight="cost")
-
-    available_edges = list(undirected_graph.edges())
-    # MST edges are first, then sorted by cost
-    available_edges.sort(
-        key=lambda x: (x not in mst.edges(), undirected_graph[x[0]][x[1]]["cost"])
-    )
-
-    L = nx.Graph()
-
-    nodes = list(nx.dfs_preorder_nodes(mst))
-
-    # We now construct the rigid graph following Henneberg construction
-    # We greedily connect new nodes to two existing nodes in the graph. In that case, we
-    # always pick the MST edges and then the remaining edges sorted by cost.
-    for i in range(n):
-        node = nodes[i]
-
-        L.add_node(node)
-        # print(f"Added node {node}")
-
-        if i == 0:
-            continue
-
-        existing_vertices = set(L.nodes())
-
-        # Connect by new vertex using two available edges
-        candidate_edges = [
-            e
-            for e in available_edges
-            if (e[0] == node and e[1] in existing_vertices)
-            or (e[1] == node and e[0] in existing_vertices)
-        ]
-        first_edge = candidate_edges.pop(0)
-        available_edges.remove(first_edge)
-        L.add_edge(first_edge[0], first_edge[1])
-        # print(f"Added edge {first_edge[0]}-{first_edge[1]}")
-
-        if i == 1:
-            continue
-
-        second_edge = candidate_edges.pop(0)
-        available_edges.remove(second_edge)
-        L.add_edge(second_edge[0], second_edge[1])
-        # print(f"Added edge {second_edge[0]}-{second_edge[1]}")
-
-    mst_edges = list(mst.edges())
-    L.add_edges_from(mst_edges)
-    L.add_edges_from(selfloop_edges)
-
-    # Now remove edges that are not in L in G.
-    G = G.copy()
-    G_edges = list(G.edges())
-
-    for edge in G_edges:
-        if (edge[0], edge[1]) not in L.edges() and (edge[1], edge[0]) not in L.edges():
-            try:
-                G.remove_edge(edge[0], edge[1])
-                G.remove_edge(edge[1], edge[0])
-            except nx.NetworkXError:
-                pass
-    return G
-
-
 def _compute_relative_scale_factors(
     graph: nx.DiGraph,
     n_iters: int = 10,
@@ -1065,9 +987,9 @@ def _compute_absolute_Rts(graph: nx.DiGraph) -> nx.DiGraph:
     """
     n_views = graph.number_of_nodes()
     device = graph.nodes[0]["K"].device
-    mst = graph.graph.get("mst")
-    if mst is None:
-        mst = nx.minimum_spanning_tree(graph.to_undirected(), weight="cost")
+    # Reuse the cycle-consistency-weighted MST built by _average_rotations so
+    # translation placement routes along the same trustworthy edges.
+    mst = graph.graph["mst"]
 
     graph.nodes[0]["Rt"][:3, 3] = torch.zeros(3, device=device)
 
