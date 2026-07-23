@@ -152,6 +152,23 @@ class CameraExtrinsicsAnnotations(Annotations[CameraExtrinsicsAnnotation]):
         closest_frame_idx = frames[torch.argmin(torch.abs(frames - frame_idx))]
         return self.filter_by_frame_idx(closest_frame_idx.item())
 
+    def filter_active_by_frame_idx(
+        self, frame_idx: int
+    ) -> CameraExtrinsicsAnnotations:
+        # Per view: annotation whose onset frame_idx is the most recent one at or
+        # before frame_idx (earliest as fallback). Yields one pose per view, i.e.
+        # the camera pose active at that frame for non-static (moving) cameras.
+        active = []
+        for view_id in self.views_ids:
+            anns = [a for a in self._annotations if a.view_id == view_id]
+            eligible = [a for a in anns if a.frame_idx <= frame_idx]
+            active.append(
+                max(eligible, key=lambda a: a.frame_idx)
+                if eligible
+                else min(anns, key=lambda a: a.frame_idx)
+            )
+        return CameraExtrinsicsAnnotations(self._metadata, active)
+
     def filter_by_view_id(
         self, view_ids: str | list[str]
     ) -> CameraExtrinsicsAnnotations:

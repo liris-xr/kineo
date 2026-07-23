@@ -273,7 +273,6 @@ def _generate_annotations(
                     included_cams=included_cams,
                     colmap_dir=os.path.join(subsequence_abs_dir, "colmap/workplace"),
                     cfg=cfg,
-                    static_only=True,
                     merge_static_extrinsics=True,
                     merge_translation_tolerance=merge_translation_tolerance,
                     merge_rotation_tolerance=merge_rotation_tolerance,
@@ -500,7 +499,6 @@ def _load_cameras_annotations(
     included_cams: list[str],
     colmap_dir: str,
     cfg: dict[str, Any],
-    static_only: bool = True,
     merge_static_extrinsics: bool = True,
     merge_translation_tolerance: float = 0.02,  # in meters
     merge_rotation_tolerance: float = 1.0,  # in degrees
@@ -519,21 +517,11 @@ def _load_cameras_annotations(
             rotation_tolerance=merge_rotation_tolerance,
         )
 
-    if static_only:
-        new_annotations: list[CameraExtrinsicsAnnotation] = []
-        views_ids = cam_extrinsics_annotations.views_ids
-        for view_id in views_ids:
-            view_annotations = cam_extrinsics_annotations.filter_by_view_id(view_id)
-            if len(view_annotations) == 1:
-                new_annotations.append(view_annotations.first_or_default())
-            else:
-                tqdm.write(
-                    f"View {view_id} has multiple extrinsics annotations (not static), not including it."
-                )
-        cam_extrinsics_annotations = CameraExtrinsicsAnnotations(
-            metadata=cam_extrinsics_annotations.metadata,
-            annotations=new_annotations,
-        )
+    # Non-static (moving) cameras are kept with their per-segment poses (multiple
+    # annotations at their onset frames), flagged via is_view_static downstream.
+    for view_id in cam_extrinsics_annotations.views_ids:
+        if not cam_extrinsics_annotations.is_view_static(view_id):
+            tqdm.write(f"View {view_id} is non-static; keeping per-segment extrinsics.")
 
     # Remove any camera in intrinsics annotations that is not both in the intrinsics and the extrinsics annotations
     extrinsics_views_ids = cam_extrinsics_annotations.views_ids
@@ -893,11 +881,10 @@ def _load_cameras_extrinsics(
     for line in extrinsics:
         line = line.strip().split()
 
-        name = line[9]
-        name = str(Path(name).with_suffix(""))
-        # Split name by /, first element is the subject name, second is the frame_idx
-        cam_name, frame_id = name.split("/")
-        frame_id = int(frame_id)
+        # COLMAP image names use forward slashes ("cam01/00001.jpg"); split on "/"
+        # directly (Path would rewrite the separator to "\" on Windows).
+        cam_name, frame_file = line[9].split("/", 1)
+        frame_id = int(os.path.splitext(frame_file)[0])
 
         if (
             cam_name in cfg.CALIBRATION.MANUAL_EXO_CAMERAS

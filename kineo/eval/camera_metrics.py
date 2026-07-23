@@ -46,7 +46,7 @@ def _compute_camera_metrics_for_frame(
     )
 
     frame_gt_cam_extrinsics_annotations = (
-        gt_cam_extrinsics_annotations.get_closest_by_frame_idx(frame_idx)
+        gt_cam_extrinsics_annotations.filter_active_by_frame_idx(frame_idx)
     )
     frame_pred_cam_extrinsics_annotations = (
         pred_cam_extrinsics_annotations.get_closest_by_frame_idx(frame_idx)
@@ -229,13 +229,9 @@ def compute_camera_metrics(
     pred_cam_intrinsics_annotations: CameraIntrinsicsAnnotations,
     pred_cam_extrinsics_annotations: CameraExtrinsicsAnnotations,
 ) -> list[dict[str, torch.Tensor]]:
-    views_ids = gt_cam_extrinsics_annotations.views_ids
-    n_views = len(views_ids)
-
-    if len(pred_cam_extrinsics_annotations.annotations) != n_views:
-        frames = pred_cam_extrinsics_annotations.frames
-    else:
-        frames = [0]
+    # Evaluate at the GT extrinsics onset frames: {0} for static sequences
+    # (single-frame path unchanged), {0, onset...} for non-static cameras.
+    frames = gt_cam_extrinsics_annotations.frames
 
     out = {}
     for frame in frames:

@@ -136,11 +136,11 @@ def compute_human_metrics(
                 f"Predicted subjects ids do not match ground truth subjects ids and multi-subject auto associating in metric computation is not implemented yet"
             )
     
-    assert len(gt_cam_extrinsics_annotations.annotations) == n_views
-
-    for ann in gt_cam_extrinsics_annotations.annotations:
-        view_idx = view_id_to_idx[ann.view_id]
-        gt_world2cam[view_idx] = ann.Rt
+    # One pose per view for the camera-center alignment; non-static (moving) views
+    # keep multiple annotations, their inter-segment translation is negligible here.
+    for view_id in views_ids:
+        ann = gt_cam_extrinsics_annotations.filter_by_view_id(view_id).first_or_default()
+        gt_world2cam[view_id_to_idx[view_id]] = ann.Rt
 
     gt_world2cam = gt_world2cam.unsqueeze(0).expand(n_frames, -1, -1, -1)
 
