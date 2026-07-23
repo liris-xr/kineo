@@ -2,7 +2,6 @@ torch~=2.6.0
 numpy<2
 torchvision
 torchaudio
-mmpretrain
 mmengine
 mmcv @ git+https://github.com/cjaverliat/mmcv.git
 mmpose @ git+https://github.com/cjaverliat/mmpose.git

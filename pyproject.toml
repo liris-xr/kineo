@@ -63,12 +63,11 @@ cv2-enumerate-cameras = "*"
 
 sam2 = { git = "https://github.com/cjaverliat/sam2.git", tag = "v1.2.0" }
 
-mmpretrain = "*"
 mmengine = "*"
 mmcv = { git = "https://github.com/cjaverliat/mmcv.git" }
 mmpose = { git = "https://github.com/cjaverliat/mmpose.git" }
 mmdet = { git = "https://github.com/cjaverliat/mmdetection.git" }
-mmdeploy = "*"
+aitviewer = { git = "https://github.com/cjaverliat/aitviewer.git" }
 
 [tool.pixi.pypi-options]
 no-build-isolation = ["sam2", "chumpy"]
