@@ -1,0 +1,43 @@
+{
+  "description": "EgoHumans camera selections used by HSfM (Muller & Choi et al., 'Reconstructing People, Places, and Cameras', CVPR 2025) for its 2-, 4- and 8-view evaluation settings. The main-paper tables report the 4-view case; Table S.1 additionally reports 2- and 8-view. Source: supplementary section S.4.2.",
+  "source": "https://arxiv.org/abs/2412.17806 (supplementary S.4.2)",
+  "conventions": {
+    "camera_indexing": "1-indexed. Paper 'camera N' maps to view id 'camNN' (zero-padded), matching egohumans_sequences.json view ids.",
+    "all_sentinel": "\"all\" means every available view of the sequence (used where the paper says 'all 8 available cameras').",
+    "activity_keys": "Keys are the activity prefixes of our sequence names (e.g. 'legoassemble'); the paper labels these 01_tagging..07_tennis.",
+    "training_set": "None. HSfM evaluates every sequence of each activity under its activity's per-view-count selection; no sequences are held out for training."
+  },
+  "notes": [
+    "'all' for tagging/legoassemble/basketball in the 8-view case reflects that those activities provide exactly 8 cameras.",
+    "Our preprocessed dataset drops some cameras that these selections reference (our preprocess merges near-static cameras via --merge-translation-tolerance / --merge-rotation-tolerance). Against the current snapshot the unreproducible pairs are: 4-view volleyball (all lack cam11) and badminton (12/60); 8-view fencing (only 7/14 have cam15), volleyball (cam11), badminton (cam15), tennis (all lack cam07). 2-view and 4-view tennis/fencing/etc. are fully satisfiable. Re-preprocess without static-camera merging to recover the missing views before running those settings."
+  ],
+  "camera_selections": {
+    "2": {
+      "tagging": ["cam01", "cam02"],
+      "legoassemble": ["cam03", "cam05"],
+      "fencing": ["cam05", "cam13"],
+      "basketball": ["cam02", "cam07"],
+      "volleyball": ["cam06", "cam12"],
+      "badminton": ["cam05", "cam07"],
+      "tennis": ["cam09", "cam12"]
+    },
+    "4": {
+      "tagging": ["cam01", "cam04", "cam06", "cam08"],
+      "legoassemble": ["cam02", "cam03", "cam04", "cam06"],
+      "fencing": ["cam04", "cam05", "cam10", "cam13"],
+      "basketball": ["cam01", "cam03", "cam04", "cam08"],
+      "volleyball": ["cam02", "cam04", "cam08", "cam11"],
+      "badminton": ["cam01", "cam02", "cam05", "cam07"],
+      "tennis": ["cam04", "cam09", "cam12", "cam20"]
+    },
+    "8": {
+      "tagging": "all",
+      "legoassemble": "all",
+      "fencing": ["cam01", "cam03", "cam05", "cam07", "cam09", "cam11", "cam13", "cam15"],
+      "basketball": "all",
+      "volleyball": ["cam01", "cam03", "cam05", "cam07", "cam09", "cam11", "cam13", "cam15"],
+      "badminton": ["cam01", "cam03", "cam05", "cam07", "cam09", "cam11", "cam13", "cam15"],
+      "tennis": ["cam01", "cam03", "cam05", "cam07", "cam09", "cam11", "cam13", "cam15"]
+    }
+  }
+}
