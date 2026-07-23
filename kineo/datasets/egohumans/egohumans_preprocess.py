@@ -22,8 +22,6 @@ from kineo.annotations.keypoints_format import KeypointsFormat
 
 from kineo.io.frame_sequence_loader import ImagesLoader
 from kineo.datasets.keypoints_sequence_dataset import ViewInput
-from kineo.visualization.viz_3d import show_keypoints_and_cameras
-from kineo.visualization.viz_2d import show_bboxes_and_reproj_keypoints
 from kineo.annotations.global_time_reference import (
     GlobalTimeReferenceAnnotations,
     GlobalTimeReferenceAnnotationsMetadata,
@@ -422,6 +420,10 @@ def _generate_subsequence_annotations(
     )
 
     if show:
+        # Imported lazily: the viewer pulls aitviewer, only needed for --show.
+        from kineo.visualization.viz_3d import show_keypoints_and_cameras
+        from kineo.visualization.viz_2d import show_bboxes_and_reproj_keypoints
+
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         views = []
         for camera in cameras:
