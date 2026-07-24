@@ -95,42 +95,57 @@ def generate_kps2d_from_kps3d_and_cameras(
     cam_intrinsics: CameraIntrinsicsAnnotations,
     cam_extrinsics: CameraExtrinsicsAnnotations,
 ) -> Keypoints2DAnnotations:
+    kps3d_annotations = kps_annotations.annotations
+    views_ids = cam_extrinsics.views_ids
+
+    if not kps3d_annotations:
+        return Keypoints2DAnnotations(
+            metadata=kps_annotations.metadata,
+            annotations=[],
+        )
+
+    # Project every annotation's keypoints for a view in one batched call
+    # (projection is elementwise per point). Stays on CPU like the per-point
+    # version above did.
+    kps_world = torch.stack([a.xyz for a in kps3d_annotations])  # (A, J, 3)
+    n_annotations, n_joints, _ = kps_world.shape
+    kps_world_flat = kps_world.reshape(n_annotations * n_joints, 3)
+
+    view_kps_img: dict[str, torch.Tensor] = {}
+    for view_id in views_ids:
+        view_cam_extrinsics = cam_extrinsics.filter_by_view_id(
+            view_id
+        ).first_or_default()
+        view_cam_intrinsics = cam_intrinsics.filter_by_view_id(
+            view_id
+        ).first_or_default()
+
+        D = view_cam_intrinsics.distortion_coefficients
+        distortion_model = view_cam_intrinsics.distortion_model
+        K = view_cam_intrinsics.K
+        Rt = view_cam_extrinsics.Rt
+
+        kps_cam = transform_points_from_world_to_camera(
+            points_3d_world=kps_world_flat, Rt=Rt
+        )
+        kps_img, _ = project_points_from_camera_to_image(
+            points_3d_cam=kps_cam,
+            K=K,
+            D=D,
+            distortion_model=distortion_model.value,
+        )
+        view_kps_img[view_id] = kps_img.reshape(n_annotations, n_joints, 2)
+
+    # Emit in the original annotation-major, then view order.
     annotations: list[Keypoints2DAnnotation] = []
-
-    for annotation in kps_annotations.annotations:
-        for view_id in cam_extrinsics.views_ids:
-            view_cam_extrinsics = cam_extrinsics.filter_by_view_id(
-                view_id
-            ).first_or_default()
-            view_cam_intrinsics = cam_intrinsics.filter_by_view_id(
-                view_id
-            ).first_or_default()
-
-            D = view_cam_intrinsics.distortion_coefficients
-            distortion_model = view_cam_intrinsics.distortion_model
-            K = view_cam_intrinsics.K
-            Rt = view_cam_extrinsics.Rt
-
-            kps_world = annotation.xyz
-
-            # Project the 3D keypoints to the 2D image plane
-            kps_cam = transform_points_from_world_to_camera(
-                points_3d_world=kps_world, Rt=Rt
-            )
-
-            kps_img, _ = project_points_from_camera_to_image(
-                points_3d_cam=kps_cam,
-                K=K,
-                D=D,
-                distortion_model=distortion_model.value,
-            )
-
+    for annotation_idx, annotation in enumerate(kps3d_annotations):
+        for view_id in views_ids:
             annotations.append(
                 Keypoints2DAnnotation(
                     view_id=view_id,
                     frame_idx=annotation.frame_idx,
                     subject_id=annotation.subject_id,
-                    xy=kps_img,
+                    xy=view_kps_img[view_id][annotation_idx],
                     scores=annotation.scores.clone(),
                     annotated=annotation.annotated.clone(),
                     format=annotation.format,

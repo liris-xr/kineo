@@ -12,7 +12,6 @@ from kineo.annotations.keypoints_3d import Keypoints3DAnnotations
 from kineo.annotations.camera_intrinsics import CameraIntrinsicsAnnotations
 from kineo.annotations.camera_extrinsics import CameraExtrinsicsAnnotations
 from kineo.annotations.keypoints_2d import Keypoints2DAnnotations
-from kineo.annotations.camera_intrinsics import CameraDistortionModel
 from kineo.annotations.bboxes_2d import (
     BBox2DAnnotations,
     BBox2DAnnotation,
@@ -22,34 +21,35 @@ from kineo.geometry.camera import (
     transform_points_from_world_to_camera,
     project_points_from_camera_to_image,
 )
+import math
 import torch
 from tqdm import tqdm
 import warnings
 
 
-def _compute_subject_bbox_xyxyd(
-    kps_world: torch.Tensor,
-    Rt: torch.Tensor,
-    K: torch.Tensor,
-    D: torch.Tensor,
-    distortion_model: CameraDistortionModel,
-) -> tuple[torch.Tensor, float]:
-    kps_cam = transform_points_from_world_to_camera(points_3d_world=kps_world, Rt=Rt)
+def _union_area_int(rects: list[tuple[int, int, int, int]]) -> int:
+    """Total pixel area covered by a union of axis-aligned integer rects.
 
-    kps_img, kps_depth = project_points_from_camera_to_image(
-        points_3d_cam=kps_cam,
-        K=K,
-        D=D,
-        distortion_model=distortion_model.value,
-    )
+    Rects are (x1, y1, x2, y2) with x2 > x1 and y2 > y1. Uses coordinate
+    compression, so overlaps are counted once. Exact on the integer pixel grid,
+    matching a boolean-mask OR of the same rects.
+    """
+    if not rects:
+        return 0
 
-    min_x = kps_img[:, 0].min()
-    min_y = kps_img[:, 1].min()
-    max_x = kps_img[:, 0].max()
-    max_y = kps_img[:, 1].max()
+    xs = sorted({r[0] for r in rects} | {r[2] for r in rects})
+    ys = sorted({r[1] for r in rects} | {r[3] for r in rects})
 
-    bbox_xyxy = torch.tensor([min_x, min_y, max_x, max_y], device=kps_world.device)
-    return bbox_xyxy, kps_depth.mean()
+    area = 0
+    for xi in range(len(xs) - 1):
+        x0, x1 = xs[xi], xs[xi + 1]
+        for yi in range(len(ys) - 1):
+            y0, y1 = ys[yi], ys[yi + 1]
+            for rx1, ry1, rx2, ry2 in rects:
+                if rx1 <= x0 and x1 <= rx2 and ry1 <= y0 and y1 <= ry2:
+                    area += (x1 - x0) * (y1 - y0)
+                    break
+    return area
 
 
 def _grow_bbox(bbox_xyxy: torch.Tensor, grow_factor: float) -> torch.Tensor:
@@ -164,130 +164,161 @@ def generate_bboxes2d_from_kps3d_and_cameras(
             For example, 0.3 means that the bbox needs to be at least 30% visible in the image. If its occluded or outside the image, it will be discarded.
     """
 
-    annotations: list[BBox2DAnnotation] = []
-
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     frames = kps_annotations.frames
-
     views_ids = cam_extrinsics.views_ids
 
-    for frame_idx in tqdm(frames, leave=False, desc="Generating bboxes"):
+    # Group keypoints by frame once (subject order preserved); reused per view so
+    # the per-frame/per-subject filtering is not repeated for every camera.
+    frame_subjects: list[tuple[int, list[tuple[str, torch.Tensor]]]] = []
+    for frame_idx in frames:
         frame_kps = kps_annotations.filter_by_frame_idx(frame_idx)
-
         if len(frame_kps.annotations) == 0:
             continue
-
-        for view_id in views_ids:
-            view_cam_extrinsics = cam_extrinsics.filter_by_view_id(
-                view_id
-            ).first_or_default()
-
-            view_cam_intrinsics = cam_intrinsics.filter_by_view_id(
-                view_id
-            ).first_or_default()
-
-            if view_cam_extrinsics is None or view_cam_intrinsics is None:
+        subjects: list[tuple[str, torch.Tensor]] = []
+        for subject_id in frame_kps.subjects_ids:
+            subject_kps = frame_kps.filter_by_subject_id(subject_id).first_or_default()
+            if subject_kps is None:
                 continue
+            subjects.append((subject_id, subject_kps.xyz))
+        if subjects:
+            frame_subjects.append((frame_idx, subjects))
 
-            view_h, view_w = view_cam_intrinsics.resolution_hw
-            D = view_cam_intrinsics.distortion_coefficients
-            distortion_model = view_cam_intrinsics.distortion_model
-            K = view_cam_intrinsics.K
-            Rt = view_cam_extrinsics.Rt
+    # Annotations are collected per (frame, view) and emitted in the original
+    # frame -> view -> subject order at the end, so the output is byte-identical.
+    results: dict[tuple[int, str], list[BBox2DAnnotation]] = {}
 
-            bboxes = []
+    for view_id in tqdm(views_ids, leave=False, desc="Generating bboxes"):
+        view_cam_extrinsics = cam_extrinsics.filter_by_view_id(
+            view_id
+        ).first_or_default()
+        view_cam_intrinsics = cam_intrinsics.filter_by_view_id(
+            view_id
+        ).first_or_default()
 
-            for subject_id in frame_kps.subjects_ids:
-                subject_kps = frame_kps.filter_by_subject_id(
-                    subject_id
-                ).first_or_default()
+        if view_cam_extrinsics is None or view_cam_intrinsics is None:
+            continue
 
-                if subject_kps is None:
+        view_h, view_w = view_cam_intrinsics.resolution_hw
+        D = view_cam_intrinsics.distortion_coefficients.to(device)
+        distortion_model = view_cam_intrinsics.distortion_model
+        K = view_cam_intrinsics.K.to(device)
+        Rt = view_cam_extrinsics.Rt.to(device)
+
+        # Flatten every (frame, subject) keypoint set of this view.
+        entry_frames: list[int] = []
+        entry_subjects: list[str] = []
+        kps_list: list[torch.Tensor] = []
+        for frame_idx, subjects in frame_subjects:
+            for subject_id, xyz in subjects:
+                entry_frames.append(frame_idx)
+                entry_subjects.append(subject_id)
+                kps_list.append(xyz)
+
+        if not kps_list:
+            continue
+
+        # One batched projection for the whole view. Projection is elementwise
+        # per keypoint, so this is bit-identical to projecting each subject
+        # separately; only the per-subject min/max/mean reductions below matter.
+        kps_world = torch.stack(kps_list).to(device)  # (N, J, 3)
+        n_entries, n_joints, _ = kps_world.shape
+        kps_cam = transform_points_from_world_to_camera(
+            points_3d_world=kps_world.reshape(n_entries * n_joints, 3), Rt=Rt
+        )
+        kps_img, kps_depth = project_points_from_camera_to_image(
+            points_3d_cam=kps_cam,
+            K=K,
+            D=D,
+            distortion_model=distortion_model.value,
+        )
+        kps_img = kps_img.reshape(n_entries, n_joints, 2)
+        kps_depth = kps_depth.reshape(n_entries, n_joints)
+
+        min_xy = kps_img.min(dim=1).values  # (N, 2)
+        max_xy = kps_img.max(dim=1).values  # (N, 2)
+        depth = kps_depth.mean(dim=1)  # (N,)
+        bbox_wh = max_xy - min_xy
+        bbox_area = (bbox_wh[:, 0] * bbox_wh[:, 1]).cpu()  # (N,) float32
+
+        # The occlusion logic below is scalar integer work; run it on CPU.
+        bbox_xyxy = torch.cat([min_xy, max_xy], dim=1).cpu()  # (N, 4)
+        min_c = min_xy.tolist()
+        max_c = max_xy.tolist()
+        depth_c = depth.tolist()
+
+        per_frame: dict[int, list[int]] = {}
+        for n in range(n_entries):
+            per_frame.setdefault(entry_frames[n], []).append(n)
+
+        for frame_idx, idxs in per_frame.items():
+            # Drop subjects behind the camera first: they get no bbox and do not
+            # occlude the others (matches the old `bbox_depth <= 0` skip).
+            frame_bboxes: list[tuple[int, str, tuple[int, int, int, int], float]] = []
+            for n in idxs:
+                if depth_c[n] <= 0:
                     continue
-
-                kps_world = subject_kps.xyz
-                bbox_xyxy, bbox_depth = _compute_subject_bbox_xyxyd(
-                    kps_world.to(device),
-                    Rt.to(device),
-                    K.to(device),
-                    D.to(device),
-                    distortion_model,
+                x0, y0 = min_c[n]
+                x2, y2 = max_c[n]
+                rect = (
+                    math.floor(min(view_w, max(0.0, x0))),
+                    math.floor(min(view_h, max(0.0, y0))),
+                    math.ceil(min(view_w, max(0.0, x2))),
+                    math.ceil(min(view_h, max(0.0, y2))),
                 )
+                frame_bboxes.append((n, entry_subjects[n], rect, depth_c[n]))
 
-                if bbox_depth <= 0:
-                    continue
+            frame_annotations: list[BBox2DAnnotation] = []
+            for i in range(len(frame_bboxes)):
+                i_n, i_subject_id, (i_x1, i_y1, i_x2, i_y2), i_depth = frame_bboxes[i]
+                i_area_px = max(0, i_x2 - i_x1) * max(0, i_y2 - i_y1)
 
-                bbox_w = bbox_xyxy[2] - bbox_xyxy[0]
-                bbox_h = bbox_xyxy[3] - bbox_xyxy[1]
-                bbox_area = bbox_w * bbox_h
-                bbox_occluded = torch.zeros(
-                    (view_h, view_w), dtype=torch.bool, device=device
-                )
-
-                bbox_x1 = torch.clamp(bbox_xyxy[0], 0, view_w).floor().int()
-                bbox_y1 = torch.clamp(bbox_xyxy[1], 0, view_h).floor().int()
-                bbox_x2 = torch.clamp(bbox_xyxy[2], 0, view_w).ceil().int()
-                bbox_y2 = torch.clamp(bbox_xyxy[3], 0, view_h).ceil().int()
-                bbox_occluded[bbox_y1:bbox_y2, bbox_x1:bbox_x2] = True
-
-                bboxes.append(
-                    {
-                        "subject_id": subject_id,
-                        "bbox_xyxy": bbox_xyxy,
-                        "bbox_depth": bbox_depth,
-                        "bbox_occluded": bbox_occluded,
-                        "bbox_area": bbox_area,
-                    }
-                )
-
-            for bbox_i in range(len(bboxes)):
-                bbox_i_subject_id = bboxes[bbox_i]["subject_id"]
-                bbox_i_xyxy = bboxes[bbox_i]["bbox_xyxy"]
-                bbox_i_depth = bboxes[bbox_i]["bbox_depth"]
-                bbox_i_occluded = bboxes[bbox_i]["bbox_occluded"]
-
-                for bbox_j in range(len(bboxes)):
-                    if bbox_i == bbox_j:
+                # Union of nearer subjects' rects clipped to bbox_i = its occluded
+                # pixel count (equivalent to the old image-sized mask).
+                occluders: list[tuple[int, int, int, int]] = []
+                for j in range(len(frame_bboxes)):
+                    if i == j:
                         continue
+                    _, _, (j_x1, j_y1, j_x2, j_y2), j_depth = frame_bboxes[j]
+                    if j_depth < i_depth:
+                        ox1 = max(i_x1, j_x1)
+                        oy1 = max(i_y1, j_y1)
+                        ox2 = min(i_x2, j_x2)
+                        oy2 = min(i_y2, j_y2)
+                        if ox2 > ox1 and oy2 > oy1:
+                            occluders.append((ox1, oy1, ox2, oy2))
 
-                    bbox_j_xyxy = bboxes[bbox_j]["bbox_xyxy"]
-                    bbox_j_depth = bboxes[bbox_j]["bbox_depth"]
-                    bbox_j_x1 = torch.clamp(bbox_j_xyxy[0], 0, view_w).floor().int()
-                    bbox_j_y1 = torch.clamp(bbox_j_xyxy[1], 0, view_h).floor().int()
-                    bbox_j_x2 = torch.clamp(bbox_j_xyxy[2], 0, view_w).ceil().int()
-                    bbox_j_y2 = torch.clamp(bbox_j_xyxy[3], 0, view_h).ceil().int()
-
-                    # The bbox is in front of the other bbox. We hide the overlapping part
-                    if bbox_j_depth < bbox_i_depth:
-                        bbox_i_occluded[bbox_j_y1:bbox_j_y2, bbox_j_x1:bbox_j_x2] = (
-                            False
-                        )
-
-                bbox_area = bboxes[bbox_i]["bbox_area"]
-                bbox_area_visible = bbox_i_occluded.sum()
-                bbox_area_visible_ratio = bbox_area_visible / (bbox_area + 1e-6)
+                bbox_area_visible = i_area_px - _union_area_int(occluders)
+                bbox_area_visible_ratio = bbox_area_visible / (bbox_area[i_n] + 1e-6)
 
                 if bbox_area_visible_ratio < min_bbox_visibility_ratio:
                     continue
 
-                bbox_xyxy = _grow_bbox(bbox_i_xyxy, grow_factor)
+                grown_xyxy = _grow_bbox(bbox_xyxy[i_n], grow_factor)
 
-                if torch.isnan(bbox_xyxy).any():
+                if torch.isnan(grown_xyxy).any():
                     warnings.warn(
-                        f"Bbox is nan in frame {frame_idx} for view {view_id} and subject {bbox_i_subject_id}"
+                        f"Bbox is nan in frame {frame_idx} for view {view_id} and subject {i_subject_id}"
                     )
                     continue
 
-                annotations.append(
+                frame_annotations.append(
                     BBox2DAnnotation(
                         view_id=view_id,
                         frame_idx=frame_idx,
-                        subject_id=bbox_i_subject_id,
+                        subject_id=i_subject_id,
                         category_id=category_id,
-                        xyxy=bbox_xyxy.cpu(),
+                        xyxy=grown_xyxy.cpu(),
                         score=1.0,
                     )
                 )
+
+            results[(frame_idx, view_id)] = frame_annotations
+
+    annotations: list[BBox2DAnnotation] = []
+    for frame_idx, _ in frame_subjects:
+        for view_id in views_ids:
+            annotations.extend(results.get((frame_idx, view_id), []))
 
     return BBox2DAnnotations(
         metadata=BBox2DAnnotationsMetadata(),
