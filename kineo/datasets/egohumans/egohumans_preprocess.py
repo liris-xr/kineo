@@ -505,11 +505,14 @@ def _load_cameras_annotations(
     merge_translation_tolerance: float = 0.02,  # in meters
     merge_rotation_tolerance: float = 1.0,  # in degrees
 ) -> tuple[CameraIntrinsicsAnnotations, CameraExtrinsicsAnnotations]:
+    # Parse images.txt (can be hundreds of MB) once and share the pose lines.
+    image_pose_lines = _load_colmap_image_pose_lines(colmap_dir)
+
     cam_intrinsics_annotations = _load_cameras_intrinsics(
-        included_cams, colmap_dir, cfg
+        included_cams, colmap_dir, cfg, image_pose_lines
     )
     cam_extrinsics_annotations = _load_cameras_extrinsics(
-        included_cams, colmap_dir, cfg
+        included_cams, colmap_dir, cfg, image_pose_lines
     )
 
     if merge_static_extrinsics:
@@ -718,27 +721,38 @@ def _load_keypoints_annotations(
     return kps_annotations
 
 
-def _get_camera_name_from_colmap_camera_id(colmap_dir: str, colmap_camera_id: int):
-    """
-    Get the camera name from the Colmap camera id.
-    """
-    extrinsics_calibration_file = os.path.join(colmap_dir, "images.txt")
+def _load_colmap_image_pose_lines(colmap_dir: str) -> list[str]:
+    """Return the per-image pose lines of COLMAP images.txt.
 
-    with open(extrinsics_calibration_file) as f:
-        extrinsics = f.readlines()
-        extrinsics = extrinsics[4:]  # drop the first 4 lines (commented lines)
-        extrinsics = extrinsics[::2]  # only alternate lines
+    After a 4-line header, images.txt alternates a pose line and a (large)
+    2D-points line per image. This streams the file and keeps only the pose
+    lines, so the multi-hundred-MB file is read once and never fully held in
+    memory. The intrinsics (camera-id -> name) and extrinsics loaders share this
+    single pass instead of each calling readlines() on the whole file.
+    """
+    images_file = os.path.join(colmap_dir, "images.txt")
 
-    for line in extrinsics:
+    pose_lines: list[str] = []
+    with open(images_file) as f:
+        for i, line in enumerate(f):
+            if i < 4:  # skip the 4 header/comment lines
+                continue
+            if (i - 4) % 2 == 0:  # keep pose lines, skip the 2D-points lines
+                pose_lines.append(line)
+
+    return pose_lines
+
+
+def _load_colmap_camera_id_to_name_map(pose_lines: list[str]) -> dict[int, str]:
+    """Map each COLMAP camera id to its camera name (first occurrence wins)."""
+    id_to_name: dict[int, str] = {}
+    for line in pose_lines:
         line = line.strip().split()
         camera_id = int(line[-2])
-        image_path = line[-1]
-        camera_name = image_path.split("/")[0]
+        camera_name = line[-1].split("/")[0]
+        id_to_name.setdefault(camera_id, camera_name)
 
-        if camera_id == colmap_camera_id:
-            return camera_name
-
-    return None
+    return id_to_name
 
 
 def _load_coordinate_transform(colmap_dir: str, cfg: dict[str, Any]) -> np.ndarray:
@@ -752,7 +766,10 @@ def _load_coordinate_transform(colmap_dir: str, cfg: dict[str, Any]) -> np.ndarr
 
 
 def _load_cameras_intrinsics(
-    included_cams: list[str], colmap_dir: str, cfg: dict[str, Any]
+    included_cams: list[str],
+    colmap_dir: str,
+    cfg: dict[str, Any],
+    image_pose_lines: list[str],
 ) -> CameraIntrinsicsAnnotations:
     intrinsics_calibration_file = os.path.join(colmap_dir, "cameras.txt")
 
@@ -760,14 +777,14 @@ def _load_cameras_intrinsics(
         intrinsics = f.readlines()
         intrinsics = intrinsics[3:]  # drop the first 3 lines (commented lines)
 
+    colmap_camera_id_to_name = _load_colmap_camera_id_to_name_map(image_pose_lines)
+
     cam_intrinsics_annotations: list[CameraIntrinsicsAnnotation] = []
 
     for line in intrinsics:
         line = line.split()
         cam_id = int(line[0])
-        cam_name = _get_camera_name_from_colmap_camera_id(
-            colmap_dir=colmap_dir, colmap_camera_id=cam_id
-        )
+        cam_name = colmap_camera_id_to_name.get(cam_id)
 
         if cam_name not in included_cams:
             continue
@@ -849,6 +866,7 @@ def _load_cameras_extrinsics(
     included_cams: list[str],
     colmap_dir: str,
     cfg: dict[str, Any],
+    image_pose_lines: list[str],
 ) -> CameraExtrinsicsAnnotations:
     coordinate_transform = _load_coordinate_transform(colmap_dir, cfg)
 
@@ -873,14 +891,7 @@ def _load_cameras_extrinsics(
             )
         )
 
-    extrinsics_calibration_file = os.path.join(colmap_dir, "images.txt")
-
-    with open(extrinsics_calibration_file) as f:
-        extrinsics = f.readlines()
-        extrinsics = extrinsics[4:]  # drop the first 4 lines (commented lines)
-        extrinsics = extrinsics[::2]  # only alternate lines (skip points2d)
-
-    for line in extrinsics:
+    for line in image_pose_lines:
         line = line.strip().split()
 
         # COLMAP image names use forward slashes ("cam01/00001.jpg"); split on "/"
