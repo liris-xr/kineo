@@ -458,30 +458,6 @@ def _get_video_info(
     }
 
 
-def _get_subject_height(subject_data_dir: str) -> float:
-    mesh_fp = os.path.join(subject_data_dir, "Scan/Scan.obj")
-
-    # read all the lines of the file starting with 'v '
-    with open(mesh_fp, "r") as f:
-        line = f.readline()
-
-        while not line.startswith("v "):
-            line = f.readline()
-
-        # The scan are oriented with the x axis as the up axis
-        min_x = float("inf")
-        max_x = float("-inf")
-
-        while line.startswith("v "):
-            line = line.replace("v ", "")
-            x = float(line.split()[0])
-            min_x = min(min_x, x)
-            max_x = max(max_x, x)
-            line = f.readline()
-
-    return max_x - min_x
-
-
 def _get_keypoints_3d(
     dataset_dir: str, subject_name: str, subaction_name: str
 ) -> torch.Tensor:

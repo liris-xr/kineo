@@ -116,20 +116,6 @@ def compute_height_from_h36m_keypoints(
     return total_height
 
 
-def compute_calibrated_height_from_h36m_keypoints(
-    kps_3d: torch.Tensor, kps_3d_scores: torch.Tensor | None = None
-) -> torch.Tensor:
-    """
-    Compute the calibrated height of the subject from the H3.6M 3D keypoints and applies a calibration factor to get a more accurate height measurement.
-    Note: To see how the height calibration was computed, please refer to the `experiments/compute_height_calibration.py` file.
-    """
-    if kps_3d_scores is None:
-        kps_3d_scores = torch.ones_like(kps_3d[..., 0])
-    uncalibrated_height = compute_height_from_h36m_keypoints(kps_3d, kps_3d_scores)
-    calibrated_height = 1.1026 * uncalibrated_height - 0.0232
-    return calibrated_height
-
-
 def sampson_distance(
     points_i: torch.Tensor, points_j: torch.Tensor, F: torch.Tensor
 ) -> torch.Tensor:
