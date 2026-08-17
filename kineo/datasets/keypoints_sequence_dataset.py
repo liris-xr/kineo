@@ -10,7 +10,7 @@
 
 from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import TypedDict, Iterator, Iterable
+from typing import Any, TypedDict, Iterator, Iterable
 import torch
 
 try:
@@ -235,7 +235,9 @@ class ViewInput(TypedDict):
 class KeypointsSequence(TypedDict):
     sequence_name: str
     views_inputs: list[ViewInput]
-    annotations: KeypointsSequenceAnnotations | None
+    # Keyed by annotation kind, as returned by
+    # annotations_io.load_sequence_annotations.
+    annotations: dict[str, Any] | None
 
 
 class KeypointsSequenceDataset(ABC, Iterable[KeypointsSequence]):
