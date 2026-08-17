@@ -41,11 +41,8 @@ from kineo.annotations.keypoints_3d import (
     Keypoints3DAnnotations,
     Keypoints3DAnnotationsMetadata,
 )
-from kineo.annotations.camera_temporal import (
-    CameraTemporalAnnotations,
-    CameraTemporalAnnotationsMetadata,
-    CameraTemporalAnnotation,
-)
+from kineo.annotations.camera_temporal import CameraTemporalAnnotations
+from kineo.datasets import annotations_io
 from kineo.annotations.camera_extrinsics import (
     CameraExtrinsicsAnnotation,
     CameraExtrinsicsAnnotations,
@@ -196,53 +193,12 @@ def _generate_annotations(
                 os.path.join(dataset_dir, subseq_annotations_dir), exist_ok=True
             )
 
-            kps_2d_annotations_relpath = os.path.join(
-                subseq_annotations_dir,
-                "keypoints_2d.json",
-            )
-            kps_2d_annotations_abspath = os.path.join(
-                dataset_dir, kps_2d_annotations_relpath
-            )
-
-            kps_3d_annotations_relpath = os.path.join(
-                subseq_annotations_dir,
-                "keypoints_3d.json",
-            )
-            kps_3d_annotations_abspath = os.path.join(
-                dataset_dir, kps_3d_annotations_relpath
-            )
-
-            bboxes_annotations_relpath = os.path.join(
-                subseq_annotations_dir,
-                "bboxes_2d.json",
-            )
-            bboxes_annotations_abspath = os.path.join(
-                dataset_dir, bboxes_annotations_relpath
-            )
-
-            cam_temporal_annotations_relpath = os.path.join(
-                subseq_annotations_dir,
-                "cameras_temporal.json",
-            )
-            cam_temporal_annotations_abspath = os.path.join(
-                dataset_dir, cam_temporal_annotations_relpath
-            )
-
-            cam_intrinsics_annotations_relpath = os.path.join(
-                subseq_annotations_dir,
-                "cameras_intrinsics.json",
-            )
-            cam_intrinsics_annotations_abspath = os.path.join(
-                dataset_dir, cam_intrinsics_annotations_relpath
-            )
-
-            cam_extrinsics_annotations_relpath = os.path.join(
-                subseq_annotations_dir,
-                "cameras_extrinsics.json",
-            )
-            cam_extrinsics_annotations_abspath = os.path.join(
-                dataset_dir, cam_extrinsics_annotations_relpath
-            )
+            annotations_relpaths = {
+                key: Path(
+                    os.path.join(subseq_annotations_dir, filename)
+                ).as_posix()
+                for key, filename in annotations_io.ANNOTATION_FILENAMES.items()
+            }
 
             sequence_dir = sequence["directory"]
             sequence_name = sequence["name"]
@@ -294,59 +250,23 @@ def _generate_annotations(
                     show=show,
                 )
 
-                with open(kps_2d_annotations_abspath, "wb") as f:
-                    f.write(orjson.dumps(kps_2d_annotations.to_dict()))
-                tqdm.write(
-                    f"Saved keypoints 2d annotations to {kps_2d_annotations_abspath}"
-                )
-
-                with open(kps_3d_annotations_abspath, "wb") as f:
-                    f.write(orjson.dumps(kps_3d_annotations.to_dict()))
-                tqdm.write(
-                    f"Saved keypoints 3d annotations to {kps_3d_annotations_abspath}"
-                )
-
-                with open(bboxes_annotations_abspath, "wb") as f:
-                    f.write(orjson.dumps(bboxes_annotations.to_dict()))
-                tqdm.write(
-                    f"Saved bboxes 2d annotations to {bboxes_annotations_abspath}"
-                )
-
-                with open(cam_temporal_annotations_abspath, "wb") as f:
-                    f.write(orjson.dumps(cam_temporal_annotations.to_dict()))
-                tqdm.write(
-                    f"Saved cameras temporal annotations to {cam_temporal_annotations_abspath}"
-                )
-
-                with open(cam_intrinsics_annotations_abspath, "wb") as f:
-                    f.write(orjson.dumps(cam_intrinsics_annotations.to_dict()))
-                tqdm.write(
-                    f"Saved cameras intrinsics to {cam_intrinsics_annotations_abspath}"
-                )
-
-                with open(cam_extrinsics_annotations_abspath, "wb") as f:
-                    f.write(orjson.dumps(cam_extrinsics_annotations.to_dict()))
-                tqdm.write(
-                    f"Saved cameras extrinsics to {cam_extrinsics_annotations_abspath}"
+                annotations_relpaths = annotations_io.write_sequence_annotations(
+                    dataset_dir=dataset_dir,
+                    annotations_reldir=subseq_annotations_dir,
+                    annotations={
+                        "keypoints_2d": kps_2d_annotations,
+                        "keypoints_3d": kps_3d_annotations,
+                        "bboxes_2d": bboxes_annotations,
+                        "cameras_temporal": cam_temporal_annotations,
+                        "cameras_intrinsics": cam_intrinsics_annotations,
+                        "cameras_extrinsics": cam_extrinsics_annotations,
+                    },
                 )
 
             sequences_infos.append(
                 {
                     "sequence_name": f"{sequence_name}_{subsequence_idx + 1:03d}",
-                    "annotations": {
-                        "keypoints_2d": Path(kps_2d_annotations_relpath).as_posix(),
-                        "keypoints_3d": Path(kps_3d_annotations_relpath).as_posix(),
-                        "bboxes_2d": Path(bboxes_annotations_relpath).as_posix(),
-                        "cameras_temporal": Path(
-                            cam_temporal_annotations_relpath
-                        ).as_posix(),
-                        "cameras_intrinsics": Path(
-                            cam_intrinsics_annotations_relpath
-                        ).as_posix(),
-                        "cameras_extrinsics": Path(
-                            cam_extrinsics_annotations_relpath
-                        ).as_posix(),
-                    },
+                    "annotations": annotations_relpaths,
                     "views": {
                         view_id: {
                             "images_dir": (
@@ -481,12 +401,8 @@ def _generate_subsequence_annotations(
         )
 
     # All cameras are synchronized
-    cam_temporal_annotations = CameraTemporalAnnotations(
-        metadata=CameraTemporalAnnotationsMetadata(),
-        annotations=[
-            CameraTemporalAnnotation(view_id=view_id, frame_idx=0, time_offset=0.0)
-            for view_id in cameras
-        ],
+    cam_temporal_annotations = annotations_io.build_synchronized_camera_temporal(
+        cameras
     )
 
     return (
