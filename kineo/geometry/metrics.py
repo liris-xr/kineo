@@ -238,10 +238,7 @@ def pairwise_reprojection_consensus_score(
 
     scores = torch.stack(scores, dim=-1)
     weights = torch.stack(weights, dim=-1)
-
-    # n_pairs = (n_views * (n_views - 1)) // 2
     total_score = torch.mean(scores * weights, dim=-1)
-    # total_score = weighted_mean(scores, weights, dim=-1)
 
     assert total_score.shape[-1] == P, f"Expected (*, P), got {total_score.shape}"
     return total_score
