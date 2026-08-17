@@ -123,3 +123,18 @@ def test_single_pose_per_view_reads_back_as_static():
     )
 
     assert extrinsics.is_view_static("54138969")
+
+
+def test_h36m_annotation_kinds_match_egohumans():
+    # Both datasets emit the same six kinds; h36m's cameras are synchronized, so
+    # it uses the shared builder rather than skipping the kind.
+    from kineo.datasets.h36m import h36m_preprocess  # noqa: F401
+
+    assert set(annotations_io.ANNOTATION_FILENAMES) == {
+        "keypoints_2d",
+        "keypoints_3d",
+        "bboxes_2d",
+        "cameras_temporal",
+        "cameras_intrinsics",
+        "cameras_extrinsics",
+    }

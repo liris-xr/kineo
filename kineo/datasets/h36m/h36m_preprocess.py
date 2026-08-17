@@ -43,6 +43,7 @@ from kineo.annotations.camera_intrinsics import (
 
 from kineo.annotations.keypoints_utils import generate_kps2d_from_kps3d_and_cameras
 from kineo.annotations.bboxes_utils import generate_bboxes2d_from_kps2d
+from kineo.datasets import annotations_io
 from kineo.geometry.camera import inverse_Rt
 from kineo.io.file import extract_tar_with_progress
 
@@ -164,36 +165,10 @@ def _generate_protocol1_annotations(
         keypoints_3d_world = keypoints_3d_world[::5][:n_frames]
         n_frames = keypoints_3d_world.shape[0]
 
-        bboxes2d_annotations_relpath = os.path.join(
-            annotations_relpath, "bboxes_2d.json"
-        )
-        bboxes2d_annotations_abspath = os.path.join(
-            dataset_dir, bboxes2d_annotations_relpath
-        )
-
-        kps2d_annotations_relpath = os.path.join(
-            annotations_relpath, "keypoints_2d.json"
-        )
-        kps2d_annotations_abspath = os.path.join(dataset_dir, kps2d_annotations_relpath)
-
-        kps3d_annotations_relpath = os.path.join(
-            annotations_relpath, "keypoints_3d.json"
-        )
-        kps3d_annotations_abspath = os.path.join(dataset_dir, kps3d_annotations_relpath)
-
-        camera_extrinsics_annotations_relpath = os.path.join(
-            annotations_relpath, "cameras_extrinsics.json"
-        )
-        camera_extrinsics_annotations_abspath = os.path.join(
-            dataset_dir, camera_extrinsics_annotations_relpath
-        )
-
-        camera_intrinsics_annotations_relpath = os.path.join(
-            annotations_relpath, "cameras_intrinsics.json"
-        )
-        camera_intrinsics_annotations_abspath = os.path.join(
-            dataset_dir, camera_intrinsics_annotations_relpath
-        )
+        annotations_relpaths = {
+            key: Path(os.path.join(annotations_relpath, filename)).as_posix()
+            for key, filename in annotations_io.ANNOTATION_FILENAMES.items()
+        }
 
         if not skip_annotations_generation:
             kps3d_annotations = Keypoints3DAnnotations(
@@ -261,50 +236,21 @@ def _generate_protocol1_annotations(
                 category_id=0,
             )
 
-            with open(bboxes2d_annotations_abspath, "wb") as f:
-                f.write(
-                    orjson.dumps(
-                        bboxes2d_annotations.to_dict(), default=_serializer_fallback
-                    )
-                )
-            print(f'Saved bboxes 2d annotations to "{bboxes2d_annotations_abspath}"')
-
-            with open(kps2d_annotations_abspath, "wb") as f:
-                f.write(
-                    orjson.dumps(
-                        kps2d_annotations.to_dict(), default=_serializer_fallback
-                    )
-                )
-            print(f'Saved keypoints 2d annotations to "{kps2d_annotations_abspath}"')
-
-            with open(kps3d_annotations_abspath, "wb") as f:
-                f.write(
-                    orjson.dumps(
-                        kps3d_annotations.to_dict(), default=_serializer_fallback
-                    )
-                )
-            print(f'Saved keypoints 3d annotations to "{kps3d_annotations_abspath}"')
-
-            with open(camera_extrinsics_annotations_abspath, "wb") as f:
-                f.write(
-                    orjson.dumps(
-                        camera_extrinsics_annotations.to_dict(),
-                        default=_serializer_fallback,
-                    )
-                )
-            print(
-                f'Saved camera extrinsics annotations to "{camera_extrinsics_annotations_abspath}"'
+            cameras_temporal_annotations = (
+                annotations_io.build_synchronized_camera_temporal(cameras_names)
             )
 
-            with open(camera_intrinsics_annotations_abspath, "wb") as f:
-                f.write(
-                    orjson.dumps(
-                        camera_intrinsics_annotations.to_dict(),
-                        default=_serializer_fallback,
-                    )
-                )
-            print(
-                f'Saved camera intrinsics annotations to "{camera_intrinsics_annotations_abspath}"'
+            annotations_relpaths = annotations_io.write_sequence_annotations(
+                dataset_dir=dataset_dir,
+                annotations_reldir=annotations_relpath,
+                annotations={
+                    "keypoints_2d": kps2d_annotations,
+                    "keypoints_3d": kps3d_annotations,
+                    "bboxes_2d": bboxes2d_annotations,
+                    "cameras_temporal": cameras_temporal_annotations,
+                    "cameras_intrinsics": camera_intrinsics_annotations,
+                    "cameras_extrinsics": camera_extrinsics_annotations,
+                },
             )
 
         split = "train" if subject_name in PROTOCOL1_TRAIN_SUBJECTS else "val"
@@ -316,13 +262,7 @@ def _generate_protocol1_annotations(
                 "subject_name": subject_name,
                 "subaction_name": subaction_name,
                 "split": split,
-                "annotations": {
-                    "keypoints_2d": Path(kps2d_annotations_relpath).as_posix(),
-                    "keypoints_3d": Path(kps3d_annotations_relpath).as_posix(),
-                    "bboxes_2d": Path(bboxes2d_annotations_relpath).as_posix(),
-                    "cameras_intrinsics": Path(camera_intrinsics_annotations_relpath).as_posix(),
-                    "cameras_extrinsics": Path(camera_extrinsics_annotations_relpath).as_posix(),
-                },
+                "annotations": annotations_relpaths,
                 "views": {
                     view_id: {
                         "video_path": (Path(subject_dir_relpath) / "Videos" / f"{subaction_name}.{view_id}.mp4").as_posix(),
