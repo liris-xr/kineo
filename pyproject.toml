@@ -64,7 +64,7 @@ cv2-enumerate-cameras = "*"
 sam2 = { git = "https://github.com/cjaverliat/sam2.git", tag = "v1.2.0" }
 
 mmengine = "*"
-mmcv = { git = "https://github.com/cjaverliat/mmcv.git" }
+mmcv = { git = "https://github.com/cjaverliat/mmcv.git", tag = "v2.3.0" }
 mmpose = { git = "https://github.com/cjaverliat/mmpose.git" }
 mmdet = { git = "https://github.com/cjaverliat/mmdetection.git" }
 aitviewer = ">=1.14.2"
