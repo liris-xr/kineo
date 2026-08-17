@@ -195,6 +195,29 @@ def test_load_sequence_annotations_round_trips_written_files(tmp_path):
     assert loaded["cameras_extrinsics"].views_ids == view_ids
 
 
+def test_synchronized_dataset_need_not_write_cameras_temporal(tmp_path):
+    # EgoHumans and H3.6M are both frame-synchronized, so neither writes the
+    # file: the write/load pair round-trips the same annotation without it.
+    view_ids = ["cam01", "cam02"]
+
+    relpaths = annotations_io.write_sequence_annotations(
+        dataset_dir=str(tmp_path),
+        annotations_reldir="annotations",
+        annotations={"cameras_extrinsics": _extrinsics(view_ids)},
+    )
+
+    assert "cameras_temporal" not in relpaths
+    assert not (tmp_path / "annotations" / "cameras_temporal.json").exists()
+
+    loaded = annotations_io.load_sequence_annotations(
+        str(tmp_path), _sequence(relpaths, view_ids)
+    )
+    temporal = loaded["cameras_temporal"]
+
+    assert [a.view_id for a in temporal.annotations] == view_ids
+    assert all(a.time_offset == 0.0 for a in temporal.annotations)
+
+
 def test_load_sequence_annotations_defaults_unlisted_kind(tmp_path):
     # The kind the dataset never emits: H3.6M's cameras are synchronized, so the
     # loader supplies the degenerate annotation instead of the caller doing it.
