@@ -170,6 +170,19 @@ def _generate_protocol1_annotations(
             for key, filename in annotations_io.ANNOTATION_FILENAMES.items()
         }
 
+        camera_extrinsics_annotations = CameraExtrinsicsAnnotations(
+            metadata=CameraExtrinsicsAnnotationsMetadata(),
+            annotations=[
+                CameraExtrinsicsAnnotation(
+                    view_id=cameras_names[camera_idx],
+                    frame_idx=0,
+                    R=cameras_extrinsics[camera_idx][:3, :3],
+                    t=cameras_extrinsics[camera_idx][:3, 3],
+                )
+                for camera_idx in range(n_cameras)
+            ],
+        )
+
         if not skip_annotations_generation:
             kps3d_annotations = Keypoints3DAnnotations(
                 metadata=Keypoints3DAnnotationsMetadata(
@@ -186,19 +199,6 @@ def _generate_protocol1_annotations(
                         format=KEYPOINTS_FORMAT.name,
                     )
                     for frame_idx in range(n_frames)
-                ],
-            )
-
-            camera_extrinsics_annotations = CameraExtrinsicsAnnotations(
-                metadata=CameraExtrinsicsAnnotationsMetadata(),
-                annotations=[
-                    CameraExtrinsicsAnnotation(
-                        view_id=cameras_names[camera_idx],
-                        frame_idx=0,
-                        R=cameras_extrinsics[camera_idx][:3, :3],
-                        t=cameras_extrinsics[camera_idx][:3, 3],
-                    )
-                    for camera_idx in range(n_cameras)
                 ],
             )
 
@@ -267,6 +267,9 @@ def _generate_protocol1_annotations(
                     view_id: {
                         "video_path": (Path(subject_dir_relpath) / "Videos" / f"{subaction_name}.{view_id}.mp4").as_posix(),
                         "selected_frames": range(0, n_frames * 5, 5),
+                        "is_static": camera_extrinsics_annotations.is_view_static(
+                            view_id
+                        ),
                     }
                     for view_id in cameras_names
                 },
