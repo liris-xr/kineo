@@ -273,6 +273,9 @@ def _generate_annotations(
                                 Path(subsequence_dir) / "exo" / view_id / "images"
                             ).as_posix(),
                             "fps": FPS,
+                            "is_static": cam_extrinsics_annotations.is_view_static(
+                                view_id
+                            ),
                         }
                         for view_id in views_ids
                     },
