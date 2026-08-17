@@ -11,6 +11,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
+import roma
 import torch
 from kineo.annotations.annotations import Annotations
 from kineo.geometry.transformations import (
@@ -179,9 +180,68 @@ class CameraExtrinsicsAnnotations(Annotations[CameraExtrinsicsAnnotation]):
             return default
         return self._annotations[0]
 
-    def is_view_static(self, view_id: str) -> bool:
-        # View extrinsics are static if there is only one annotation for this view.
-        return len([a for a in self._annotations if a.view_id == view_id]) == 1
+    def is_view_static(
+        self,
+        view_id: str,
+        translation_tolerance: float = 0.02,  # in meters
+        rotation_tolerance: float = 1.0,  # in degrees
+    ) -> bool:
+        """Whether a view's camera never meaningfully moves.
+
+        Derived from the poses themselves rather than declared alongside them, so
+        it cannot disagree with the extrinsics it describes. A single annotation
+        means the pose was never re-estimated, which is static by construction.
+        Several annotations are still static when every pose stays within
+        tolerance of the earliest one — compared against that one reference
+        rather than against its predecessor, so a camera creeping a little
+        between consecutive poses but ending up far from where it started reads
+        as moving.
+
+        Args:
+            view_id: View whose camera to test.
+            translation_tolerance: Largest camera centre displacement, in meters,
+                still considered stationary.
+            rotation_tolerance: Largest camera rotation, in degrees, still
+                considered stationary.
+
+        Returns:
+            True if the view has annotations and none of them departs from the
+            earliest pose by more than the tolerances. False for an unknown view.
+        """
+        view_annotations = sorted(
+            (a for a in self._annotations if a.view_id == view_id),
+            key=lambda a: a.frame_idx,
+        )
+
+        if not view_annotations:
+            return False
+        if len(view_annotations) == 1:
+            return True
+
+        reference_cam2world = inverse_Rt(view_annotations[0].Rt)
+        reference_position = reference_cam2world[:3, 3]
+        reference_rotation = reference_cam2world[:3, :3]
+
+        for annotation in view_annotations[1:]:
+            cam2world = inverse_Rt(annotation.Rt)
+
+            translation_diff = torch.linalg.norm(
+                cam2world[:3, 3] - reference_position
+            )
+            if translation_diff >= translation_tolerance:
+                return False
+
+            rotation_diff = (
+                roma.rotmat_geodesic_distance(
+                    cam2world[:3, :3], reference_rotation
+                )
+                .rad2deg()
+                .squeeze()
+            )
+            if rotation_diff >= rotation_tolerance:
+                return False
+
+        return True
 
     def compute_similarity_transform(
         self,

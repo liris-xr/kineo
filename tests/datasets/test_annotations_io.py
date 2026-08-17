@@ -128,17 +128,17 @@ def test_single_pose_per_view_reads_back_as_static():
 def test_multiple_poses_per_view_reads_back_as_non_static():
     # EgoHumans keeps one extrinsics annotation per motion segment for a moving
     # view; that is what makes is_static False, with no dataset-specific flag.
-    def _annotation(frame_idx: int):
+    def _annotation(frame_idx: int, tx: float):
         return camera_extrinsics.CameraExtrinsicsAnnotation(
             view_id="cam11",
             frame_idx=frame_idx,
             R=torch.eye(3),
-            t=torch.zeros(3),
+            t=torch.tensor([tx, 0.0, 0.0]),
         )
 
     extrinsics = camera_extrinsics.CameraExtrinsicsAnnotations(
         metadata=camera_extrinsics.CameraExtrinsicsAnnotationsMetadata(),
-        annotations=[_annotation(0), _annotation(120)],
+        annotations=[_annotation(0, 0.0), _annotation(120, 1.5)],
     )
 
     assert not extrinsics.is_view_static("cam11")
