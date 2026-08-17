@@ -18,36 +18,45 @@ agreement so EgoHumans and Human3.6M cannot drift apart.
 
 from __future__ import annotations
 
+import dataclasses
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import orjson
 import torch
 from tqdm import tqdm
 
+from kineo.annotations.bboxes_2d import BBox2DAnnotations
+from kineo.annotations.camera_extrinsics import CameraExtrinsicsAnnotations
+from kineo.annotations.camera_intrinsics import CameraIntrinsicsAnnotations
 from kineo.annotations.camera_temporal import (
     CameraTemporalAnnotation,
     CameraTemporalAnnotations,
     CameraTemporalAnnotationsMetadata,
 )
-
-# Canonical annotation kinds and their filenames. Insertion order is the order
-# annotations are written and listed in sequences.json.
-ANNOTATION_FILENAMES = {
-    "keypoints_2d": "keypoints_2d.json",
-    "keypoints_3d": "keypoints_3d.json",
-    "bboxes_2d": "bboxes_2d.json",
-    "cameras_temporal": "cameras_temporal.json",
-    "cameras_intrinsics": "cameras_intrinsics.json",
-    "cameras_extrinsics": "cameras_extrinsics.json",
-}
+from kineo.annotations.keypoints_2d import Keypoints2DAnnotations
+from kineo.annotations.keypoints_3d import Keypoints3DAnnotations
 
 
-def _json_fallback(obj: Any) -> Any:
-    if isinstance(obj, torch.Tensor):
-        return obj.tolist()
-    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+@dataclasses.dataclass(frozen=True)
+class AnnotationKind:
+    """How one kind of annotation is stored, parsed and, if possible, defaulted.
+
+    Attributes:
+        filename: Name of the JSON file holding this kind of annotation.
+        annotations_type: Class exposing the `to_dict()` / `from_dict()` pair
+            used to serialize and parse it.
+        build_default: Builds the annotation a dataset that does not provide
+            this kind should be read as having, given the sequence's view ids.
+            `None` when no default is honest — there is no such thing as a
+            default camera pose or a default set of keypoints, and inventing one
+            would silently corrupt whatever consumes it.
+    """
+
+    filename: str
+    annotations_type: type
+    build_default: Callable[[list[str]], Any] | None = None
 
 
 def build_synchronized_camera_temporal(
@@ -75,6 +84,42 @@ def build_synchronized_camera_temporal(
             for view_id in view_ids
         ],
     )
+
+
+# Canonical annotation kinds. Insertion order is the order annotations are
+# written and listed in sequences.json. Adding a kind here is all a new kind
+# needs: every dataset writes it if it has it, and reads the default if not.
+ANNOTATION_KINDS = {
+    "keypoints_2d": AnnotationKind(
+        "keypoints_2d.json", Keypoints2DAnnotations
+    ),
+    "keypoints_3d": AnnotationKind(
+        "keypoints_3d.json", Keypoints3DAnnotations
+    ),
+    "bboxes_2d": AnnotationKind("bboxes_2d.json", BBox2DAnnotations),
+    "cameras_temporal": AnnotationKind(
+        "cameras_temporal.json",
+        CameraTemporalAnnotations,
+        build_default=build_synchronized_camera_temporal,
+    ),
+    "cameras_intrinsics": AnnotationKind(
+        "cameras_intrinsics.json", CameraIntrinsicsAnnotations
+    ),
+    "cameras_extrinsics": AnnotationKind(
+        "cameras_extrinsics.json", CameraExtrinsicsAnnotations
+    ),
+}
+
+# Kind -> filename, the view of the registry the write path needs.
+ANNOTATION_FILENAMES = {
+    key: kind.filename for key, kind in ANNOTATION_KINDS.items()
+}
+
+
+def _json_fallback(obj: Any) -> Any:
+    if isinstance(obj, torch.Tensor):
+        return obj.tolist()
+    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
 
 def write_sequence_annotations(
@@ -132,3 +177,50 @@ def write_sequence_annotations(
         relpaths[key] = Path(relpath).as_posix()
 
     return relpaths
+
+
+def load_sequence_annotations(
+    dataset_dir: str, sequence: dict[str, Any]
+) -> dict[str, Any]:
+    """Read a sequence's annotations, defaulting the kinds it does not provide.
+
+    A dataset only writes the kinds it actually has, so what is on disk varies by
+    dataset and by when it was preprocessed. This reads whatever is there and
+    fills in the rest from `ANNOTATION_KINDS`, so callers see one uniform set
+    without knowing which dataset they are looking at. A kind whose file is
+    listed but missing is defaulted too, which is what makes data preprocessed
+    before a kind existed readable without regenerating it.
+
+    Kinds that have no honest default and no file on disk are left out rather
+    than invented, so using one raises `KeyError` at the point of use instead of
+    silently returning a made-up camera pose.
+
+    Args:
+        dataset_dir: Absolute path to the dataset root.
+        sequence: An entry of the dataset's `sequences.json`, read for its
+            `"annotations"` paths and its `"views"` keys.
+
+    Returns:
+        Maps each available kind to its annotations object, in
+        `ANNOTATION_KINDS` order.
+    """
+    view_ids = list(sequence["views"])
+    relpaths = sequence.get("annotations", {})
+
+    annotations: dict[str, Any] = {}
+
+    for key, kind in ANNOTATION_KINDS.items():
+        relpath = relpaths.get(key)
+        abspath = (
+            os.path.join(dataset_dir, relpath) if relpath is not None else None
+        )
+
+        if abspath is not None and os.path.exists(abspath):
+            with open(abspath, "rb") as f:
+                annotations[key] = kind.annotations_type.from_dict(
+                    orjson.loads(f.read())
+                )
+        elif kind.build_default is not None:
+            annotations[key] = kind.build_default(view_ids)
+
+    return annotations
