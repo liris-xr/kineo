@@ -165,9 +165,12 @@ def _generate_protocol1_annotations(
         keypoints_3d_world = keypoints_3d_world[::5][:n_frames]
         n_frames = keypoints_3d_world.shape[0]
 
+        # Only used when generation is skipped: list the annotation files
+        # already on disk, whatever a past run happened to write.
         annotations_relpaths = {
             key: Path(os.path.join(annotations_relpath, filename)).as_posix()
             for key, filename in annotations_io.ANNOTATION_FILENAMES.items()
+            if os.path.exists(os.path.join(annotations_abspath, filename))
         }
 
         camera_extrinsics_annotations = CameraExtrinsicsAnnotations(
@@ -236,10 +239,6 @@ def _generate_protocol1_annotations(
                 category_id=0,
             )
 
-            cameras_temporal_annotations = (
-                annotations_io.build_synchronized_camera_temporal(cameras_names)
-            )
-
             annotations_relpaths = annotations_io.write_sequence_annotations(
                 dataset_dir=dataset_dir,
                 annotations_reldir=annotations_relpath,
@@ -247,7 +246,6 @@ def _generate_protocol1_annotations(
                     "keypoints_2d": kps2d_annotations,
                     "keypoints_3d": kps3d_annotations,
                     "bboxes_2d": bboxes2d_annotations,
-                    "cameras_temporal": cameras_temporal_annotations,
                     "cameras_intrinsics": camera_intrinsics_annotations,
                     "cameras_extrinsics": camera_extrinsics_annotations,
                 },

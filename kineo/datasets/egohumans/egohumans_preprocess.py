@@ -41,7 +41,6 @@ from kineo.annotations.keypoints_3d import (
     Keypoints3DAnnotations,
     Keypoints3DAnnotationsMetadata,
 )
-from kineo.annotations.camera_temporal import CameraTemporalAnnotations
 from kineo.datasets import annotations_io
 from kineo.annotations.camera_extrinsics import (
     CameraExtrinsicsAnnotation,
@@ -193,11 +192,16 @@ def _generate_annotations(
                 os.path.join(dataset_dir, subseq_annotations_dir), exist_ok=True
             )
 
+            # Only used when generation is skipped: list the annotation files
+            # already on disk, whatever a past run happened to write.
             annotations_relpaths = {
                 key: Path(
                     os.path.join(subseq_annotations_dir, filename)
                 ).as_posix()
                 for key, filename in annotations_io.ANNOTATION_FILENAMES.items()
+                if os.path.exists(
+                    os.path.join(dataset_dir, subseq_annotations_dir, filename)
+                )
             }
 
             sequence_dir = sequence["directory"]
@@ -240,7 +244,6 @@ def _generate_annotations(
                     kps_2d_annotations,
                     kps_3d_annotations,
                     bboxes_annotations,
-                    cam_temporal_annotations,
                 ) = _generate_subsequence_annotations(
                     subsequence_abs_dir=subsequence_abs_dir,
                     cam_intrinsics_annotations=cam_intrinsics_annotations,
@@ -257,7 +260,6 @@ def _generate_annotations(
                         "keypoints_2d": kps_2d_annotations,
                         "keypoints_3d": kps_3d_annotations,
                         "bboxes_2d": bboxes_annotations,
-                        "cameras_temporal": cam_temporal_annotations,
                         "cameras_intrinsics": cam_intrinsics_annotations,
                         "cameras_extrinsics": cam_extrinsics_annotations,
                     },
@@ -305,7 +307,6 @@ def _generate_subsequence_annotations(
     Keypoints2DAnnotations,
     Keypoints3DAnnotations,
     BBox2DAnnotations,
-    CameraTemporalAnnotations,
 ]:
     assert cam_intrinsics_annotations.views_ids == cam_extrinsics_annotations.views_ids
 
@@ -403,16 +404,10 @@ def _generate_subsequence_annotations(
             fps=FPS,
         )
 
-    # All cameras are synchronized
-    cam_temporal_annotations = annotations_io.build_synchronized_camera_temporal(
-        cameras
-    )
-
     return (
         kps_2d_annotations,
         kps_3d_annotations,
         bboxes_annotations,
-        cam_temporal_annotations,
     )
 
 
