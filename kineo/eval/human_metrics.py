@@ -123,6 +123,12 @@ def compute_human_metrics(
     gt_world2cam = torch.zeros((n_views, 3, 4), device=device)
     gt_kps3d = torch.zeros((n_frames, n_subjects, n_keypoints, 3), device=device)
     pred_kps3d = torch.zeros((n_frames, n_subjects, n_keypoints, 3), device=device)
+    # A GT frame the predictions never fill, or a keypoint the pipeline zeroed
+    # because triangulation was not finite, is a missing prediction rather than
+    # one at the world origin. Track them so they do not count as errors.
+    pred_valid = torch.zeros(
+        (n_frames, n_subjects, n_keypoints), dtype=torch.bool, device=device
+    )
 
     view_id_to_idx = {view_id: i for i, view_id in enumerate(views_ids)}
     subject_id_to_idx = {subject_id: i for i, subject_id in enumerate(gt_subjects_ids)}
@@ -155,6 +161,9 @@ def compute_human_metrics(
         if frame_idx == -1:
             continue
         pred_kps3d[frame_idx, subject_idx] = ann.xyz
+        pred_valid[frame_idx, subject_idx] = (
+            torch.as_tensor(ann.scores, device=device) > 0
+        )
 
     if len(pred_cam_extrinsics_annotations.annotations) == n_views:
         pred_world2cam = torch.empty((n_views, 3, 4), device=device)
@@ -195,7 +204,8 @@ def compute_human_metrics(
     w_mpjpe = torch.norm(
         gt_kps3d - pred_kps3d_aligned,
         dim=-1,
-    ).cpu()
+    )
+    w_mpjpe = torch.where(pred_valid, w_mpjpe, torch.nan).cpu()
 
     pa_mpjpe = torch.zeros((n_frames, n_subjects, n_keypoints))
 
@@ -213,10 +223,15 @@ def compute_human_metrics(
             s.reshape(n_frames),
         ).reshape(n_frames, n_keypoints, 3)
 
-        pa_mpjpe[:, subject_idx] = torch.norm(
-            gt_kps3d[:, subject_idx] - subject_pred_kps3d_aligned,
-            dim=-1,
-        )
+        subject_pose_valid = pred_valid[:, subject_idx].all(dim=-1)
+        pa_mpjpe[:, subject_idx] = torch.where(
+            subject_pose_valid.unsqueeze(-1),
+            torch.norm(
+                gt_kps3d[:, subject_idx] - subject_pred_kps3d_aligned,
+                dim=-1,
+            ),
+            torch.nan,
+        ).cpu()
 
     return {
         frames[frame_idx]: [
