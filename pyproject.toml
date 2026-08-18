@@ -108,6 +108,8 @@ cuda-nvcc = "*"
 cuda-nvrtc = "*"
 cuda-nvtx = "*"
 cuda-profiler-api = "*"
+# cuda-nvcc ships the compiler but not the toolkit headers torch's ATen includes.
+cuda-libraries-dev = "*"
 cudnn = "*"
 
 [tool.pixi.environments]
