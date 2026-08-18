@@ -5,7 +5,7 @@
     "camera_indexing": "1-indexed. Paper 'camera N' maps to view id 'camNN' (zero-padded), matching egohumans_sequences.json view ids.",
     "all_sentinel": "\"all\" means every available view of the sequence (used where the paper says 'all 8 available cameras').",
     "activity_keys": "Keys are the activity prefixes of our sequence names (e.g. 'legoassemble'); the paper labels these 01_tagging..07_tennis.",
-    "training_set": "None. HSfM evaluates every sequence of each activity under its activity's per-view-count selection; no sequences are held out for training."
+    "evaluation_set": "The paper specifies cameras only; it never states which EgoHumans sequences or frames are evaluated (contrast EgoExo4D, where all 182 take/frame pairs are listed). Nothing is trained on EgoHumans, so there is no held-out split. Our runs use all 131 sequences and all frames, which is our choice, not the paper's."
   },
   "notes": [
     "'all' for tagging/legoassemble/basketball in the 8-view case reflects that those activities provide exactly 8 cameras.",
