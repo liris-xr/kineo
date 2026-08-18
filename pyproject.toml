@@ -79,7 +79,6 @@ setuptools = "<82"
 hf-transfer = "*"
 huggingface_hub = "*"
 curl = "*"
-git = "*"
 requests = ">=2.34.2,<3"
 
 [tool.pixi.pypi-options.dependency-overrides]
