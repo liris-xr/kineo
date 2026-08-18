@@ -51,6 +51,9 @@ pipeline:
       _target_: kineo.pipeline.stages.mvs_triangulation.MVSTriangulationStage
       name: "MVS Triangulation"
       order: 90
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.mvs_triangulation.MVSTriangulationRuntimeConfig
+        use_eigendecomposition: True
 
     annotations_export:
       _target_: kineo.pipeline.stages.annotations_export.AnnotationsExportStage
