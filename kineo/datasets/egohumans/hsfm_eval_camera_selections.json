@@ -9,35 +9,399 @@
   },
   "notes": [
     "'all' for tagging/legoassemble/basketball in the 8-view case reflects that those activities provide exactly 8 cameras.",
-    "Our preprocessed dataset drops some cameras that these selections reference (our preprocess merges near-static cameras via --merge-translation-tolerance / --merge-rotation-tolerance). Against the current snapshot the unreproducible pairs are: 4-view volleyball (all lack cam11) and badminton (12/60); 8-view fencing (only 7/14 have cam15), volleyball (cam11), badminton (cam15), tennis (all lack cam07). 2-view and 4-view tennis/fencing/etc. are fully satisfiable. Re-preprocess without static-camera merging to recover the missing views before running those settings."
+    "--merge-translation-tolerance / --merge-rotation-tolerance only deduplicate consecutive near-identical extrinsics within a view, they never drop a view, and non-static cameras are kept with their per-segment extrinsics. Views are dropped only by the dataset's own per-sequence INVALID_EXOS flag and by exo/ directories EgoHumans does not ship.",
+    "Not every selection is satisfiable on our snapshot. 2-view: all 131 sequences OK. 4-view: 12 sequences lack cam01 (badminton_049, 050, 052-061). 8-view: those same 12 plus fencing_008 (lacks cam11), fencing_009/010 (cam11, cam15), fencing_011/012/013 (cam03, cam11, cam15) and fencing_014 (cam03, cam07, cam11, cam15). HSfM's own rule (Table S.1 caption) is to exclude samples lacking GT poses for all views of a combination, so excluding these is protocol-faithful.",
+    "sequence_overrides encodes our deviation from the paper. Sequences listed there cannot satisfy their activity's selection because the cameras the paper names are absent from our snapshot (dataset INVALID_EXOS flags, or exo/ directories EgoHumans does not ship). Rather than drop the sequences, each missing camera is replaced by the nearest available camera id not already selected, ties to the lower id, keeping the view count intact. camera_selections still holds the paper's sets verbatim, so the two blocks together record both what HSfM used and what we ran. Note this trades protocol fidelity for coverage: HSfM's own rule (Table S.1 caption) is to exclude such samples, and the substituted rigs differ geometrically from theirs, so per-activity numbers on badminton and fencing are not strictly comparable. fencing_014 is the worst case, 4 of 8 cameras replaced out of only 9 available views.",
+    "The overrides were derived from the 131-sequence snapshot and name specific sequences; re-preprocessing the dataset with different camera availability makes them stale. load_hsfm_view_selection still raises if an override names a view the sequence does not have.",
+    "fencing cam11/cam15 in fencing_008-014 are flagged INVALID_EXOS for quality, not truncation: they have the same frame count as the valid views and COLMAP poses exist. Un-flagging just those two would restore the paper's exact 8-view set for fencing_008/009/010. badminton cam01 has no such cheap fix, it is genuinely short (516 vs 801 frames), so including it would shrink the common time range for every view."
   ],
   "camera_selections": {
     "2": {
-      "tagging": ["cam01", "cam02"],
-      "legoassemble": ["cam03", "cam05"],
-      "fencing": ["cam05", "cam13"],
-      "basketball": ["cam02", "cam07"],
-      "volleyball": ["cam06", "cam12"],
-      "badminton": ["cam05", "cam07"],
-      "tennis": ["cam09", "cam12"]
+      "tagging": [
+        "cam01",
+        "cam02"
+      ],
+      "legoassemble": [
+        "cam03",
+        "cam05"
+      ],
+      "fencing": [
+        "cam05",
+        "cam13"
+      ],
+      "basketball": [
+        "cam02",
+        "cam07"
+      ],
+      "volleyball": [
+        "cam06",
+        "cam12"
+      ],
+      "badminton": [
+        "cam05",
+        "cam07"
+      ],
+      "tennis": [
+        "cam09",
+        "cam12"
+      ]
     },
     "4": {
-      "tagging": ["cam01", "cam04", "cam06", "cam08"],
-      "legoassemble": ["cam02", "cam03", "cam04", "cam06"],
-      "fencing": ["cam04", "cam05", "cam10", "cam13"],
-      "basketball": ["cam01", "cam03", "cam04", "cam08"],
-      "volleyball": ["cam02", "cam04", "cam08", "cam11"],
-      "badminton": ["cam01", "cam02", "cam05", "cam07"],
-      "tennis": ["cam04", "cam09", "cam12", "cam20"]
+      "tagging": [
+        "cam01",
+        "cam04",
+        "cam06",
+        "cam08"
+      ],
+      "legoassemble": [
+        "cam02",
+        "cam03",
+        "cam04",
+        "cam06"
+      ],
+      "fencing": [
+        "cam04",
+        "cam05",
+        "cam10",
+        "cam13"
+      ],
+      "basketball": [
+        "cam01",
+        "cam03",
+        "cam04",
+        "cam08"
+      ],
+      "volleyball": [
+        "cam02",
+        "cam04",
+        "cam08",
+        "cam11"
+      ],
+      "badminton": [
+        "cam01",
+        "cam02",
+        "cam05",
+        "cam07"
+      ],
+      "tennis": [
+        "cam04",
+        "cam09",
+        "cam12",
+        "cam20"
+      ]
     },
     "8": {
       "tagging": "all",
       "legoassemble": "all",
-      "fencing": ["cam01", "cam03", "cam05", "cam07", "cam09", "cam11", "cam13", "cam15"],
+      "fencing": [
+        "cam01",
+        "cam03",
+        "cam05",
+        "cam07",
+        "cam09",
+        "cam11",
+        "cam13",
+        "cam15"
+      ],
       "basketball": "all",
-      "volleyball": ["cam01", "cam03", "cam05", "cam07", "cam09", "cam11", "cam13", "cam15"],
-      "badminton": ["cam01", "cam03", "cam05", "cam07", "cam09", "cam11", "cam13", "cam15"],
-      "tennis": ["cam01", "cam03", "cam05", "cam07", "cam09", "cam11", "cam13", "cam15"]
+      "volleyball": [
+        "cam01",
+        "cam03",
+        "cam05",
+        "cam07",
+        "cam09",
+        "cam11",
+        "cam13",
+        "cam15"
+      ],
+      "badminton": [
+        "cam01",
+        "cam03",
+        "cam05",
+        "cam07",
+        "cam09",
+        "cam11",
+        "cam13",
+        "cam15"
+      ],
+      "tennis": [
+        "cam01",
+        "cam03",
+        "cam05",
+        "cam07",
+        "cam09",
+        "cam11",
+        "cam13",
+        "cam15"
+      ]
+    }
+  },
+  "sequence_overrides": {
+    "4": {
+      "badminton_049": [
+        "cam02",
+        "cam03",
+        "cam05",
+        "cam07"
+      ],
+      "badminton_050": [
+        "cam02",
+        "cam03",
+        "cam05",
+        "cam07"
+      ],
+      "badminton_052": [
+        "cam02",
+        "cam03",
+        "cam05",
+        "cam07"
+      ],
+      "badminton_053": [
+        "cam02",
+        "cam03",
+        "cam05",
+        "cam07"
+      ],
+      "badminton_054": [
+        "cam02",
+        "cam03",
+        "cam05",
+        "cam07"
+      ],
+      "badminton_055": [
+        "cam02",
+        "cam03",
+        "cam05",
+        "cam07"
+      ],
+      "badminton_056": [
+        "cam02",
+        "cam03",
+        "cam05",
+        "cam07"
+      ],
+      "badminton_057": [
+        "cam02",
+        "cam03",
+        "cam05",
+        "cam07"
+      ],
+      "badminton_058": [
+        "cam02",
+        "cam03",
+        "cam05",
+        "cam07"
+      ],
+      "badminton_059": [
+        "cam02",
+        "cam03",
+        "cam05",
+        "cam07"
+      ],
+      "badminton_060": [
+        "cam02",
+        "cam03",
+        "cam05",
+        "cam07"
+      ],
+      "badminton_061": [
+        "cam02",
+        "cam03",
+        "cam05",
+        "cam07"
+      ]
+    },
+    "8": {
+      "badminton_049": [
+        "cam02",
+        "cam03",
+        "cam05",
+        "cam07",
+        "cam09",
+        "cam11",
+        "cam13",
+        "cam15"
+      ],
+      "badminton_050": [
+        "cam02",
+        "cam03",
+        "cam05",
+        "cam07",
+        "cam09",
+        "cam11",
+        "cam13",
+        "cam15"
+      ],
+      "badminton_052": [
+        "cam02",
+        "cam03",
+        "cam05",
+        "cam07",
+        "cam09",
+        "cam11",
+        "cam13",
+        "cam15"
+      ],
+      "badminton_053": [
+        "cam02",
+        "cam03",
+        "cam05",
+        "cam07",
+        "cam09",
+        "cam11",
+        "cam13",
+        "cam15"
+      ],
+      "badminton_054": [
+        "cam02",
+        "cam03",
+        "cam05",
+        "cam07",
+        "cam09",
+        "cam11",
+        "cam13",
+        "cam15"
+      ],
+      "badminton_055": [
+        "cam02",
+        "cam03",
+        "cam05",
+        "cam07",
+        "cam09",
+        "cam11",
+        "cam13",
+        "cam15"
+      ],
+      "badminton_056": [
+        "cam02",
+        "cam03",
+        "cam05",
+        "cam07",
+        "cam09",
+        "cam11",
+        "cam13",
+        "cam15"
+      ],
+      "badminton_057": [
+        "cam02",
+        "cam03",
+        "cam05",
+        "cam07",
+        "cam09",
+        "cam11",
+        "cam13",
+        "cam15"
+      ],
+      "badminton_058": [
+        "cam02",
+        "cam03",
+        "cam05",
+        "cam07",
+        "cam09",
+        "cam11",
+        "cam13",
+        "cam15"
+      ],
+      "badminton_059": [
+        "cam02",
+        "cam03",
+        "cam05",
+        "cam07",
+        "cam09",
+        "cam11",
+        "cam13",
+        "cam15"
+      ],
+      "badminton_060": [
+        "cam02",
+        "cam03",
+        "cam05",
+        "cam07",
+        "cam09",
+        "cam11",
+        "cam13",
+        "cam15"
+      ],
+      "badminton_061": [
+        "cam02",
+        "cam03",
+        "cam05",
+        "cam07",
+        "cam09",
+        "cam11",
+        "cam13",
+        "cam15"
+      ],
+      "fencing_008": [
+        "cam01",
+        "cam03",
+        "cam05",
+        "cam07",
+        "cam09",
+        "cam10",
+        "cam13",
+        "cam15"
+      ],
+      "fencing_009": [
+        "cam01",
+        "cam03",
+        "cam05",
+        "cam07",
+        "cam09",
+        "cam10",
+        "cam13",
+        "cam14"
+      ],
+      "fencing_010": [
+        "cam01",
+        "cam03",
+        "cam05",
+        "cam07",
+        "cam09",
+        "cam10",
+        "cam13",
+        "cam14"
+      ],
+      "fencing_011": [
+        "cam01",
+        "cam02",
+        "cam05",
+        "cam07",
+        "cam09",
+        "cam10",
+        "cam13",
+        "cam14"
+      ],
+      "fencing_012": [
+        "cam01",
+        "cam02",
+        "cam05",
+        "cam07",
+        "cam09",
+        "cam10",
+        "cam13",
+        "cam14"
+      ],
+      "fencing_013": [
+        "cam01",
+        "cam02",
+        "cam05",
+        "cam07",
+        "cam09",
+        "cam10",
+        "cam13",
+        "cam14"
+      ],
+      "fencing_014": [
+        "cam01",
+        "cam02",
+        "cam04",
+        "cam05",
+        "cam09",
+        "cam10",
+        "cam13",
+        "cam14"
+      ]
     }
   }
 }

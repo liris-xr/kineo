@@ -19,6 +19,7 @@ from kineo.datasets.keypoints_sequence_dataset import ViewInput
 from kineo.datasets.egohumans.egohumans_smpl_gt import (
     load_egohumans_smpl_keypoints_3d,
 )
+from kineo.datasets.egohumans.hsfm_eval_views import load_hsfm_view_selection
 from kineo.io.frame_sequence_loader import ImagesLoader
 from kineo.annotations.keypoints_3d import Keypoints3DAnnotations
 from kineo.annotations.keypoints_2d import Keypoints2DAnnotations
@@ -104,6 +105,7 @@ def main(
     config_file: str,
     sequences_filter: list[str] = [],
     views_filter: list[str] = [],
+    hsfm_views: int | None = None,
     human_gt_format: str = "coco",
 ):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -186,12 +188,28 @@ def main(
                     orjson.loads(f.read())
                 )
 
-            if views_filter:
-                gt_bboxes_2d = gt_bboxes_2d.filter_by_view_ids(views_filter)
-                gt_keypoints_2d = gt_keypoints_2d.filter_by_view_ids(views_filter)
-                gt_cam_extrinsics = gt_cam_extrinsics.filter_by_view_ids(views_filter)
-                gt_cam_intrinsics = gt_cam_intrinsics.filter_by_view_ids(views_filter)
-                cameras = [c for c in cameras if c in views_filter]
+            sequence_views_filter = views_filter
+            if hsfm_views is not None:
+                sequence_views_filter = load_hsfm_view_selection(
+                    sequence_name, hsfm_views, cameras
+                )
+                print(
+                    f"HSfM {hsfm_views}-view selection for {sequence_name}: "
+                    f"{sequence_views_filter}"
+                )
+
+            if sequence_views_filter:
+                gt_bboxes_2d = gt_bboxes_2d.filter_by_view_ids(sequence_views_filter)
+                gt_keypoints_2d = gt_keypoints_2d.filter_by_view_ids(
+                    sequence_views_filter
+                )
+                gt_cam_extrinsics = gt_cam_extrinsics.filter_by_view_ids(
+                    sequence_views_filter
+                )
+                gt_cam_intrinsics = gt_cam_intrinsics.filter_by_view_ids(
+                    sequence_views_filter
+                )
+                cameras = [c for c in cameras if c in sequence_views_filter]
 
             views = []
             for camera in cameras:
@@ -260,11 +278,19 @@ if __name__ == "__main__":
         default=[],
         help="List of sequences to process",
     )
-    parser.add_argument(
+    views_group = parser.add_mutually_exclusive_group()
+    views_group.add_argument(
         "--views-filter",
         nargs="+",
         default=[],
         help="List of views to process",
+    )
+    views_group.add_argument(
+        "--hsfm-views",
+        type=int,
+        default=None,
+        choices=[2, 4, 8],
+        help="Process only HSfM's per-activity camera subset for this view count (supplementary S.4.2). Defaults to all views.",
     )
     parser.add_argument(
         "--human-gt-format",
@@ -282,5 +308,6 @@ if __name__ == "__main__":
         config_file,
         args.sequences_filter,
         args.views_filter,
+        args.hsfm_views,
         args.human_gt_format,
     )
