@@ -166,7 +166,7 @@ cmd = "python scripts/download_h36m_dataset.py {{ dataset_dir }}"
 
 [tool.pixi.tasks.h36m-preprocess]
 args = ["dataset_dir"]
-cmd = "test -f {{ dataset_dir }}/annotations/protocol1/val/ || python scripts/preprocess_h36m_dataset.py {{ dataset_dir }}"
+cmd = "test -f {{ dataset_dir }}/h36m_protocol1_sequences.json || python scripts/preprocess_h36m_dataset.py {{ dataset_dir }}"
 
 [tool.pixi.tasks.h36m-benchmark]
 depends-on = ["download-checkpoints"]

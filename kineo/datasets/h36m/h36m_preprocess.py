@@ -67,12 +67,6 @@ KEYPOINTS_FORMAT = KeypointsFormat.from_mmpose_dataset("h36m")
 H36M_JOINTS_MAPPING = [11, 1, 2, 3, 6, 7, 8, 12, 24, 14, 15, 17, 18, 19, 25, 26, 27]
 
 
-def _get_annotations_rel_filepath(
-    subject_name: str, subaction_name: str, split: str
-) -> str:
-    return f"annotations/protocol1/{split}/{subject_name}_{subaction_name}.json"
-
-
 def _get_video_rel_filepath(
     subject_name: str, subaction_name: str, camera_name: str
 ) -> str:
