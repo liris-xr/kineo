@@ -14,12 +14,12 @@ import os
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 
 import torch
+from omegaconf import OmegaConf
 from kineo.pipeline.pipeline import Pipeline
 from kineo.datasets.keypoints_sequence_dataset import ViewInput
 from kineo.datasets.egohumans.egohumans_smpl_gt import (
     load_egohumans_smpl_keypoints_3d,
 )
-from kineo.datasets.egohumans.hsfm_eval_views import load_hsfm_view_selection
 from kineo.io.frame_sequence_loader import ImagesLoader
 from kineo.annotations.keypoints_3d import Keypoints3DAnnotations
 from kineo.annotations.keypoints_2d import Keypoints2DAnnotations
@@ -105,13 +105,20 @@ def main(
     config_file: str,
     sequences_filter: list[str] = [],
     views_filter: list[str] = [],
-    hsfm_views: int | None = None,
     human_gt_format: str = "coco",
 ):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print_system_info(device)
 
-    pipeline = Pipeline.build_pipeline_from_config(config_file, device)
+    cfg = OmegaConf.load(config_file)
+    pipeline = Pipeline.build_pipeline_from_config(cfg, device)
+
+    # Benchmark configs that reproduce a fixed-view protocol (e.g. HSfM's 2-,
+    # 4- and 8-view settings) carry the resolved camera set of every sequence
+    # they cover; without the key every view is used.
+    camera_selection = cfg.get("camera_selection", None)
+    if camera_selection is not None:
+        camera_selection = OmegaConf.to_container(camera_selection)
 
     sequences_file = os.path.join(dataset_dir, "egohumans_sequences.json")
 
@@ -189,14 +196,21 @@ def main(
                 )
 
             sequence_views_filter = views_filter
-            if hsfm_views is not None:
-                sequence_views_filter = load_hsfm_view_selection(
-                    sequence_name, hsfm_views, cameras
-                )
-                print(
-                    f"HSfM {hsfm_views}-view selection for {sequence_name}: "
-                    f"{sequence_views_filter}"
-                )
+            if camera_selection is not None:
+                if sequence_name not in camera_selection:
+                    print(
+                        f"Skipping sequence {sequence_name}: not covered by the "
+                        f"config's camera_selection"
+                    )
+                    continue
+                sequence_views_filter = camera_selection[sequence_name]
+                missing_views = [c for c in sequence_views_filter if c not in cameras]
+                if missing_views:
+                    raise ValueError(
+                        f"Sequence {sequence_name} lacks the cameras "
+                        f"{missing_views} its camera_selection asks for"
+                    )
+                print(f"Cameras for {sequence_name}: {sequence_views_filter}")
 
             if sequence_views_filter:
                 gt_bboxes_2d = gt_bboxes_2d.filter_by_view_ids(sequence_views_filter)
@@ -278,19 +292,11 @@ if __name__ == "__main__":
         default=[],
         help="List of sequences to process",
     )
-    views_group = parser.add_mutually_exclusive_group()
-    views_group.add_argument(
+    parser.add_argument(
         "--views-filter",
         nargs="+",
         default=[],
-        help="List of views to process",
-    )
-    views_group.add_argument(
-        "--hsfm-views",
-        type=int,
-        default=None,
-        choices=[2, 4, 8],
-        help="Process only HSfM's per-activity camera subset for this view count (supplementary S.4.2). Defaults to all views.",
+        help="List of views to process. Ignored when the config carries a camera_selection.",
     )
     parser.add_argument(
         "--human-gt-format",
@@ -308,6 +314,5 @@ if __name__ == "__main__":
         config_file,
         args.sequences_filter,
         args.views_filter,
-        args.hsfm_views,
         args.human_gt_format,
     )
