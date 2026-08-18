@@ -19,7 +19,7 @@ def triangulate_points(
     Ps: torch.Tensor,
     points: torch.Tensor,
     points_weights: torch.Tensor | None = None,
-    use_eigendecomposition: bool = False,
+    use_eigendecomposition: bool = True,
 ) -> torch.Tensor:
     r"""Reconstructs a bunch of points by triangulation.
 
@@ -82,8 +82,17 @@ def triangulate_points(
     X = X.reshape(-1, n_pairs * 4, 4)
 
     if use_eigendecomposition:
+        # eigh on the 4x4 normal matrix: invalid (zero-weight) pairs contribute
+        # nothing, and it always converges (unlike SVD on the zero-padded X, whose
+        # repeated singular values make cusolver diverge for occluded points).
         XtX = X.transpose(-2, -1) @ X
-        _, eigvecs = torch.linalg.eigh(XtX)
+        try:
+            _, eigvecs = torch.linalg.eigh(XtX)
+        except torch.linalg.LinAlgError:
+            # cusolver eigh diverges on rank-deficient XtX (occluded points); CPU
+            # LAPACK is robust, and XtX is tiny (4x4) so the transfer is cheap.
+            _, eigvecs = torch.linalg.eigh(XtX.cpu())
+            eigvecs = eigvecs.to(X.device)
         points3d_h = eigvecs[..., :, 0]
     else:
         _, _, V = torch.svd(X)
@@ -91,4 +100,8 @@ def triangulate_points(
 
     points3d, _ = convert_points_from_homogeneous(points3d_h)
     points3d = points3d.reshape((*batch_dims, N, 3))
+
+    # Points seen by fewer than 2 views are untriangulatable; mark them invalid.
+    valid_views = (points_weights > 0).sum(dim=-2)
+    points3d = points3d.masked_fill((valid_views < 2).unsqueeze(-1), float("nan"))
     return points3d
