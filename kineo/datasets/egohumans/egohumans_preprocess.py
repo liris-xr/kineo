@@ -614,7 +614,6 @@ def _load_keypoints_annotations(
                 frame_idx=frame_idx,
                 subject_id=subject_id,
                 xyz=kps,
-                annotated=torch.ones_like(kps[:, 0], dtype=torch.bool),
                 scores=torch.ones_like(kps[:, 0], dtype=torch.float32),
                 format=kps_format.name,
             )

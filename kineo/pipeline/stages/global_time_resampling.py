@@ -280,11 +280,6 @@ class GlobalTimeResamplingStage(PipelineStage[GlobalTimeResamplingRuntimeConfig]
                             subject_id=subject_id,
                             xy=resampled_kps_2d_xy[f, view_idx],
                             scores=resampled_kps_2d_scores[f, view_idx],
-                            annotated=torch.ones_like(
-                                resampled_kps_2d_xy[f, view_idx, :, 0],
-                                dtype=torch.bool,
-                                device=device,
-                            ),
                             format=kps_format_name,
                         )
                     )
@@ -332,7 +327,6 @@ class GlobalTimeResamplingStage(PipelineStage[GlobalTimeResamplingRuntimeConfig]
 
                 cv2.imshow("Synchronized Views", concatenated_frame)
                 cv2.waitKey(1)
-        
             cv2.destroyAllWindows()
 
         annotations["keypoints_2d"] = Keypoints2DAnnotations(

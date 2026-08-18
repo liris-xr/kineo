@@ -40,7 +40,6 @@ def _keypoints():
             frame_idx=f,
             subject_id="aria01",
             xyz=torch.full((n_kp, 3), float(f)) + torch.arange(n_kp * 3).reshape(n_kp, 3) * 0.01,
-            annotated=torch.ones(n_kp, dtype=torch.bool),
             scores=torch.ones(n_kp, dtype=torch.float32),
             format="smpl_22",
         )

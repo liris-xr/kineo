@@ -294,9 +294,6 @@ class NLFSkeletonKeypointsDetectionStage(
                             subject_id=subject_id,
                             xy=subject_joints2d_xy.cpu(),
                             scores=subject_joints2d_confidence.cpu(),
-                            annotated=torch.ones(
-                                subject_joints2d_xy.shape[0], dtype=torch.bool
-                            ),
                             format=keypoints_format.name,
                         )
 

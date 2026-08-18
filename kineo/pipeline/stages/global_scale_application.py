@@ -70,7 +70,6 @@ class GlobalScaleApplicationStage(PipelineStage):
                 Keypoints3DAnnotation(
                     frame_idx=keypoints_3d_annot.frame_idx,
                     subject_id=keypoints_3d_annot.subject_id,
-                    annotated=keypoints_3d_annot.annotated,
                     scores=keypoints_3d_annot.scores,
                     xyz=keypoints_3d_annot.xyz * global_scale_factor,
                     format=keypoints_3d_annot.format,

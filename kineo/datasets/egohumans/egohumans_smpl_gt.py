@@ -63,7 +63,6 @@ def load_egohumans_smpl_keypoints_3d(
                     frame_idx=frame_idx,
                     subject_id=subject_id,
                     xyz=joints,
-                    annotated=torch.ones(22, dtype=torch.bool),
                     scores=torch.ones(22, dtype=torch.float32),
                     format=SMPL_22_KEYPOINTS_FORMAT.name,
                 )

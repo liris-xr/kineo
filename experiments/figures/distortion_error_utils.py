@@ -144,9 +144,8 @@ def build_keypoints_mask(
     for ann in view_kp:
         xy = ann.xy.detach().cpu().numpy()
         scores = ann.scores.detach().cpu().numpy()
-        annotated = ann.annotated.detach().cpu().numpy()
-        for (x, y), s, a in zip(xy, scores, annotated):
-            if not a or s < score_thr:
+        for (x, y), s in zip(xy, scores):
+            if s < score_thr:
                 continue
             if not (np.isfinite(x) and np.isfinite(y)):
                 continue

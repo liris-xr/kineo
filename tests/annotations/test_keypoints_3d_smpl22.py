@@ -30,7 +30,6 @@ def test_convert_smpl_24_to_smpl_22_drops_hand_joints():
                 frame_idx=0,
                 subject_id="aria01",
                 xyz=xyz,
-                annotated=torch.ones(24, dtype=torch.bool),
                 scores=torch.ones(24, dtype=torch.float32),
                 format="smpl_24",
             )

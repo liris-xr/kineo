@@ -75,7 +75,6 @@ def project_kps3d_to_kps2d(
                     subject_id=orig_annotation.subject_id,
                     xy=points_2d[i],
                     scores=orig_annotation.scores[i],
-                    annotated=orig_annotation.annotated[i],
                     format=orig_annotation.format,
                 )
                 for i, orig_annotation in enumerate(kps_annotations.annotations)
@@ -147,7 +146,6 @@ def generate_kps2d_from_kps3d_and_cameras(
                     subject_id=annotation.subject_id,
                     xy=view_kps_img[view_id][annotation_idx],
                     scores=annotation.scores.clone(),
-                    annotated=annotation.annotated.clone(),
                     format=annotation.format,
                 )
             )

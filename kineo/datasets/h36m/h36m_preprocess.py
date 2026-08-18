@@ -186,10 +186,6 @@ def _generate_protocol1_annotations(
                         subject_id=subject_name,
                         xyz=keypoints_3d_world[frame_idx],
                         scores=torch.ones_like(keypoints_3d_world[frame_idx][..., 0]),
-                        annotated=torch.ones_like(
-                            keypoints_3d_world[frame_idx][..., 0],
-                            dtype=torch.bool,
-                        ),
                         format=KEYPOINTS_FORMAT.name,
                     )
                     for frame_idx in range(n_frames)

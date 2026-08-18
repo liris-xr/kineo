@@ -56,18 +56,6 @@ def build_conf_lookup(pred_kp, gt_kp):
     return conf
 
 
-def build_annotated_lookup(gt_kp):
-    """(frame_idx, subject_id, joint_name) -> bool annotated flag."""
-    gt_format = gt_kp.metadata.formats[0]
-    joint_names = gt_format.keypoints_names
-    annotated = {}
-    for ann in gt_kp.annotations:
-        flags = ann.annotated.cpu().numpy()
-        for kp_idx, jname in enumerate(joint_names):
-            annotated[(ann.frame_idx, ann.subject_id, jname)] = bool(flags[kp_idx])
-    return annotated
-
-
 def collect_pairs(dataset_dir, predictions_dir, metric, sequences_file, drop_zero_conf):
     """joint_name -> (conf_array, err_array) pooled over all frames + sequences."""
     with open(os.path.join(dataset_dir, sequences_file), "rb") as f:
@@ -89,7 +77,6 @@ def collect_pairs(dataset_dir, predictions_dir, metric, sequences_file, drop_zer
             gt_kp, gt_ext_seq[seq], pred_kp, pred_ext_seq[seq]
         )
         conf = build_conf_lookup(pred_kp, gt_kp)
-        annotated = build_annotated_lookup(gt_kp)
 
         for frame_idx, subjects in err.items():
             for subj in subjects:
@@ -100,8 +87,6 @@ def collect_pairs(dataset_dir, predictions_dir, metric, sequences_file, drop_zer
                     c = conf.get((frame_idx, sid, jname))
                     if c is None:
                         continue
-                    if not annotated.get((frame_idx, sid, jname), False):
-                        continue  # skip non-annotated GT joints (error is spurious)
                     if not np.isfinite(e) or not np.isfinite(c):
                         continue
                     if drop_zero_conf and c == 0.0:

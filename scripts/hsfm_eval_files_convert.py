@@ -126,7 +126,6 @@ def load_hsfm_predictions_in_folder(
                     frame_idx=frame_idx,
                     subject_id=subject_id,
                     xyz=h36m_joints.reshape(-1, 3).to(torch.float32),
-                    annotated=torch.ones_like(h36m_joints[:, 0], dtype=torch.bool),
                     scores=torch.ones_like(h36m_joints[:, 0], dtype=torch.float32),
                     format="h36m",
                 )
