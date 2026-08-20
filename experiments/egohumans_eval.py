@@ -20,6 +20,11 @@ from kineo.datasets.keypoints_sequence_dataset import ViewInput
 from kineo.datasets.egohumans.egohumans_smpl_gt import (
     load_egohumans_smpl_keypoints_3d,
 )
+from kineo.eval.dataset_metrics import (
+    aggregate_sequence_metrics_files,
+    export_metrics_statistics,
+    print_metrics_statistics,
+)
 from kineo.io.frame_sequence_loader import ImagesLoader
 from kineo.annotations.keypoints_3d import Keypoints3DAnnotations
 from kineo.annotations.keypoints_2d import Keypoints2DAnnotations
@@ -34,7 +39,6 @@ import orjson
 from tqdm import tqdm
 import argparse
 import traceback
-import json
 
 torch.use_deterministic_algorithms(True)
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -51,52 +55,6 @@ def print_system_info(device: torch.device):
         print(f"GPU Name: {torch.cuda.get_device_name(device)}")
         print(
             f"GPU Memory: {torch.cuda.get_device_properties(device).total_memory / 1024**3:.2f} GB"
-        )
-
-
-def print_statistics(
-    cam_metrics_stats: dict[str, float],
-    human_metrics_stats: dict[str, float],
-    failed_sequences: list[str],
-):
-    print("\n=== Statistics Report ===\n")
-    print("📷 Camera Metrics:")
-    for metric_name, metric_stats in cam_metrics_stats.items():
-        print(f"- {metric_name}:")
-        for key, value in metric_stats.items():
-            print(f"\t- {key:<10}: {value:.4f}")
-
-    print("\n🧑 Human Metrics:")
-    for metric_name, metric_stats in human_metrics_stats.items():
-        print(f"- {metric_name}:")
-        for key, value in metric_stats.items():
-            print(f"\t- {key:<10}: {value:.4f}")
-
-    if failed_sequences:
-        print("\n❌ Failed Sequences:")
-        for seq in failed_sequences:
-            print(f"  - {seq}")
-
-    print("\n=========================\n")
-
-
-def export_statistics(
-    output_path: str,
-    cam_metrics_stats: dict[str, dict[str, float]],
-    human_metrics_stats: dict[str, dict[str, float]],
-    failed_sequences: list[str],
-):
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-
-    with open(output_path, "w") as f:
-        json.dump(
-            {
-                "camera_metrics": cam_metrics_stats,
-                "human_metrics": human_metrics_stats,
-                "failed_sequences": failed_sequences,
-            },
-            f,
-            indent=2,
         )
 
 
@@ -135,6 +93,7 @@ def main(
     pbar = tqdm(sequences, desc="Processing sequences")
 
     failed_sequences = []
+    processed_sequences = []
 
     for sequence in pbar:
         sequence_name = sequence["sequence_name"]
@@ -266,6 +225,7 @@ def main(
                     "keypoints_2d": gt_keypoints_2d,
                 },
             )
+            processed_sequences.append(sequence_name)
         except Exception as e:
             print(
                 f"Error processing sequence {sequence_name}: {e}\n{traceback.format_exc()}"
@@ -276,6 +236,35 @@ def main(
     pbar.close()
 
     print(f"Failed sequences: {failed_sequences}")
+
+    metrics_export_cfg = cfg.pipeline.stages.get("metrics_export", None)
+    if metrics_export_cfg is None:
+        print("No metrics_export stage in the config, skipping aggregation.")
+        return
+
+    metrics_path_template = metrics_export_cfg.runtime_cfg.output_path_template
+    metrics_files = [
+        metrics_path_template.format(sequence_name=name)
+        for name in processed_sequences
+    ]
+    metrics_files = [f for f in metrics_files if os.path.isfile(f)]
+
+    if not metrics_files:
+        print("No per-sequence metrics files found, skipping aggregation.")
+        return
+
+    cam_metrics_stats, human_metrics_stats = aggregate_sequence_metrics_files(
+        metrics_files
+    )
+    print_metrics_statistics(
+        cam_metrics_stats, human_metrics_stats, failed_sequences
+    )
+    export_metrics_statistics(
+        os.path.join(cfg.output_root_dir, "metrics_summary.json"),
+        cam_metrics_stats,
+        human_metrics_stats,
+        failed_sequences,
+    )
 
 
 if __name__ == "__main__":

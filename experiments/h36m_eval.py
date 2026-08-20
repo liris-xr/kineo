@@ -14,6 +14,12 @@ import os
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 
 import torch
+from omegaconf import OmegaConf
+from kineo.eval.dataset_metrics import (
+    aggregate_sequence_metrics_files,
+    export_metrics_statistics,
+    print_metrics_statistics,
+)
 from kineo.pipeline.pipeline import Pipeline
 
 from kineo.datasets.keypoints_sequence_dataset import ViewInput
@@ -57,7 +63,8 @@ def main(
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print_system_info(device)
 
-    pipeline = Pipeline.build_pipeline_from_config(config_file, device)
+    cfg = OmegaConf.load(config_file)
+    pipeline = Pipeline.build_pipeline_from_config(cfg, device)
 
     sequences_file = os.path.join(dataset_dir, "h36m_protocol1_sequences.json")
 
@@ -75,6 +82,7 @@ def main(
     pbar = tqdm(sequences, desc="Processing sequences")
 
     failed_sequences = []
+    processed_sequences = []
 
     for sequence in pbar:
         sequence_name = sequence["sequence_name"]
@@ -159,6 +167,7 @@ def main(
                     "camera_intrinsics": gt_cam_intrinsics,
                 },
             )
+            processed_sequences.append(sequence_name)
         except Exception:
             tqdm.write(
                 f"Error processing sequence {sequence_name}: {traceback.format_exc()}"
@@ -169,6 +178,35 @@ def main(
     pbar.close()
 
     print(f"Failed sequences: {failed_sequences}")
+
+    metrics_export_cfg = cfg.pipeline.stages.get("metrics_export", None)
+    if metrics_export_cfg is None:
+        print("No metrics_export stage in the config, skipping aggregation.")
+        return
+
+    metrics_path_template = metrics_export_cfg.runtime_cfg.output_path_template
+    metrics_files = [
+        metrics_path_template.format(sequence_name=name)
+        for name in processed_sequences
+    ]
+    metrics_files = [f for f in metrics_files if os.path.isfile(f)]
+
+    if not metrics_files:
+        print("No per-sequence metrics files found, skipping aggregation.")
+        return
+
+    cam_metrics_stats, human_metrics_stats = aggregate_sequence_metrics_files(
+        metrics_files
+    )
+    print_metrics_statistics(
+        cam_metrics_stats, human_metrics_stats, failed_sequences
+    )
+    export_metrics_statistics(
+        os.path.join(cfg.output_root_dir, "metrics_summary.json"),
+        cam_metrics_stats,
+        human_metrics_stats,
+        failed_sequences,
+    )
 
 
 if __name__ == "__main__":

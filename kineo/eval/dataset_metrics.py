@@ -8,7 +8,11 @@
 # Contact: guillaume.lavoue@enise.ec-lyon.fr
 # -----------------------------------------------------------------------------
 
+import json
+import os
+
 import numpy as np
+import orjson
 from typing import Any
 from collections import defaultdict
 from tqdm import tqdm
@@ -22,6 +26,92 @@ from kineo.eval.sequence_metrics import (
     compute_camera_metrics_over_sequence,
     compute_human_metrics_over_sequence,
 )
+
+def _summarize(values_by_metric: dict[str, list[float]]) -> dict[str, dict[str, float]]:
+    return {
+        name: {
+            "mean": np.nanmean(values),
+            "median": np.nanmedian(values),
+            "std": np.nanstd(values),
+            "min": np.nanmin(values),
+            "max": np.nanmax(values),
+        }
+        for name, values in values_by_metric.items()
+    }
+
+
+def aggregate_sequence_metrics_files(
+    metrics_files: list[str],
+) -> tuple[dict[str, dict[str, float]], dict[str, dict[str, float]]]:
+    """Aggregates per-sequence metrics JSON files into overall statistics.
+
+    Args:
+        metrics_files: Paths to the per-sequence metrics JSON files written
+            by the pipeline's metrics export stage.
+
+    Returns:
+        A (camera_metrics, human_metrics) pair mapping each metric name to
+        its mean/median/std/min/max computed over the per-sequence means.
+    """
+    cam_values = defaultdict(list)
+    human_values = defaultdict(list)
+
+    for metrics_file in metrics_files:
+        with open(metrics_file, "rb") as f:
+            metrics = orjson.loads(f.read())
+        for name, stats in metrics["cam_stats"].items():
+            cam_values[name].append(stats["mean"])
+        for name, stats in metrics["human_stats"].items():
+            human_values[name].append(stats["mean"])
+
+    return _summarize(cam_values), _summarize(human_values)
+
+
+def print_metrics_statistics(
+    cam_metrics_stats: dict[str, dict[str, float]],
+    human_metrics_stats: dict[str, dict[str, float]],
+    failed_sequences: list[str],
+):
+    print("\n=== Statistics Report ===\n")
+    print("📷 Camera Metrics:")
+    for metric_name, metric_stats in cam_metrics_stats.items():
+        print(f"- {metric_name}:")
+        for key, value in metric_stats.items():
+            print(f"\t- {key:<10}: {value:.4f}")
+
+    print("\n🧑 Human Metrics:")
+    for metric_name, metric_stats in human_metrics_stats.items():
+        print(f"- {metric_name}:")
+        for key, value in metric_stats.items():
+            print(f"\t- {key:<10}: {value:.4f}")
+
+    if failed_sequences:
+        print("\n❌ Failed Sequences:")
+        for seq in failed_sequences:
+            print(f"  - {seq}")
+
+    print("\n=========================\n")
+
+
+def export_metrics_statistics(
+    output_path: str,
+    cam_metrics_stats: dict[str, dict[str, float]],
+    human_metrics_stats: dict[str, dict[str, float]],
+    failed_sequences: list[str],
+):
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    with open(output_path, "w") as f:
+        json.dump(
+            {
+                "camera_metrics": cam_metrics_stats,
+                "human_metrics": human_metrics_stats,
+                "failed_sequences": failed_sequences,
+            },
+            f,
+            indent=2,
+        )
+
 
 def compute_predictions_metrics(
     gt_keypoints_3d_annotations: dict[str, Keypoints3DAnnotations],
