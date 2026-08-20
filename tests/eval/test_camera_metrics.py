@@ -101,12 +101,17 @@ def test_non_static_camera_scored_against_active_segment_per_frame():
     def cam04(frame):
         return next(c for c in out[frame]["views"] if c["view_id"] == "cam04")
 
-    assert cam04(0)["AE"] > 8.0  # frame 0: GT=A, pred=B -> ~10deg
-    assert cam04(100)["AE"] < 0.5  # frame 100: GT=B, pred=B -> ~0
-    for frame in (0, 100):
-        for c in out[frame]["views"]:
-            if c["view_id"] != "cam04":
-                assert c["AE"] < 0.5  # static cameras unaffected
+    # Frame 0: GT=A, pred=B, a 10 deg error. Gauging on rotations spreads it over
+    # every camera rather than leaving it all on cam04, so the static cameras pick
+    # up a share; cam04 keeps the bulk.
+    assert 7.0 < cam04(0)["AE"] < 8.0
+    for c in out[0]["views"]:
+        if c["view_id"] != "cam04":
+            assert 2.0 < c["AE"] < 3.0
+
+    # Frame 100: GT=B, pred=B, nothing to share out.
+    for c in out[100]["views"]:
+        assert c["AE"] < 0.5
 
 
 def _gauge_rotated(view_ids, centers, rotvecs, G):
@@ -142,11 +147,10 @@ def test_pairwise_rra_is_invariant_to_an_unobservable_gauge_rotation():
     assert pairs[0]["pair_deg_error"] < 1e-3
     assert pairs[0]["RRA05"] == 1.0
 
-    # AE cannot decide: two centres leave the rotation about their baseline
-    # unconstrained, so the aligner picks 0 or 180 deg on floating point noise
-    # alone. Asserting either value would encode that noise.
+    # Aligning on rotations rather than centres makes AE see the reconstruction
+    # is exact, where centre alignment picked 0 or 180 deg on numerical noise.
     for cam in out[0]["views"]:
-        assert cam["AE"] < 1e-2 or cam["AE"] > 179.0
+        assert cam["AE"] < 1e-2
 
 
 def test_pairwise_rra_counts_every_camera_pair():
@@ -175,3 +179,18 @@ def test_pairwise_rra_detects_a_genuinely_wrong_relative_rotation():
     assert pair["RRA05"] == 0.0
     assert pair["RRA30"] == 1.0
     assert 19.0 < pair["pair_deg_error"] < 21.0
+
+
+def test_ae_splits_a_relative_error_between_the_two_cameras():
+    # Rotation alignment has no gauge left to absorb a genuine error: the best
+    # global fit puts half the 20 deg relative error on each camera.
+    gt_ext = _extrinsics([(v, 0, [0.0, 0.0, 0.0]) for v in ("cam01", "cam02")])
+    pred_ext = _extrinsics(
+        [("cam01", 0, [0.0, 0.0, 0.0]), ("cam02", 0, [0.0, 0.0, math.radians(20.0)])]
+    )
+    intr = _intrinsics(["cam01", "cam02"])
+
+    out = compute_camera_metrics(intr, gt_ext, intr, pred_ext)
+
+    for cam in out[0]["views"]:
+        assert 9.0 < cam["AE"] < 11.0

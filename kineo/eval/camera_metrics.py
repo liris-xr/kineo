@@ -127,6 +127,13 @@ def _compute_camera_metrics_for_frame(
     pred_cam2world_unscaled_aligned = inverse_Rt(pred_Rt_unscaled_aligned)
     pred_cam_pos_unscaled_aligned = pred_cam2world_unscaled_aligned[:, :3, 3]
 
+    # Orientation is gauged separately from position: fitting the gauge to two
+    # camera centres leaves the rotation about their baseline to numerical noise,
+    # which flipped half the two-view sequences by 180 degrees.
+    pred_R_rotation_aligned = _align_rotations(
+        gt_cam2world[:, :3, :3], pred_cam2world[:, :3, :3]
+    )
+
     # Equation (7) in RelPose++.
     scene_scale = torch.max(
         torch.linalg.norm(
@@ -177,12 +184,9 @@ def _compute_camera_metrics_for_frame(
         CCA25 = (TE < (0.25 * scene_scale)).to(torch.float32)
         CCA30 = (TE < (0.30 * scene_scale)).to(torch.float32)
 
-        # Orientation accuracy.
-        gt_R_world_cam = gt_cam2world[cam_idx, :3, :3]
-        pred_R_world_cam = pred_cam2world_scaled_aligned[cam_idx, :3, :3]
-
+        # Orientation accuracy, against the rotation-aligned prediction.
         angular_distance = roma.rotmat_geodesic_distance(
-            gt_R_world_cam, pred_R_world_cam
+            gt_cam2world[cam_idx, :3, :3], pred_R_rotation_aligned[cam_idx]
         )
 
         # Camera angle error
@@ -214,6 +218,27 @@ def _compute_camera_metrics_for_frame(
         "views": out,
         "pairs": _compute_pairwise_rra(gt_cam2world, pred_cam2world, cam_ids),
     }
+
+
+def _align_rotations(
+    gt_R: torch.Tensor, pred_R: torch.Tensor
+) -> torch.Tensor:
+    """Rotate predicted orientations onto the ground truth ones.
+
+    A reconstruction is only determined up to a global rotation, so the gauge
+    has to be fixed before absolute orientations can be compared. Uses the
+    chordal L2 mean: the G minimising sum_i ||R_i_gt - G R_i_pred||_F is the
+    projection of sum_i R_i_gt R_i_pred^T onto SO(3).
+
+    Args:
+        gt_R: Ground truth camera-to-world rotations. Shape (C, 3, 3).
+        pred_R: Predicted camera-to-world rotations. Shape (C, 3, 3).
+
+    Returns:
+        The predicted rotations after alignment. Shape (C, 3, 3).
+    """
+    G = roma.special_procrustes(torch.einsum("nij,nkj->ik", gt_R, pred_R))
+    return G @ pred_R
 
 
 def _compute_pairwise_rra(
