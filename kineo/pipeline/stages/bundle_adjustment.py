@@ -31,6 +31,7 @@ from kineo.optimization.camera_parameters import (
     CameraIntrinsicsParameters,
     CameraExtrinsicsParameters,
 )
+from kineo.geometry.camera import MIN_PROJECTION_DEPTH
 from kineo.geometry.metrics import compute_reprojection_residuals
 from kineo.maths import weighted_mean
 from kineo.annotations.bundle_adjustment_keypoints import (
@@ -347,7 +348,7 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
                 [origin_camera_extrinsics.Rt, other_cameras_extrinsics.Rt], dim=0
             )
 
-            residuals, _ = compute_reprojection_residuals(
+            residuals, depth = compute_reprojection_residuals(
                 kps_3d=kps_3d_opt,
                 kps_2d=kps_2d_xy,
                 Ks=Ks,
@@ -365,7 +366,11 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
 
             weights = kps_2d_scores.view(n_views, -1)
 
-            valid_mask = residuals_huber.isfinite()
+            # A point on the camera plane projects to a bounded but meaningless
+            # residual; left in, it dwarfs every real observation.
+            valid_mask = residuals_huber.isfinite() & (
+                depth.squeeze(-1).abs() > MIN_PROJECTION_DEPTH
+            )
             n_valid = int(valid_mask.sum())
             residuals_huber = residuals_huber[valid_mask]
             weights = weights[valid_mask]
@@ -490,6 +495,20 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
             .clone()
         )
         kps_3d_opt = kps_3d_opt.detach().clone()
+
+        # LBFGS commits whatever the last step produced, so a non-finite
+        # parameter escapes here and only surfaces stages later as an unrelated
+        # decomposition failure.
+        for name, tensor in (
+            ("intrinsics", Ks_opt),
+            ("distortion coefficients", dist_coeffs_opt),
+            ("extrinsics", Rts_opt),
+            ("keypoints", kps_3d_opt),
+        ):
+            if not torch.isfinite(tensor).all():
+                raise ValueError(
+                    f"Bundle adjustment produced non-finite {name}."
+                )
 
         return (
             Ks_opt.to(input_device),

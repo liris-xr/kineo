@@ -24,6 +24,11 @@ from kineo.torch_utils import check_shape
 from math import radians, tan, atan, degrees
 from typing import Literal
 
+# Points closer than this to the camera plane have no usable projection. Bounding
+# the perspective divide keeps them differentiable; callers reject them on the
+# exact depth that projection returns alongside the 2D points.
+MIN_PROJECTION_DEPTH = 1e-6
+
 
 def create_default_K(
     hfov: float, resolution_hw: tuple[int, int], device: torch.device = "cpu"
@@ -371,7 +376,7 @@ def project_points_from_camera_to_image(
 
     projected_points = torch.einsum("fcij,fcpj->fcpi", K, points_3d_cam)
     projected_points, projected_depth = convert_points_from_homogeneous(
-        projected_points
+        projected_points, eps=MIN_PROJECTION_DEPTH
     )
 
     if D is not None:

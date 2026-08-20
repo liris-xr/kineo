@@ -604,18 +604,27 @@ def convert_points_to_homogeneous(pts: torch.Tensor) -> torch.Tensor:
 
 def convert_points_from_homogeneous(
     pts: torch.Tensor,
+    eps: float = 0.0,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Drop the homogeneous dimension of points.
 
     Args:
         points (torch.Tensor): points to convert. Shape (*, D + 1).
+        eps (float): lower bound on the magnitude of the divisor. Dividing by a
+            near-zero coordinate gives +-inf, whose NaN gradient survives a
+            downstream finiteness mask (0 * NaN = NaN). Defaults to no bound, so
+            callers that detect degeneracy by testing finiteness keep doing so.
 
     Returns:
         torch.Tensor: points in Euclidean coordinates. Shape (*, D).
-        torch.Tensor: value of the dropped dimension. Shape (*, 1).
+        torch.Tensor: value of the dropped dimension, never bounded. Shape (*, 1).
     """
-    return pts[..., :-1] / pts[..., -1:], pts[..., -1:]
+    divisor = pts[..., -1:]
+    bounded_divisor = torch.where(
+        divisor.abs() < eps, torch.full_like(divisor, eps), divisor
+    )
+    return pts[..., :-1] / bounded_divisor, divisor
 
 
 def normalize_points_with_intrinsics(
