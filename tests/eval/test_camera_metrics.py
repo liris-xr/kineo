@@ -194,3 +194,38 @@ def test_ae_splits_a_relative_error_between_the_two_cameras():
 
     for cam in out[0]["views"]:
         assert 9.0 < cam["AE"] < 11.0
+
+
+def test_scale_aligned_position_metrics_are_undefined_below_three_cameras():
+    # A similarity transform has 7 DOF and n centres give 3n constraints, so with
+    # two cameras it fits them exactly: s-TE is 0 and s-CCA is 1 for any
+    # prediction at all, including a wrong one. Report undefined, not perfect.
+    gt_ext = _extrinsics([(v, 0, [0.0, 0.0, 0.0]) for v in ("cam01", "cam02")])
+    # Deliberately wrong: cam02 turned by 40 deg.
+    pred_ext = _extrinsics(
+        [("cam01", 0, [0.0, 0.0, 0.0]), ("cam02", 0, [0.0, 0.0, math.radians(40.0)])]
+    )
+    intr = _intrinsics(["cam01", "cam02"])
+
+    out = compute_camera_metrics(intr, gt_ext, intr, pred_ext)
+
+    for cam in out[0]["views"]:
+        assert math.isnan(cam["s-TE"])
+        for threshold in ("05", "10", "15", "20", "25", "30"):
+            assert math.isnan(cam[f"s-CCA{threshold}"])
+        # Rigid alignment keeps 6 DOF against 6 constraints but preserves the
+        # inter-centre distance, so these stay meaningful.
+        assert not math.isnan(cam["TE"])
+        assert not math.isnan(cam["CCA10"])
+
+
+def test_scale_aligned_position_metrics_are_defined_from_three_cameras():
+    poses = [(v, 0, [0.0, 0.0, 0.0]) for v in ("cam01", "cam02", "cam03")]
+    gt_ext = _extrinsics(poses)
+    intr = _intrinsics(["cam01", "cam02", "cam03"])
+
+    out = compute_camera_metrics(intr, gt_ext, intr, _extrinsics(poses))
+
+    for cam in out[0]["views"]:
+        assert not math.isnan(cam["s-TE"])
+        assert not math.isnan(cam["s-CCA10"])

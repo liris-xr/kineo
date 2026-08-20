@@ -127,9 +127,8 @@ def _compute_camera_metrics_for_frame(
     pred_cam2world_unscaled_aligned = inverse_Rt(pred_Rt_unscaled_aligned)
     pred_cam_pos_unscaled_aligned = pred_cam2world_unscaled_aligned[:, :3, 3]
 
-    # Orientation is gauged separately from position: fitting the gauge to two
-    # camera centres leaves the rotation about their baseline to numerical noise,
-    # which flipped half the two-view sequences by 180 degrees.
+    # Gauged on rotations, not centres: two centres leave the rotation about
+    # their baseline to numerical noise, flipping half the two-view sequences.
     pred_R_rotation_aligned = _align_rotations(
         gt_cam2world[:, :3, :3], pred_cam2world[:, :3, :3]
     )
@@ -161,20 +160,32 @@ def _compute_camera_metrics_for_frame(
         pred_vfov = _compute_vfov(pred_K, cam_resolution_hw)
         vfov_error = torch.abs(gt_vfov - pred_vfov)
 
-        s_TE = torch.norm(
-            (gt_cam_pos[cam_idx] - pred_cam_pos_scaled_aligned[cam_idx]), dim=-1
-        )
+        # Similarity alignment has 7 DOF against 3n constraints, so under three
+        # cameras it fits any prediction exactly and s-TE is 0 regardless of
+        # quality. Rigid alignment cannot change the inter-centre distance.
+        if len(cam_ids) < 3:
+            s_TE = torch.tensor(torch.nan, device=device)
+        else:
+            s_TE = torch.norm(
+                (gt_cam_pos[cam_idx] - pred_cam_pos_scaled_aligned[cam_idx]), dim=-1
+            )
         TE = torch.norm(
             (gt_cam_pos[cam_idx] - pred_cam_pos_unscaled_aligned[cam_idx]), dim=-1
         )
 
-        # Camera center accuracy, with scale alignment.
-        s_CCA05 = (s_TE < (0.05 * scene_scale)).to(torch.float32)
-        s_CCA10 = (s_TE < (0.10 * scene_scale)).to(torch.float32)
-        s_CCA15 = (s_TE < (0.15 * scene_scale)).to(torch.float32)
-        s_CCA20 = (s_TE < (0.20 * scene_scale)).to(torch.float32)
-        s_CCA25 = (s_TE < (0.25 * scene_scale)).to(torch.float32)
-        s_CCA30 = (s_TE < (0.30 * scene_scale)).to(torch.float32)
+        # Camera center accuracy, with scale alignment. NaN < x is False, which
+        # would report an undefined s-TE as a failed threshold.
+        def _s_CCA(fraction: float) -> torch.Tensor:
+            if torch.isnan(s_TE):
+                return s_TE
+            return (s_TE < (fraction * scene_scale)).to(torch.float32)
+
+        s_CCA05 = _s_CCA(0.05)
+        s_CCA10 = _s_CCA(0.10)
+        s_CCA15 = _s_CCA(0.15)
+        s_CCA20 = _s_CCA(0.20)
+        s_CCA25 = _s_CCA(0.25)
+        s_CCA30 = _s_CCA(0.30)
 
         # Camera center accuracy, without scale alignment.
         CCA05 = (TE < (0.05 * scene_scale)).to(torch.float32)
