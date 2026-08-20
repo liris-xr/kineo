@@ -8,6 +8,9 @@
 # Contact: guillaume.lavoue@enise.ec-lyon.fr
 # -----------------------------------------------------------------------------
 
+import itertools
+from typing import Any
+
 import torch
 from kineo.geometry.transformations import (
     compute_similarity_transform,
@@ -185,14 +188,6 @@ def _compute_camera_metrics_for_frame(
         # Camera angle error
         AE = torch.rad2deg(angular_distance)
 
-        # Relative rotation accuracy
-        RRA05 = (AE < 5.0).to(torch.float32)
-        RRA10 = (AE < 10.0).to(torch.float32)
-        RRA15 = (AE < 15.0).to(torch.float32)
-        RRA20 = (AE < 20.0).to(torch.float32)
-        RRA25 = (AE < 25.0).to(torch.float32)
-        RRA30 = (AE < 30.0).to(torch.float32)
-
         out.append(
             {
                 "view_id": cam_id,
@@ -212,14 +207,54 @@ def _compute_camera_metrics_for_frame(
                 "CCA25": CCA25.item(),
                 "CCA30": CCA30.item(),
                 "AE": AE.item(),
-                "RRA05": RRA05.item(),
-                "RRA10": RRA10.item(),
-                "RRA15": RRA15.item(),
-                "RRA20": RRA20.item(),
-                "RRA25": RRA25.item(),
-                "RRA30": RRA30.item(),
             }
         )
+
+    return {
+        "views": out,
+        "pairs": _compute_pairwise_rra(gt_cam2world, pred_cam2world, cam_ids),
+    }
+
+
+def _compute_pairwise_rra(
+    gt_cam2world: torch.Tensor, pred_cam2world: torch.Tensor, cam_ids: list[str]
+) -> list[dict[str, Any]]:
+    """Relative Rotation Accuracy over every camera pair.
+
+    RRA as defined in RelPose (Zhang et al., 2022) and used by HSfM. A
+    reconstruction is only determined up to a global rotation G, which acts on
+    camera-to-world as G @ R and so cancels in R_i^T R_j; comparing pairs
+    therefore needs no alignment. Absolute orientation error does need one, and
+    with two cameras that alignment is underdetermined. Must be camera-to-world:
+    G multiplies world-to-camera on the right and would only conjugate.
+
+    Args:
+        gt_cam2world: Ground truth camera-to-world matrices. Shape (C, 3, 4).
+        pred_cam2world: Predicted camera-to-world matrices. Shape (C, 3, 4).
+        cam_ids: View id of each camera, in the same order.
+
+    Returns:
+        One entry per unordered pair, holding the angular error in degrees and
+        the accuracy indicators at each threshold.
+    """
+    gt_R = gt_cam2world[:, :3, :3]
+    pred_R = pred_cam2world[:, :3, :3]
+
+    out = []
+    for i, j in itertools.combinations(range(len(cam_ids)), 2):
+        gt_R_ij = gt_R[i].transpose(-1, -2) @ gt_R[j]
+        pred_R_ij = pred_R[i].transpose(-1, -2) @ pred_R[j]
+        error_deg = torch.rad2deg(
+            roma.rotmat_geodesic_distance(gt_R_ij, pred_R_ij)
+        )
+
+        entry = {
+            "pair_ids": (cam_ids[i], cam_ids[j]),
+            "pair_deg_error": error_deg.item(),
+        }
+        for threshold in (5, 10, 15, 20, 25, 30):
+            entry[f"RRA{threshold:02d}"] = float(error_deg.item() < threshold)
+        out.append(entry)
 
     return out
 
@@ -273,8 +308,19 @@ def flatten_camera_metrics(
     all_RRA25 = []
     all_RRA30 = []
 
+    all_pair_deg_error = []
+
     for frame_metrics in camera_metrics.values():
-        for metric in frame_metrics:
+        for pair_metric in frame_metrics["pairs"]:
+            all_pair_deg_error.append(pair_metric["pair_deg_error"])
+            all_RRA05.append(pair_metric["RRA05"])
+            all_RRA10.append(pair_metric["RRA10"])
+            all_RRA15.append(pair_metric["RRA15"])
+            all_RRA20.append(pair_metric["RRA20"])
+            all_RRA25.append(pair_metric["RRA25"])
+            all_RRA30.append(pair_metric["RRA30"])
+
+        for metric in frame_metrics["views"]:
             all_vfov_error.append(metric["vfov_error"])
             all_s_TE.append(metric["s-TE"])
             all_TE.append(metric["TE"])
@@ -291,12 +337,6 @@ def flatten_camera_metrics(
             all_CCA25.append(metric["CCA25"])
             all_CCA30.append(metric["CCA30"])
             all_AE.append(metric["AE"])
-            all_RRA05.append(metric["RRA05"])
-            all_RRA10.append(metric["RRA10"])
-            all_RRA15.append(metric["RRA15"])
-            all_RRA20.append(metric["RRA20"])
-            all_RRA25.append(metric["RRA25"])
-            all_RRA30.append(metric["RRA30"])
 
     out = {
         "vfov_error": all_vfov_error,
@@ -315,6 +355,7 @@ def flatten_camera_metrics(
         "CCA25": all_CCA25,
         "CCA30": all_CCA30,
         "AE": all_AE,
+        "pair_deg_error": all_pair_deg_error,
         "RRA05": all_RRA05,
         "RRA10": all_RRA10,
         "RRA15": all_RRA15,
