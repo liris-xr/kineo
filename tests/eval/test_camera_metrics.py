@@ -67,8 +67,9 @@ def test_static_sequence_uses_single_frame_and_matches_perfectly():
 
     assert list(out.keys()) == [0]  # single-frame path unchanged
     for cam in out[0]["views"]:
-        assert cam["AE"] < 1e-2
         assert cam["TE"] < 1e-4
+    for pair in out[0]["pairs"]:
+        assert pair["AE"] < 1e-2
 
 
 def test_non_static_camera_scored_against_active_segment_per_frame():
@@ -98,20 +99,20 @@ def test_non_static_camera_scored_against_active_segment_per_frame():
 
     assert sorted(out.keys()) == [0, 100]  # frame set now from GT onsets
 
-    def cam04(frame):
-        return next(c for c in out[frame]["views"] if c["view_id"] == "cam04")
+    def pairs_with_cam04(frame):
+        return [p for p in out[frame]["pairs"] if "cam04" in p["pair_ids"]]
 
-    # Frame 0: GT=A, pred=B, a 10 deg error. Gauging on rotations spreads it over
-    # every camera rather than leaving it all on cam04, so the static cameras pick
-    # up a share; cam04 keeps the bulk.
-    assert 7.0 < cam04(0)["AE"] < 8.0
-    for c in out[0]["views"]:
-        if c["view_id"] != "cam04":
-            assert 2.0 < c["AE"] < 3.0
+    def pairs_without_cam04(frame):
+        return [p for p in out[frame]["pairs"] if "cam04" not in p["pair_ids"]]
 
-    # Frame 100: GT=B, pred=B, nothing to share out.
-    for c in out[100]["views"]:
-        assert c["AE"] < 0.5
+    # Frame 0: GT=A, pred=B. AE is pairwise, so the 10 deg error shows up in
+    # exactly the pairs cam04 belongs to and nowhere else.
+    assert all(9.0 < p["AE"] < 11.0 for p in pairs_with_cam04(0))
+    assert all(p["AE"] < 0.5 for p in pairs_without_cam04(0))
+
+    # Frame 100: GT=B, pred=B.
+    for p in out[100]["pairs"]:
+        assert p["AE"] < 0.5
 
 
 def _gauge_rotated(view_ids, centers, rotvecs, G):
@@ -144,13 +145,8 @@ def test_pairwise_rra_is_invariant_to_an_unobservable_gauge_rotation():
 
     pairs = out[0]["pairs"]
     assert len(pairs) == 1  # 2 cameras -> exactly one pair
-    assert pairs[0]["pair_deg_error"] < 1e-3
+    assert pairs[0]["AE"] < 1e-3
     assert pairs[0]["RRA05"] == 1.0
-
-    # Aligning on rotations rather than centres makes AE see the reconstruction
-    # is exact, where centre alignment picked 0 or 180 deg on numerical noise.
-    for cam in out[0]["views"]:
-        assert cam["AE"] < 1e-2
 
 
 def test_pairwise_rra_counts_every_camera_pair():
@@ -178,22 +174,19 @@ def test_pairwise_rra_detects_a_genuinely_wrong_relative_rotation():
     pair = out[0]["pairs"][0]
     assert pair["RRA05"] == 0.0
     assert pair["RRA30"] == 1.0
-    assert 19.0 < pair["pair_deg_error"] < 21.0
+    assert 19.0 < pair["AE"] < 21.0
 
 
-def test_ae_splits_a_relative_error_between_the_two_cameras():
-    # Rotation alignment has no gauge left to absorb a genuine error: the best
-    # global fit puts half the 20 deg relative error on each camera.
-    gt_ext = _extrinsics([(v, 0, [0.0, 0.0, 0.0]) for v in ("cam01", "cam02")])
-    pred_ext = _extrinsics(
-        [("cam01", 0, [0.0, 0.0, 0.0]), ("cam02", 0, [0.0, 0.0, math.radians(20.0)])]
-    )
-    intr = _intrinsics(["cam01", "cam02"])
+def test_ae_is_not_reported_per_camera():
+    # AE is a property of a camera pair, not of a single camera (HSfM supp.
+    # S.4.1), so it must not appear alongside the per-view position metrics.
+    poses = [(v, 0, [0.0, 0.0, 0.0]) for v in _CENTERS]
+    intr = _intrinsics(list(_CENTERS))
 
-    out = compute_camera_metrics(intr, gt_ext, intr, pred_ext)
+    out = compute_camera_metrics(intr, _extrinsics(poses), intr, _extrinsics(poses))
 
-    for cam in out[0]["views"]:
-        assert 9.0 < cam["AE"] < 11.0
+    assert all("AE" not in cam for cam in out[0]["views"])
+    assert all("AE" in pair for pair in out[0]["pairs"])
 
 
 def test_scale_aligned_position_metrics_are_undefined_below_three_cameras():

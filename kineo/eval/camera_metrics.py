@@ -127,12 +127,6 @@ def _compute_camera_metrics_for_frame(
     pred_cam2world_unscaled_aligned = inverse_Rt(pred_Rt_unscaled_aligned)
     pred_cam_pos_unscaled_aligned = pred_cam2world_unscaled_aligned[:, :3, 3]
 
-    # Gauged on rotations, not centres: two centres leave the rotation about
-    # their baseline to numerical noise, flipping half the two-view sequences.
-    pred_R_rotation_aligned = _align_rotations(
-        gt_cam2world[:, :3, :3], pred_cam2world[:, :3, :3]
-    )
-
     # Equation (7) in RelPose++.
     scene_scale = torch.max(
         torch.linalg.norm(
@@ -195,14 +189,6 @@ def _compute_camera_metrics_for_frame(
         CCA25 = (TE < (0.25 * scene_scale)).to(torch.float32)
         CCA30 = (TE < (0.30 * scene_scale)).to(torch.float32)
 
-        # Orientation accuracy, against the rotation-aligned prediction.
-        angular_distance = roma.rotmat_geodesic_distance(
-            gt_cam2world[cam_idx, :3, :3], pred_R_rotation_aligned[cam_idx]
-        )
-
-        # Camera angle error
-        AE = torch.rad2deg(angular_distance)
-
         out.append(
             {
                 "view_id": cam_id,
@@ -221,48 +207,29 @@ def _compute_camera_metrics_for_frame(
                 "CCA20": CCA20.item(),
                 "CCA25": CCA25.item(),
                 "CCA30": CCA30.item(),
-                "AE": AE.item(),
             }
         )
 
     return {
         "views": out,
-        "pairs": _compute_pairwise_rra(gt_cam2world, pred_cam2world, cam_ids),
+        "pairs": _compute_pairwise_rotation_metrics(
+            gt_cam2world, pred_cam2world, cam_ids
+        ),
     }
 
 
-def _align_rotations(
-    gt_R: torch.Tensor, pred_R: torch.Tensor
-) -> torch.Tensor:
-    """Rotate predicted orientations onto the ground truth ones.
-
-    A reconstruction is only determined up to a global rotation, so the gauge
-    has to be fixed before absolute orientations can be compared. Uses the
-    chordal L2 mean: the G minimising sum_i ||R_i_gt - G R_i_pred||_F is the
-    projection of sum_i R_i_gt R_i_pred^T onto SO(3).
-
-    Args:
-        gt_R: Ground truth camera-to-world rotations. Shape (C, 3, 3).
-        pred_R: Predicted camera-to-world rotations. Shape (C, 3, 3).
-
-    Returns:
-        The predicted rotations after alignment. Shape (C, 3, 3).
-    """
-    G = roma.special_procrustes(torch.einsum("nij,nkj->ik", gt_R, pred_R))
-    return G @ pred_R
-
-
-def _compute_pairwise_rra(
+def _compute_pairwise_rotation_metrics(
     gt_cam2world: torch.Tensor, pred_cam2world: torch.Tensor, cam_ids: list[str]
 ) -> list[dict[str, Any]]:
-    """Relative Rotation Accuracy over every camera pair.
+    """Angle Error and Relative Rotation Accuracy over every camera pair.
 
-    RRA as defined in RelPose (Zhang et al., 2022) and used by HSfM. A
-    reconstruction is only determined up to a global rotation G, which acts on
-    camera-to-world as G @ R and so cancels in R_i^T R_j; comparing pairs
-    therefore needs no alignment. Absolute orientation error does need one, and
-    with two cameras that alignment is underdetermined. Must be camera-to-world:
-    G multiplies world-to-camera on the right and would only conjugate.
+    Both are pairwise, as HSfM defines them (supp. S.4.1): AE is the angle
+    between the ground truth and predicted relative orientation of a pair, and
+    RRA@X the proportion of pairs within X degrees. A reconstruction is only
+    determined up to a global rotation G, which acts on camera-to-world as G @ R
+    and so cancels in R_i^T R_j, leaving nothing to align. Must be
+    camera-to-world: G multiplies world-to-camera on the right and would only
+    conjugate.
 
     Args:
         gt_cam2world: Ground truth camera-to-world matrices. Shape (C, 3, 4).
@@ -270,8 +237,8 @@ def _compute_pairwise_rra(
         cam_ids: View id of each camera, in the same order.
 
     Returns:
-        One entry per unordered pair, holding the angular error in degrees and
-        the accuracy indicators at each threshold.
+        One entry per unordered pair, holding its angle error in degrees and the
+        accuracy indicators at each threshold.
     """
     gt_R = gt_cam2world[:, :3, :3]
     pred_R = pred_cam2world[:, :3, :3]
@@ -286,7 +253,7 @@ def _compute_pairwise_rra(
 
         entry = {
             "pair_ids": (cam_ids[i], cam_ids[j]),
-            "pair_deg_error": error_deg.item(),
+            "AE": error_deg.item(),
         }
         for threshold in (5, 10, 15, 20, 25, 30):
             entry[f"RRA{threshold:02d}"] = float(error_deg.item() < threshold)
@@ -344,11 +311,10 @@ def flatten_camera_metrics(
     all_RRA25 = []
     all_RRA30 = []
 
-    all_pair_deg_error = []
 
     for frame_metrics in camera_metrics.values():
         for pair_metric in frame_metrics["pairs"]:
-            all_pair_deg_error.append(pair_metric["pair_deg_error"])
+            all_AE.append(pair_metric["AE"])
             all_RRA05.append(pair_metric["RRA05"])
             all_RRA10.append(pair_metric["RRA10"])
             all_RRA15.append(pair_metric["RRA15"])
@@ -372,7 +338,6 @@ def flatten_camera_metrics(
             all_CCA20.append(metric["CCA20"])
             all_CCA25.append(metric["CCA25"])
             all_CCA30.append(metric["CCA30"])
-            all_AE.append(metric["AE"])
 
     out = {
         "vfov_error": all_vfov_error,
@@ -391,7 +356,6 @@ def flatten_camera_metrics(
         "CCA25": all_CCA25,
         "CCA30": all_CCA30,
         "AE": all_AE,
-        "pair_deg_error": all_pair_deg_error,
         "RRA05": all_RRA05,
         "RRA10": all_RRA10,
         "RRA15": all_RRA15,

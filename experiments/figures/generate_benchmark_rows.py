@@ -2,9 +2,24 @@
 
 import os
 import argparse
+import math
 
 from h36m_stats_utils import compute_h36m_stats
 from egohumans_stats_utils import compute_egohumans_stats
+
+
+def _format_metric(metric_stats: dict, n_decimals: int, with_std: bool) -> str:
+    """Render a metric cell, or "-" where the metric is undefined.
+
+    s-TE and s-CCA are NaN at two views, where similarity alignment reproduces
+    the camera centres exactly whatever the prediction.
+    """
+    mean = metric_stats["mean"]
+    if math.isnan(mean):
+        return "-"
+    if with_std:
+        return f"{mean:.{n_decimals}f}$\pm${metric_stats['std']:.{n_decimals}f}"
+    return f"{mean:.{n_decimals}f}"
 
 def generate_h36m_benchmark_rows(h36m_dataset_dir: str, hsfm_eval_data_dir: str, kineo_eval_data_dir: str, n_decimals: int = 2, with_std: bool = True):
 
@@ -156,31 +171,20 @@ def generate_egohumans_benchmark_rows(egohumans_dataset_dir: str, kineo_eval_dat
     for config_name in kineo_egohumans_results:
         for human_metric_name in kineo_egohumans_results[config_name]["human_metrics"]:
             metric_stats = kineo_egohumans_results[config_name]['human_metrics'][human_metric_name]
-            if with_std:
-                benchmark_egohumans_rows = benchmark_egohumans_rows.replace(
-                    f"{{kineo_{human_metric_name}_egohumans_{config_name}}}",
-                    f"{metric_stats['mean']:.{n_decimals}f}$\pm${metric_stats['std']:.{n_decimals}f}",
-                )
-            else:
-                benchmark_egohumans_rows = benchmark_egohumans_rows.replace(
-                    f"{{kineo_{human_metric_name}_egohumans_{config_name}}}",
-                    f"{metric_stats['mean']:.{n_decimals}f}",
-                )
-            
+            benchmark_egohumans_rows = benchmark_egohumans_rows.replace(
+                f"{{kineo_{human_metric_name}_egohumans_{config_name}}}",
+                _format_metric(metric_stats, n_decimals, with_std),
+            )
+
+
         for camera_metric_name in kineo_egohumans_results[config_name][
             "camera_metrics"
         ]:
             metric_stats = kineo_egohumans_results[config_name]['camera_metrics'][camera_metric_name]
-            if with_std:
-                benchmark_egohumans_rows = benchmark_egohumans_rows.replace(
-                    f"{{kineo_{camera_metric_name}_egohumans_{config_name}}}",
-                    f"{metric_stats['mean']:.{n_decimals}f}$\pm${metric_stats['std']:.{n_decimals}f}",
-                )
-            else:
-                benchmark_egohumans_rows = benchmark_egohumans_rows.replace(
-                    f"{{kineo_{camera_metric_name}_egohumans_{config_name}}}",
-                    f"{metric_stats['mean']:.{n_decimals}f}",
-                )
+            benchmark_egohumans_rows = benchmark_egohumans_rows.replace(
+                f"{{kineo_{camera_metric_name}_egohumans_{config_name}}}",
+                _format_metric(metric_stats, n_decimals, with_std),
+            )
 
     return benchmark_egohumans_rows
 
