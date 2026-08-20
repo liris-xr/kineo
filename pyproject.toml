@@ -65,6 +65,11 @@ cv2-enumerate-cameras = "*"
 
 sam2 = { git = "https://github.com/cjaverliat/sam2.git", tag = "v1.2.0" }
 
+# The last xtcocotools release (1.14.3, 2023) only ships wheels built
+# against the numpy 1.x ABI, which abort on import under numpy 2.
+# Master builds from source and works; there is no release with the fix.
+xtcocotools = { git = "https://github.com/jin-s13/xtcocoapi.git", rev = "17252e742ed4306a6323d74055f4c15c75cba6ad" }
+
 mmengine = "*"
 mmcv = { git = "https://github.com/cjaverliat/mmcv.git", tag = "v2.3.0" }
 mmpose = { git = "https://github.com/cjaverliat/mmpose.git" }

@@ -303,7 +303,7 @@ environments:
       - pypi: git+https://github.com/EasternJournalist/utils3d.git?rev=3fab839f0be9931dac7c8488eb0e1600c236e183#3fab839f0be9931dac7c8488eb0e1600c236e183
       - pypi: https://files.pythonhosted.org/packages/b7/23/a5bbd9600dd607411fa644c06ff4951bec3a4d82c4b852374024359c19c0/uvicorn-0.44.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/f3/18/a17e2f0cde02dc10154c808deed7e1d8528afff93612f70d3f0a5b19b011/websockets-16.1.1-cp310-cp310-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl
-      - pypi: https://files.pythonhosted.org/packages/71/0b/c67774d4101fd2c79bb2d0ef9246518222cfd78fde1ff16e38cd1f600026/xtcocotools-1.14.3-cp310-cp310-manylinux1_x86_64.whl
+      - pypi: git+https://github.com/jin-s13/xtcocoapi.git?rev=17252e742ed4306a6323d74055f4c15c75cba6ad#17252e742ed4306a6323d74055f4c15c75cba6ad
       - pypi: https://files.pythonhosted.org/packages/38/4f/fe9a4d472aa867878ce3bb7efb16654c5d63672b86dc0e6e953a67018433/yacs-0.1.8-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/37/81/6acd6601f61e31cfb8729d3da6d5df966f80f374b78eff83760714487338/yapf-0.43.0-py3-none-any.whl
       - pypi: ./
@@ -558,7 +558,7 @@ environments:
       - pypi: git+https://github.com/EasternJournalist/utils3d.git?rev=3fab839f0be9931dac7c8488eb0e1600c236e183#3fab839f0be9931dac7c8488eb0e1600c236e183
       - pypi: https://files.pythonhosted.org/packages/88/fa/e1388bbcf24ef3274f45c0c1c7b501fd14971037c1b6ee23610553307497/uvicorn-0.49.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/54/82/1013a5fe7ddae8e102bc3b4b39db81d8d28fd02100a324ce6ede8cd832b1/websockets-16.1.1-cp310-cp310-win_amd64.whl
-      - pypi: https://files.pythonhosted.org/packages/fd/05/84c3863331b1532748d9e82996e6457e05373e3668498811a93deab7c630/xtcocotools-1.14.3-cp310-cp310-win_amd64.whl
+      - pypi: git+https://github.com/jin-s13/xtcocoapi.git?rev=17252e742ed4306a6323d74055f4c15c75cba6ad#17252e742ed4306a6323d74055f4c15c75cba6ad
       - pypi: https://files.pythonhosted.org/packages/38/4f/fe9a4d472aa867878ce3bb7efb16654c5d63672b86dc0e6e953a67018433/yacs-0.1.8-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/37/81/6acd6601f61e31cfb8729d3da6d5df966f80f374b78eff83760714487338/yapf-0.43.0-py3-none-any.whl
       - pypi: ./
@@ -872,7 +872,7 @@ environments:
       - pypi: git+https://github.com/EasternJournalist/utils3d.git?rev=3fab839f0be9931dac7c8488eb0e1600c236e183#3fab839f0be9931dac7c8488eb0e1600c236e183
       - pypi: https://files.pythonhosted.org/packages/b7/23/a5bbd9600dd607411fa644c06ff4951bec3a4d82c4b852374024359c19c0/uvicorn-0.44.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/f3/18/a17e2f0cde02dc10154c808deed7e1d8528afff93612f70d3f0a5b19b011/websockets-16.1.1-cp310-cp310-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl
-      - pypi: https://files.pythonhosted.org/packages/71/0b/c67774d4101fd2c79bb2d0ef9246518222cfd78fde1ff16e38cd1f600026/xtcocotools-1.14.3-cp310-cp310-manylinux1_x86_64.whl
+      - pypi: git+https://github.com/jin-s13/xtcocoapi.git?rev=17252e742ed4306a6323d74055f4c15c75cba6ad#17252e742ed4306a6323d74055f4c15c75cba6ad
       - pypi: https://files.pythonhosted.org/packages/38/4f/fe9a4d472aa867878ce3bb7efb16654c5d63672b86dc0e6e953a67018433/yacs-0.1.8-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/37/81/6acd6601f61e31cfb8729d3da6d5df966f80f374b78eff83760714487338/yapf-0.43.0-py3-none-any.whl
       - pypi: ./
@@ -1133,7 +1133,7 @@ environments:
       - pypi: git+https://github.com/EasternJournalist/utils3d.git?rev=3fab839f0be9931dac7c8488eb0e1600c236e183#3fab839f0be9931dac7c8488eb0e1600c236e183
       - pypi: https://files.pythonhosted.org/packages/88/fa/e1388bbcf24ef3274f45c0c1c7b501fd14971037c1b6ee23610553307497/uvicorn-0.49.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/54/82/1013a5fe7ddae8e102bc3b4b39db81d8d28fd02100a324ce6ede8cd832b1/websockets-16.1.1-cp310-cp310-win_amd64.whl
-      - pypi: https://files.pythonhosted.org/packages/fd/05/84c3863331b1532748d9e82996e6457e05373e3668498811a93deab7c630/xtcocotools-1.14.3-cp310-cp310-win_amd64.whl
+      - pypi: git+https://github.com/jin-s13/xtcocoapi.git?rev=17252e742ed4306a6323d74055f4c15c75cba6ad#17252e742ed4306a6323d74055f4c15c75cba6ad
       - pypi: https://files.pythonhosted.org/packages/38/4f/fe9a4d472aa867878ce3bb7efb16654c5d63672b86dc0e6e953a67018433/yacs-0.1.8-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/37/81/6acd6601f61e31cfb8729d3da6d5df966f80f374b78eff83760714487338/yapf-0.43.0-py3-none-any.whl
       - pypi: ./
@@ -3609,7 +3609,7 @@ packages:
 - pypi: ./
   name: kineo
   version: 0.1.0
-  sha256: 48bbbdc4d0e8281de6f7eb74e5a950fc386cccea6f3562a7c8ee040db96f1dfa
+  sha256: 84b97b3de26ca41159141ae3e255b1974dab10033269d1841b6c1fa970e65e1c
   requires_dist:
   - numpy
   - onnxruntime-gpu
@@ -7702,20 +7702,9 @@ packages:
   - pkg:pypi/win-inet-pton?source=hash-mapping
   size: 9555
   timestamp: 1733130678956
-- pypi: https://files.pythonhosted.org/packages/71/0b/c67774d4101fd2c79bb2d0ef9246518222cfd78fde1ff16e38cd1f600026/xtcocotools-1.14.3-cp310-cp310-manylinux1_x86_64.whl
+- pypi: git+https://github.com/jin-s13/xtcocoapi.git?rev=17252e742ed4306a6323d74055f4c15c75cba6ad#17252e742ed4306a6323d74055f4c15c75cba6ad
   name: xtcocotools
   version: 1.14.3
-  sha256: 34e3f4aa593a97b0f34cf97b0a21d01d939f7b36d7b79b828da2985aee9f52e5
-  requires_dist:
-  - setuptools>=18.0
-  - cython>=0.27.3
-  - matplotlib>=2.1.0
-  - numpy>=1.19.5 ; python_full_version == '3.6.*'
-  - numpy>=1.20.0 ; python_full_version >= '3.7'
-- pypi: https://files.pythonhosted.org/packages/fd/05/84c3863331b1532748d9e82996e6457e05373e3668498811a93deab7c630/xtcocotools-1.14.3-cp310-cp310-win_amd64.whl
-  name: xtcocotools
-  version: 1.14.3
-  sha256: a537c6fb1de97ea52097426e5429be75867795734272a1f05401fe0f1275374d
   requires_dist:
   - setuptools>=18.0
   - cython>=0.27.3
