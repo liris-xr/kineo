@@ -3609,7 +3609,7 @@ packages:
 - pypi: ./
   name: kineo
   version: 0.1.0
-  sha256: 831f0aabcdc14fafc466ee89400cac0d74aabdbbedca2b0f41b241f82f0ad9c3
+  sha256: 48bbbdc4d0e8281de6f7eb74e5a950fc386cccea6f3562a7c8ee040db96f1dfa
   requires_dist:
   - numpy
   - onnxruntime-gpu

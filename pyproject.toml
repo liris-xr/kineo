@@ -143,6 +143,10 @@ _download_moge = { cmd = "python -c 'import os,sys; sys.exit(0 if os.path.exists
     "checkpoints/moge-2-vitl-normal.pt",
 ], description = "Download MoGe model" }
 
+_download_rtmpose_h36m = { cmd = "python -c 'import os,sys; sys.exit(0 if os.path.exists(\"checkpoints/rtmpose_h36m.pth\") else 1)' || (mkdir -p checkpoints && hf download charlesjvt/rtmpose-l-h36m-384x288 rtmpose_h36m.pth --repo-type model --local-dir checkpoints)", outputs = [
+    "checkpoints/rtmpose_h36m.pth",
+], description = "Download RTMPose H3.6M weights" }
+
 _download_yolox = { cmd = "python -c \"from kineo.pipeline.stages.rtmlib.tools.file import download_checkpoint; print(download_checkpoint('https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/yolox_tiny_8xb8-300e_humanart-6f3252f9.zip', dst_dir='checkpoints/', progress=True))\"", outputs = [
     "checkpoints/yolox_tiny_8xb8-300e_humanart-6f3252f9.onnx",
 ], description = "Prefetch YOLOX ONNX for rtmlib" }
@@ -152,6 +156,7 @@ download-checkpoints = { depends-on = [
     "_download_efficienttam_cfg",
     "_download_efficienttam_weights",
     "_download_moge",
+    "_download_rtmpose_h36m",
     "_download_yolox",
     "_download-smpl",
     "_download-smplx"
