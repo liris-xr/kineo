@@ -59,11 +59,14 @@ def main(
     dataset_dir: str,
     config_file: str,
     sequences_filter: list[str] = [],
+    use_cache: bool = False,
 ):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print_system_info(device)
 
     cfg = OmegaConf.load(config_file)
+    if use_cache:
+        cfg.use_cache = True
     pipeline = Pipeline.build_pipeline_from_config(cfg, device)
 
     sequences_file = os.path.join(dataset_dir, "h36m_protocol1_sequences.json")
@@ -223,7 +226,12 @@ if __name__ == "__main__":
         default=[],
         help="List of sequences to process",
     )
+    parser.add_argument(
+        "--use-cache",
+        action="store_true",
+        help="Override the config's use_cache to reuse cached stage outputs",
+    )
     args = parser.parse_args()
     dataset_dir = args.dataset_dir
     config_file = args.config_file
-    main(dataset_dir, config_file, args.sequences_filter)
+    main(dataset_dir, config_file, args.sequences_filter, args.use_cache)

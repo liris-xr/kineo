@@ -64,11 +64,14 @@ def main(
     sequences_filter: list[str] = [],
     views_filter: list[str] = [],
     human_gt_format: str = "coco",
+    use_cache: bool = False,
 ):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print_system_info(device)
 
     cfg = OmegaConf.load(config_file)
+    if use_cache:
+        cfg.use_cache = True
     pipeline = Pipeline.build_pipeline_from_config(cfg, device)
 
     # Benchmark configs that reproduce a fixed-view protocol (e.g. HSfM's 2-,
@@ -294,6 +297,11 @@ if __name__ == "__main__":
         choices=["coco", "smpl"],
         help="GT joint set for human metrics: coco (default) or smpl (SMPL-22).",
     )
+    parser.add_argument(
+        "--use-cache",
+        action="store_true",
+        help="Override the config's use_cache to reuse cached stage outputs",
+    )
     args = parser.parse_args()
     dataset_dir = args.dataset_dir
     config_file = args.config_file
@@ -304,4 +312,5 @@ if __name__ == "__main__":
         args.sequences_filter,
         args.views_filter,
         args.human_gt_format,
+        args.use_cache,
     )
