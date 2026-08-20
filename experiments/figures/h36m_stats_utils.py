@@ -234,9 +234,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     stats = compute_h36m_stats(args.h36m_dataset_dir, args.h36m_annotations_dir)
-    camera_metrics_stats = stats["camera_metrics_stats"]
-    human_metrics_stats = stats["human_metrics_stats"]
-    stage_timings_stats = stats["stage_timings_stats"]
+    camera_metrics_stats = stats["camera_metrics"]
+    human_metrics_stats = stats["human_metrics"]
+    stage_timings_stats = stats["stage_timings"]
     n_total_frames = stats["n_total_frames"]
     missing_sequences_predictions = stats["missing_sequences_predictions"]
     print_h36m_stats(

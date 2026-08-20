@@ -235,9 +235,9 @@ if __name__ == "__main__":
     stats = compute_egohumans_stats(
         args.egohumans_dataset_dir, args.egohumans_annotations_dir
     )
-    camera_metrics_stats = stats["camera_metrics_stats"]
-    human_metrics_stats = stats["human_metrics_stats"]
-    stage_timings_stats = stats["stage_timings_stats"]
+    camera_metrics_stats = stats["camera_metrics"]
+    human_metrics_stats = stats["human_metrics"]
+    stage_timings_stats = stats["stage_timings"]
     n_total_frames = stats["n_total_frames"]
     missing_sequences_predictions = stats["missing_sequences_predictions"]
     print_egohumans_stats(
