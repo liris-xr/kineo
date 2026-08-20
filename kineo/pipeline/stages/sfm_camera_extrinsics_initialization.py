@@ -295,6 +295,25 @@ def _estimate_camera_extrinsics(
     return Rts_init
 
 
+def _pair_has_correspondences(graph: nx.DiGraph, view_i: int, view_j: int) -> bool:
+    """Whether a view pair yielded a usable relative pose.
+
+    Pairs with too few correspondences stay in the graph as placeholders with an
+    infinite cost, an identity relative pose and no point attributes, so anything
+    reading the correspondences has to skip them.
+
+    Args:
+        graph: Graph built by _initialize_graph.
+        view_i: Index of the first view of the pair.
+        view_j: Index of the second view of the pair.
+
+    Returns:
+        False when the pair failed pairwise pose estimation.
+    """
+    cost = torch.as_tensor(graph[view_i][view_j]["cost"])
+    return not bool(torch.isinf(cost))
+
+
 def _refine_camera_extrinsics(
     graph: nx.DiGraph,
     n_iters: int = 100,
@@ -330,8 +349,15 @@ def _refine_camera_extrinsics(
     edges_no_selfloops = [
         (view_i, view_j)
         for view_i, view_j in graph_undirected.edges()
-        if view_i != view_j
+        if view_i != view_j and _pair_has_correspondences(graph, view_i, view_j)
     ]
+
+    if len(edges_no_selfloops) == 0:
+        warnings.warn(
+            "Skipping camera extrinsics refinement: no usable correspondences "
+            "between any pair of views."
+        )
+        return graph
 
     print(f"Refining camera extrinsics using {len(edges_no_selfloops)} edges.")
 
@@ -442,7 +468,7 @@ def _refine_camera_extrinsics(
         graph.nodes[view_idx]["Rt"] = Rts[view_idx].detach()
 
     for view_i, view_j in graph.edges():
-        if view_i == view_j:
+        if view_i == view_j or not _pair_has_correspondences(graph, view_i, view_j):
             continue
 
         rel_R, rel_t = kornia.geometry.relative_camera_motion(
