@@ -8,6 +8,8 @@
 # Contact: guillaume.lavoue@enise.ec-lyon.fr
 # -----------------------------------------------------------------------------
 
+import math
+
 import torch
 from kineo.geometry.transformations import (
     compute_similarity_transform,
@@ -264,7 +266,14 @@ def flatten_human_metrics(human_metrics: dict[str, Any]) -> dict[str, Any]:
                 all_w_mpjpe.append(keypoint_metrics["w-mpjpe"])
                 all_pa_mpjpe.append(keypoint_metrics["pa-mpjpe"])
 
+    # w-mpjpe drops unpredicted keypoints as NaN; its mean is only interpretable
+    # alongside the percentage that were recovered at all.
+    all_reconstruction_rate = [
+        0.0 if math.isnan(value) else 100.0 for value in all_w_mpjpe
+    ]
+
     return {
         "w-mpjpe": all_w_mpjpe,
         "pa-mpjpe": all_pa_mpjpe,
+        "reconstruction-rate": all_reconstruction_rate,
     }
