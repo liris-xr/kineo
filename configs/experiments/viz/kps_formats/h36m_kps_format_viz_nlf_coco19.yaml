@@ -135,6 +135,7 @@ pipeline:
       order: 90
       runtime_cfg:
         _target_: kineo.pipeline.stages.mvs_triangulation.MVSTriangulationRuntimeConfig
+        use_eigendecomposition: True
         triangulation_chunk_size: 50
 
     smpl_global_scale_estimation:

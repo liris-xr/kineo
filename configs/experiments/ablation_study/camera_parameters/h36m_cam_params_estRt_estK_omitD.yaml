@@ -109,6 +109,9 @@ pipeline:
       _target_: kineo.pipeline.stages.mvs_triangulation.MVSTriangulationStage
       name: "MVS Triangulation"
       order: 60
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.mvs_triangulation.MVSTriangulationRuntimeConfig
+        use_eigendecomposition: True
 
     gt_global_scale_estimation:
       _target_: kineo.pipeline.stages.gt_scale_computation.GTScaleComputationStage
