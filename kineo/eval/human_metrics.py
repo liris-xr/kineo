@@ -10,6 +10,7 @@
 
 import math
 
+import roma
 import torch
 from kineo.geometry.transformations import (
     compute_similarity_transform,
@@ -96,6 +97,19 @@ def aggregate_human_metrics_per_frame(
 
     return human_metrics_per_frame
 
+def _align_rotations(gt_R: torch.Tensor, pred_R: torch.Tensor) -> torch.Tensor:
+    """Chordal L2 mean of the rotation taking pred camera orientations to GT.
+
+    Args:
+        gt_R: Ground truth camera-to-world rotations. Shape (F, V, 3, 3).
+        pred_R: Predicted camera-to-world rotations. Shape (F, V, 3, 3).
+
+    Returns:
+        One left-multiplying rotation per frame. Shape (F, 3, 3).
+    """
+    return roma.special_procrustes(torch.einsum("fvij,fvkj->fik", gt_R, pred_R))
+
+
 def compute_human_metrics(
     gt_keypoints_3d_annotations: Keypoints3DAnnotations,
     gt_cam_extrinsics_annotations: CameraExtrinsicsAnnotations,
@@ -125,9 +139,8 @@ def compute_human_metrics(
     gt_world2cam = torch.zeros((n_views, 3, 4), device=device)
     gt_kps3d = torch.zeros((n_frames, n_subjects, n_keypoints, 3), device=device)
     pred_kps3d = torch.zeros((n_frames, n_subjects, n_keypoints, 3), device=device)
-    # A GT frame the predictions never fill, or a keypoint the pipeline zeroed
-    # because triangulation was not finite, is a missing prediction rather than
-    # one at the world origin. Track them so they do not count as errors.
+    # Unfilled GT frames and keypoints zeroed by triangulation are missing
+    # predictions, not poses at the world origin.
     pred_valid = torch.zeros(
         (n_frames, n_subjects, n_keypoints), dtype=torch.bool, device=device
     )
@@ -190,17 +203,23 @@ def compute_human_metrics(
     gt_cam_pos = gt_cam2world[..., :3, 3]
     pred_cam_pos = pred_cam2world[..., :3, 3]
 
-    R, t, s = compute_similarity_transform(
-        X=pred_cam_pos.reshape(n_frames, n_views, 3),
-        Y=gt_cam_pos.reshape(n_frames, n_views, 3),
-        estimate_scale=False,
+    # Gauged on orientations: two camera centres are collinear, so a
+    # position-only fit leaves the rotation about their baseline to noise.
+    R = _align_rotations(
+        gt_cam2world[..., :3, :3].reshape(n_frames, n_views, 3, 3),
+        pred_cam2world[..., :3, :3].reshape(n_frames, n_views, 3, 3),
     )
+    t = gt_cam_pos.reshape(n_frames, n_views, 3).mean(dim=1) - torch.einsum(
+        "fij,fj->fi", R, pred_cam_pos.reshape(n_frames, n_views, 3).mean(dim=1)
+    )
+    # W-MPJPE is metric, so the world frame is placed without rescaling.
+    s = torch.ones(n_frames, device=device)
 
     pred_kps3d_aligned = apply_similarity_transform_to_points(
         pred_kps3d.reshape(n_frames, -1, 3),
-        R.reshape(n_frames, 3, 3),
-        t.reshape(n_frames, 3),
-        s.reshape(n_frames),
+        R.transpose(-1, -2),
+        t,
+        s,
     ).reshape(n_frames, n_subjects, n_keypoints, 3)
 
     w_mpjpe = torch.norm(
@@ -208,6 +227,24 @@ def compute_human_metrics(
         dim=-1,
     )
     w_mpjpe = torch.where(pred_valid, w_mpjpe, torch.nan).cpu()
+
+    # One Sim(3) for everyone at once: scores placement between people.
+    R_ga, t_ga, s_ga = compute_similarity_transform(
+        X=pred_kps3d.reshape(n_frames, n_subjects * n_keypoints, 3),
+        Y=gt_kps3d.reshape(n_frames, n_subjects * n_keypoints, 3),
+        estimate_scale=True,
+    )
+    ga_mpjpe = torch.norm(
+        gt_kps3d
+        - apply_similarity_transform_to_points(
+            pred_kps3d.reshape(n_frames, -1, 3),
+            R_ga.reshape(n_frames, 3, 3),
+            t_ga.reshape(n_frames, 3),
+            s_ga.reshape(n_frames),
+        ).reshape(n_frames, n_subjects, n_keypoints, 3),
+        dim=-1,
+    )
+    ga_mpjpe = torch.where(pred_valid, ga_mpjpe, torch.nan).cpu()
 
     pa_mpjpe = torch.zeros((n_frames, n_subjects, n_keypoints))
 
@@ -243,6 +280,7 @@ def compute_human_metrics(
                     {
                         "joint_name": gt_kps_format.keypoints_names[kp_idx],
                         "w-mpjpe": w_mpjpe[frame_idx, subject_idx, kp_idx].item(),
+                        "ga-mpjpe": ga_mpjpe[frame_idx, subject_idx, kp_idx].item(),
                         "pa-mpjpe": pa_mpjpe[frame_idx, subject_idx, kp_idx].item(),
                     }
                     for kp_idx in range(n_keypoints)
@@ -258,12 +296,14 @@ def flatten_human_metrics(human_metrics: dict[str, Any]) -> dict[str, Any]:
     # Aggregate the W-MPJPE and PA-MPJPE metrics for each joint and each subject in each frame
     # We collect them as a list so that the caller can compute the statistics (mean, median, std, min, max).
     all_w_mpjpe = []
+    all_ga_mpjpe = []
     all_pa_mpjpe = []
 
     for frame_metrics in human_metrics.values():
         for subject_metrics in frame_metrics:
             for keypoint_metrics in subject_metrics["joints"]:
                 all_w_mpjpe.append(keypoint_metrics["w-mpjpe"])
+                all_ga_mpjpe.append(keypoint_metrics["ga-mpjpe"])
                 all_pa_mpjpe.append(keypoint_metrics["pa-mpjpe"])
 
     # w-mpjpe drops unpredicted keypoints as NaN; its mean is only interpretable
@@ -274,6 +314,7 @@ def flatten_human_metrics(human_metrics: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "w-mpjpe": all_w_mpjpe,
+        "ga-mpjpe": all_ga_mpjpe,
         "pa-mpjpe": all_pa_mpjpe,
         "reconstruction-rate": all_reconstruction_rate,
     }

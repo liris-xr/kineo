@@ -172,3 +172,71 @@ def test_reconstruction_rate_is_one_when_everything_is_predicted():
     flat = flatten_human_metrics(compute_human_metrics(kps, ext, kps, ext))
 
     assert all(v == 100.0 for v in flat["reconstruction-rate"])
+
+
+def _two_view_gauge(G):
+    """Two cameras on the world z axis, in a world rotated by G."""
+    anns = []
+    for view_id, center in (("cam01", [0.0, 0.0, 1.0]), ("cam02", [0.0, 0.0, 3.0])):
+        R = roma.rotvec_to_rotmat(torch.tensor([0.3, 0.0, 0.0])).transpose(0, 1)
+        R = R @ G.transpose(0, 1)
+        anns.append(
+            CameraExtrinsicsAnnotation(
+                view_id=view_id,
+                frame_idx=0,
+                R=R,
+                t=-(R @ (G @ torch.tensor(center))),
+            )
+        )
+    return CameraExtrinsicsAnnotations(CameraExtrinsicsAnnotationsMetadata(), anns)
+
+
+def _rotated_keypoints(G):
+    n_kp = SMPL_22_KEYPOINTS_FORMAT.n_keypoints
+    anns = []
+    for f in (0, 1):
+        xyz = torch.full((n_kp, 3), float(f)) + torch.arange(n_kp * 3).reshape(n_kp, 3) * 0.01
+        anns.append(
+            Keypoints3DAnnotation(
+                frame_idx=f,
+                subject_id="aria01",
+                xyz=xyz @ G.transpose(0, 1),
+                scores=torch.ones(n_kp, dtype=torch.float32),
+                format="smpl_22",
+            )
+        )
+    return Keypoints3DAnnotations(
+        metadata=Keypoints3DAnnotationsMetadata(formats=[SMPL_22_KEYPOINTS_FORMAT]),
+        annotations=anns,
+    )
+
+
+def test_two_view_world_alignment_uses_camera_orientations():
+    # Both centres sit on the z axis, so rotating the world about z leaves them
+    # put: a position-only fit cannot see the rotation and leaves the whole human
+    # set flipped. The camera orientations pin it, so this exact reconstruction
+    # must score ~0.
+    identity = roma.rotvec_to_rotmat(torch.tensor([0.0, 0.0, 0.0]))
+    flip_about_z = roma.rotvec_to_rotmat(torch.tensor([0.0, 0.0, math.pi]))
+
+    gt_ext, gt_kps = _two_view_gauge(identity), _rotated_keypoints(identity)
+    pred_ext, pred_kps = _two_view_gauge(flip_about_z), _rotated_keypoints(flip_about_z)
+
+    flat = flatten_human_metrics(
+        compute_human_metrics(gt_kps, gt_ext, pred_kps, pred_ext)
+    )
+
+    assert max(flat["w-mpjpe"]) < 1e-3
+
+
+def test_ga_mpjpe_aligns_every_person_jointly():
+    # GA-MPJPE applies one Sim(3) to all people at once, so it sits between
+    # w-mpjpe (no alignment of its own) and pa-mpjpe (one fit per person).
+    ext = _extrinsics([(v, 0, [0.0, 0.0, 0.0]) for v in _CENTERS])
+    kps = _keypoints()
+
+    flat = flatten_human_metrics(compute_human_metrics(kps, ext, kps, ext))
+
+    assert "ga-mpjpe" in flat
+    assert len(flat["ga-mpjpe"]) == len(flat["w-mpjpe"])
+    assert max(flat["ga-mpjpe"]) < 1e-3
