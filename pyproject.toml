@@ -52,7 +52,9 @@ platforms = ["linux-64", "win-64"]
 
 [tool.pixi.pypi-dependencies]
 kineo = { path = ".", editable = true }
-moge = { git = "https://github.com/microsoft/MoGe.git" }
+# Pinned: MoGe-3 (main) forces torch through its own cu130 index, which
+# conflicts with the cu128 pin below and makes the solve fail.
+moge = { git = "https://github.com/microsoft/MoGe.git", rev = "925b8ed835a7a9cdb7578ba15c658a0afc969030" }
 
 torch = { version = "==2.11.*", index = "https://download.pytorch.org/whl/cu128" }
 torchvision = { version = ">=0.22.0", index = "https://download.pytorch.org/whl/cu128" }
@@ -122,22 +124,22 @@ features = ["dev", "cuda128"]
 solve-group = "default"
 
 [tool.pixi.tasks]
-_download-smpl = { cmd = "test -f body_models/smpl/SMPL_NEUTRAL.pkl || python scripts/download_smpl.py" }
-_download-smplx = { cmd = "(test -f body_models/smplx/SMPLX_NEUTRAL.pkl && test -f body_models/smplx/SMPLX_NEUTRAL.npz) || python scripts/download_smplx.py" }
+_download-smpl = { cmd = "python -c 'import os,sys; sys.exit(0 if os.path.exists(\"body_models/smpl/SMPL_NEUTRAL.pkl\") else 1)' || python scripts/download_smpl.py" }
+_download-smplx = { cmd = "python -c 'import os,sys; sys.exit(0 if all(map(os.path.exists, [\"body_models/smplx/SMPLX_NEUTRAL.pkl\", \"body_models/smplx/SMPLX_NEUTRAL.npz\"])) else 1)' || python scripts/download_smplx.py" }
 
-_download_nlf = { cmd = "test -f checkpoints/nlf_l_multi_0.3.2.torchscript || (mkdir -p checkpoints && curl -L https://github.com/isarandi/nlf/releases/download/v0.3.2/nlf_l_multi_0.3.2.torchscript -o checkpoints/nlf_l_multi_0.3.2.torchscript)", outputs = [
+_download_nlf = { cmd = "python -c 'import os,sys; sys.exit(0 if os.path.exists(\"checkpoints/nlf_l_multi_0.3.2.torchscript\") else 1)' || (mkdir -p checkpoints && curl -L https://github.com/isarandi/nlf/releases/download/v0.3.2/nlf_l_multi_0.3.2.torchscript -o checkpoints/nlf_l_multi_0.3.2.torchscript)", outputs = [
     "checkpoints/nlf_l_multi_0.3.2.torchscript",
 ], description = "Download NLF TorchScript model" }
 
-_download_efficienttam_cfg = { cmd = "test -f configs/efficienttam/efficienttam_s.yaml || (mkdir -p configs/efficienttam && curl -L https://raw.githubusercontent.com/yformer/EfficientTAM/main/efficient_track_anything/configs/efficienttam/efficienttam_s.yaml -o configs/efficienttam/efficienttam_s.yaml)", outputs = [
+_download_efficienttam_cfg = { cmd = "python -c 'import os,sys; sys.exit(0 if os.path.exists(\"configs/efficienttam/efficienttam_s.yaml\") else 1)' || (mkdir -p configs/efficienttam && curl -L https://raw.githubusercontent.com/yformer/EfficientTAM/main/efficient_track_anything/configs/efficienttam/efficienttam_s.yaml -o configs/efficienttam/efficienttam_s.yaml)", outputs = [
     "configs/efficienttam/efficienttam_s.yaml",
 ], description = "Download EfficientTAM config" }
 
-_download_efficienttam_weights = { cmd = "test -f checkpoints/efficienttam_s.pt || (mkdir -p checkpoints && hf download yunyangx/efficient-track-anything efficienttam_s.pt --repo-type model --local-dir checkpoints)", outputs = [
+_download_efficienttam_weights = { cmd = "python -c 'import os,sys; sys.exit(0 if os.path.exists(\"checkpoints/efficienttam_s.pt\") else 1)' || (mkdir -p checkpoints && hf download yunyangx/efficient-track-anything efficienttam_s.pt --repo-type model --local-dir checkpoints)", outputs = [
     "checkpoints/efficienttam_s.pt",
 ], description = "Download EfficientTAM weights" }
 
-_download_moge = { cmd = "test -f checkpoints/moge-2-vitl-normal.pt || (mkdir -p checkpoints && hf download Ruicheng/moge-2-vitl-normal model.pt --repo-type model --local-dir checkpoints && mv checkpoints/model.pt checkpoints/moge-2-vitl-normal.pt)", outputs = [
+_download_moge = { cmd = "python -c 'import os,sys; sys.exit(0 if os.path.exists(\"checkpoints/moge-2-vitl-normal.pt\") else 1)' || (mkdir -p checkpoints && hf download Ruicheng/moge-2-vitl-normal model.pt --repo-type model --local-dir checkpoints && mv checkpoints/model.pt checkpoints/moge-2-vitl-normal.pt)", outputs = [
     "checkpoints/moge-2-vitl-normal.pt",
 ], description = "Download MoGe model" }
 
@@ -166,7 +168,7 @@ cmd = "python scripts/download_h36m_dataset.py {{ dataset_dir }}"
 
 [tool.pixi.tasks.h36m-preprocess]
 args = ["dataset_dir"]
-cmd = "test -f {{ dataset_dir }}/h36m_protocol1_sequences.json || python scripts/preprocess_h36m_dataset.py {{ dataset_dir }}"
+cmd = "python -c 'import os,sys; sys.exit(0 if os.path.exists(\"{{ dataset_dir }}/h36m_protocol1_sequences.json\") else 1)' || python scripts/preprocess_h36m_dataset.py {{ dataset_dir }}"
 
 [tool.pixi.tasks.h36m-benchmark]
 depends-on = ["download-checkpoints"]

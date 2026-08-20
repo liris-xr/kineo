@@ -227,7 +227,7 @@ environments:
       - pypi: git+https://github.com/cjaverliat/mmpose.git#111d9b3a1e15d417925e5bf66211fe1b4517ae6c
       - pypi: https://files.pythonhosted.org/packages/e4/5c/a6f2743c8ae1c95cd6531510bf76fa6be650a5e0a1dffdf138b5ed186f61/moderngl-5.12.0-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/23/41/d3503f07de8ad3597165f88b07e1064629f82e65385c4307875b2f6b137f/moderngl_window-3.1.1-py3-none-any.whl
-      - pypi: git+https://github.com/microsoft/MoGe.git#925b8ed835a7a9cdb7578ba15c658a0afc969030
+      - pypi: git+https://github.com/microsoft/MoGe.git?rev=925b8ed835a7a9cdb7578ba15c658a0afc969030#925b8ed835a7a9cdb7578ba15c658a0afc969030
       - pypi: https://files.pythonhosted.org/packages/43/e3/7d92a15f894aa0c9c4b49b8ee9ac9850d6e63b03c9c32c0367a13ae62209/mpmath-1.3.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/90/ab/0301c945a704218bc9435f0e3c88884f6b19ef234d8899fb47ce1ccfd0c9/munkres-1.1.4-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/79/7b/2c79738432f5c924bef5071f933bcc9efd0473bac3b4aa584a6f7c1c8df8/mypy_extensions-1.1.0-py3-none-any.whl
@@ -494,7 +494,7 @@ environments:
       - pypi: git+https://github.com/cjaverliat/mmpose.git#111d9b3a1e15d417925e5bf66211fe1b4517ae6c
       - pypi: https://files.pythonhosted.org/packages/9c/6d/f9b77797d3a0f3e5b67a75092c6c63b26360042fd8e43be017c706e308a8/moderngl-5.12.0-cp310-cp310-win_amd64.whl
       - pypi: https://files.pythonhosted.org/packages/23/41/d3503f07de8ad3597165f88b07e1064629f82e65385c4307875b2f6b137f/moderngl_window-3.1.1-py3-none-any.whl
-      - pypi: git+https://github.com/microsoft/MoGe.git#925b8ed835a7a9cdb7578ba15c658a0afc969030
+      - pypi: git+https://github.com/microsoft/MoGe.git?rev=925b8ed835a7a9cdb7578ba15c658a0afc969030#925b8ed835a7a9cdb7578ba15c658a0afc969030
       - pypi: https://files.pythonhosted.org/packages/43/e3/7d92a15f894aa0c9c4b49b8ee9ac9850d6e63b03c9c32c0367a13ae62209/mpmath-1.3.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/90/ab/0301c945a704218bc9435f0e3c88884f6b19ef234d8899fb47ce1ccfd0c9/munkres-1.1.4-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/79/7b/2c79738432f5c924bef5071f933bcc9efd0473bac3b4aa584a6f7c1c8df8/mypy_extensions-1.1.0-py3-none-any.whl
@@ -795,7 +795,7 @@ environments:
       - pypi: git+https://github.com/cjaverliat/mmpose.git#111d9b3a1e15d417925e5bf66211fe1b4517ae6c
       - pypi: https://files.pythonhosted.org/packages/e4/5c/a6f2743c8ae1c95cd6531510bf76fa6be650a5e0a1dffdf138b5ed186f61/moderngl-5.12.0-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/23/41/d3503f07de8ad3597165f88b07e1064629f82e65385c4307875b2f6b137f/moderngl_window-3.1.1-py3-none-any.whl
-      - pypi: git+https://github.com/microsoft/MoGe.git#925b8ed835a7a9cdb7578ba15c658a0afc969030
+      - pypi: git+https://github.com/microsoft/MoGe.git?rev=925b8ed835a7a9cdb7578ba15c658a0afc969030#925b8ed835a7a9cdb7578ba15c658a0afc969030
       - pypi: https://files.pythonhosted.org/packages/43/e3/7d92a15f894aa0c9c4b49b8ee9ac9850d6e63b03c9c32c0367a13ae62209/mpmath-1.3.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/90/ab/0301c945a704218bc9435f0e3c88884f6b19ef234d8899fb47ce1ccfd0c9/munkres-1.1.4-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/79/7b/2c79738432f5c924bef5071f933bcc9efd0473bac3b4aa584a6f7c1c8df8/mypy_extensions-1.1.0-py3-none-any.whl
@@ -1068,7 +1068,7 @@ environments:
       - pypi: git+https://github.com/cjaverliat/mmpose.git#111d9b3a1e15d417925e5bf66211fe1b4517ae6c
       - pypi: https://files.pythonhosted.org/packages/9c/6d/f9b77797d3a0f3e5b67a75092c6c63b26360042fd8e43be017c706e308a8/moderngl-5.12.0-cp310-cp310-win_amd64.whl
       - pypi: https://files.pythonhosted.org/packages/23/41/d3503f07de8ad3597165f88b07e1064629f82e65385c4307875b2f6b137f/moderngl_window-3.1.1-py3-none-any.whl
-      - pypi: git+https://github.com/microsoft/MoGe.git#925b8ed835a7a9cdb7578ba15c658a0afc969030
+      - pypi: git+https://github.com/microsoft/MoGe.git?rev=925b8ed835a7a9cdb7578ba15c658a0afc969030#925b8ed835a7a9cdb7578ba15c658a0afc969030
       - pypi: https://files.pythonhosted.org/packages/43/e3/7d92a15f894aa0c9c4b49b8ee9ac9850d6e63b03c9c32c0367a13ae62209/mpmath-1.3.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/90/ab/0301c945a704218bc9435f0e3c88884f6b19ef234d8899fb47ce1ccfd0c9/munkres-1.1.4-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/79/7b/2c79738432f5c924bef5071f933bcc9efd0473bac3b4aa584a6f7c1c8df8/mypy_extensions-1.1.0-py3-none-any.whl
@@ -3609,7 +3609,7 @@ packages:
 - pypi: ./
   name: kineo
   version: 0.1.0
-  sha256: 9400e73ac27eb003d7a9cc333feb516d56c721fea639cee1d7e3c5485f396f64
+  sha256: 831f0aabcdc14fafc466ee89400cac0d74aabdbbedca2b0f41b241f82f0ad9c3
   requires_dist:
   - numpy
   - onnxruntime-gpu
@@ -5080,7 +5080,7 @@ packages:
   - av ; extra == 'av'
   - dracopy ; extra == 'draco'
   requires_python: '>=3.9'
-- pypi: git+https://github.com/microsoft/MoGe.git#925b8ed835a7a9cdb7578ba15c658a0afc969030
+- pypi: git+https://github.com/microsoft/MoGe.git?rev=925b8ed835a7a9cdb7578ba15c658a0afc969030#925b8ed835a7a9cdb7578ba15c658a0afc969030
   name: moge
   version: 2.0.0
   requires_dist:
