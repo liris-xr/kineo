@@ -1,5 +1,5 @@
-output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/egohumans_benchmark_nlf_estRt_estK_estD"
-cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/egohumans_benchmark_nlf_estRt_estK_estD"
+output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/h36m_benchmark_nlf_estRt_estK_estDk1k2"
+cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/h36m_benchmark_nlf_estRt_estK_estDk1k2"
 use_cache: False
 batch_size: 32
 use_half_precision: False
@@ -41,7 +41,7 @@ pipeline:
         use_half_precision: ${use_half_precision}
         use_cache: ${use_cache}
         cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
-        skeleton_name: "coco_19"
+        skeleton_name: "h36m_17"
 
     global_time_resampling:
       _target_: kineo.pipeline.stages.global_time_resampling.GlobalTimeResamplingStage
@@ -49,7 +49,7 @@ pipeline:
       order: 30
       runtime_cfg:
         _target_: kineo.pipeline.stages.global_time_resampling.GlobalTimeResamplingRuntimeConfig
-        target_fps: 20
+        target_fps: 10
         interpolation_dt_thr_s: 0.3
 
     keypoints_pairs_sampling:
@@ -60,6 +60,7 @@ pipeline:
         _target_: kineo.pipeline.stages.keypoints_pairs_sampling.KeypointsPairsSamplingRuntimeConfig
         max_points_pairs: 3000
         pair_avg_conf_score_thr: 0.6
+        keypoints_indices: null
 
     sfm_camera_extrinsics_initialization:
       _target_: kineo.pipeline.stages.sfm_camera_extrinsics_initialization.SfMCameraExtrinsicsInitializationStage
@@ -67,7 +68,7 @@ pipeline:
       order: 50
       runtime_cfg:
         _target_: kineo.pipeline.stages.sfm_camera_extrinsics_initialization.SfMCameraExtrinsicsInitializationRuntimeConfig
-        ransac_confidence: 0.999
+        ransac_confidence: 0.99
         ransac_reproj_threshold: 3.0
         n_refinement_iters: 200
         tolerance_grad: 1e-05
@@ -142,7 +143,7 @@ pipeline:
     smpl_global_scale_estimation:
       _target_: kineo.pipeline.stages.smpl_global_scale_estimation.SMPLGlobalScaleEstimationStage
       name: "SMPL Global Scale Estimation"
-      joint_regressor_path: "./body_models/smpl/J_regressor_coco19.pt"
+      joint_regressor_path: "./body_models/smpl/h36m_joints_regressor.pt"
       smpl_model_path: "./body_models/smpl/SMPL_NEUTRAL.pkl"
       order: 100
       runtime_cfg:

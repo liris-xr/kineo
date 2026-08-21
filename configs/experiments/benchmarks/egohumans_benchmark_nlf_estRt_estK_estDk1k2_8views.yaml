@@ -152,8 +152,8 @@ camera_selection:
   volleyball_010: [cam01, cam03, cam05, cam07, cam09, cam11, cam13, cam15]
   volleyball_011: [cam01, cam03, cam05, cam07, cam09, cam11, cam13, cam15]
 
-output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/egohumans_benchmark_nlf_estRt_estK_estD_8views"
-cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/egohumans_benchmark_nlf_estRt_estK_estD_8views"
+output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/egohumans_benchmark_nlf_estRt_estK_estDk1k2_8views"
+cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/egohumans_benchmark_nlf_estRt_estK_estDk1k2_8views"
 use_cache: False
 batch_size: 32
 use_half_precision: False

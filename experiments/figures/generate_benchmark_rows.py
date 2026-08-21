@@ -42,7 +42,7 @@ def generate_h36m_benchmark_rows(h36m_dataset_dir: str, hsfm_eval_data_dir: str,
     kineo_h36m_benchmark_extrinsics_intrinsics_with_distortions_annotations_path = (
         os.path.join(
             kineo_eval_data_dir,
-            "h36m_benchmark_nlf_estRt_estK_estD",
+            "h36m_benchmark_nlf_estRt_estK_estDk1k2",
             "annotations",
         )
     )
@@ -145,7 +145,7 @@ def generate_egohumans_benchmark_rows(egohumans_dataset_dir: str, kineo_eval_dat
     kineo_egohumans_benchmark_extrinsics_intrinsics_with_distortions_annotations_path = (
         os.path.join(
             kineo_eval_data_dir,
-            "egohumans_benchmark_nlf_estRt_estK_estD",
+            "egohumans_benchmark_nlf_estRt_estK_estDk1k2",
             "annotations",
         )
     )
