@@ -136,11 +136,17 @@ class KeypointsPairsSamplingStage(PipelineStage[KeypointsPairsSamplingRuntimeCon
             if runtime_cfg.max_points_pairs == -1:
                 picked_indices = valid_pick_indices
             else:
-                # Uses a temporary generator for deterministic results
+                # Drawing from the global RNG would make the sample depend on
+                # whatever consumed it earlier, so a cached stage upstream would
+                # silently change which pairs are picked.
+                generator = torch.Generator(device=valid_pick_indices.device)
+                generator.manual_seed(pipeline.seed)
                 picked_indices = valid_pick_indices[
-                    torch.randperm(valid_pick_indices.shape[0])[
-                        : runtime_cfg.max_points_pairs
-                    ]
+                    torch.randperm(
+                        valid_pick_indices.shape[0],
+                        generator=generator,
+                        device=valid_pick_indices.device,
+                    )[: runtime_cfg.max_points_pairs]
                 ]
 
             picked_indices = picked_indices.cpu()

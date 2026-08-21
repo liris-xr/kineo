@@ -8,7 +8,7 @@
 # Contact: guillaume.lavoue@enise.ec-lyon.fr
 # -----------------------------------------------------------------------------
 
-from math import ceil
+from math import ceil, radians
 import torch
 from kineo.pipeline.pipeline import PipelineStage
 from kineo.pipeline.pipeline import Pipeline
@@ -26,7 +26,10 @@ from kineo.annotations.keypoints_3d import (
 from kineo.annotations.global_time_reference import (
     GlobalTimeReferenceAnnotation,
 )
-from kineo.geometry.triangulation import triangulate_points
+from kineo.geometry.triangulation import (
+    triangulate_points,
+    triangulation_parallax_angles,
+)
 from kineo.geometry.metrics import pairwise_reprojection_consensus_score
 from kineo.annotations.camera_intrinsics import CameraDistortionModel
 from tqdm import tqdm
@@ -38,6 +41,7 @@ from typing import Optional
 class MVSTriangulationRuntimeConfig:
     triangulation_chunk_size: int = 200
     use_eigendecomposition: bool = True
+    min_parallax_deg: float = 10.0
 
 
 class MVSTriangulationStage(PipelineStage[MVSTriangulationRuntimeConfig]):
@@ -133,6 +137,9 @@ class MVSTriangulationStage(PipelineStage[MVSTriangulationRuntimeConfig]):
             dist_coeffs[view_idx] = view_camera_intrinsics.distortion_coefficients
             cameras_resolutions_hw.append(views[view_idx]["frame_loader"].resolution_hw)
 
+        camera_centers = -Rts[:, :, :3].transpose(-1, -2) @ Rts[:, :, 3:]
+        camera_centers = camera_centers.squeeze(-1)
+
         kps_3d_annotations: list[Keypoints3DAnnotation] = []
 
         all_kps_2d = torch.zeros(
@@ -170,6 +177,9 @@ class MVSTriangulationStage(PipelineStage[MVSTriangulationRuntimeConfig]):
 
         all_kps_3d = torch.zeros((n_frames, n_subjects, n_keypoints, 3), device=device)
         all_kps_3d_scores = torch.zeros(
+            (n_frames, n_subjects, n_keypoints), device=device
+        )
+        all_kps_3d_parallax = torch.zeros(
             (n_frames, n_subjects, n_keypoints), device=device
         )
 
@@ -219,8 +229,21 @@ class MVSTriangulationStage(PipelineStage[MVSTriangulationRuntimeConfig]):
 
                 all_kps_3d[chunk_frames, subject_idx, :, :] = chunk_points_3d
                 all_kps_3d_scores[chunk_frames, subject_idx, :] = chunk_points_3d_scores
+                all_kps_3d_parallax[chunk_frames, subject_idx, :] = (
+                    triangulation_parallax_angles(
+                        points_3d=chunk_points_3d,
+                        camera_centers=camera_centers,
+                        points_weights=chunk_points_2d_scores,
+                    )
+                )
 
-        valid_kps_3d_mask = torch.isfinite(all_kps_3d).all(dim=-1)
+        # Depth error scales as 1/sin(parallax), so rays that meet too
+        # shallowly put the point anywhere along their length. Those are
+        # dropped rather than exported, which costs reconstruction rate
+        # instead of hiding a metres-wide error inside an accuracy metric.
+        valid_kps_3d_mask = torch.isfinite(all_kps_3d).all(dim=-1) & (
+            all_kps_3d_parallax >= radians(runtime_cfg.min_parallax_deg)
+        )
 
         all_kps_3d[~valid_kps_3d_mask] = 0
         all_kps_3d_scores[~valid_kps_3d_mask] = 0

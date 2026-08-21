@@ -92,6 +92,7 @@ pipeline:
       runtime_cfg:
         _target_: kineo.pipeline.stages.mvs_triangulation.MVSTriangulationRuntimeConfig
         use_eigendecomposition: True
+        min_parallax_deg: 10.0
 
     # Compute the ground truth scale by aligning the GT and predicted camera extrinsics
     gt_scale_computation:

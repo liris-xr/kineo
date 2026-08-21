@@ -14,14 +14,14 @@ def print_statistics(
     failed_sequences: list[str],
 ):
     print("\n=== Statistics Report ===\n")
-    print("📷 Camera Metrics:")
+    print("Camera Metrics:")
     for metric_name, metric_stats in cam_metrics_stats.items():
         print(f"- {metric_name}:")
         for key, value in metric_stats.items():
             # Print with 4 significant digits
             print(f"\t- {key:<10}: {value:.4g}")
 
-    print("\n🧑 Human Metrics:")
+    print("\nHuman Metrics:")
     for metric_name, metric_stats in human_metrics_stats.items():
         print(f"- {metric_name}:")
         for key, value in metric_stats.items():
@@ -29,7 +29,7 @@ def print_statistics(
             print(f"\t- {key:<10}: {value:.4g}")
 
     if failed_sequences:
-        print("\n❌ Failed Sequences:")
+        print("\nFailed Sequences:")
         for seq in failed_sequences:
             print(f"  - {seq}")
 

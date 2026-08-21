@@ -167,7 +167,7 @@ def main():
     # Flag views whose calibration diverges (undistort blows up at periphery).
     broken = [r for r in rows if float(r["full_median"]) > 50.0]
     if broken:
-        print(f"\n  ⚠ {len(broken)} views with full_median > 50px (likely failed calibration):")
+        print(f"\n  {len(broken)} views with full_median > 50px (likely failed calibration):")
         for r in sorted(broken, key=lambda r: -float(r["full_median"]))[:15]:
             print(f"    {r['sequence']}/{r['view']}: median={float(r['full_median']):.0f}px "
                   f"p95={float(r['full_p95']):.0f}px")

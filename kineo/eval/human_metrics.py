@@ -14,12 +14,46 @@ import roma
 import torch
 from kineo.geometry.transformations import (
     compute_similarity_transform,
+    compute_weighted_similarity_transform,
     apply_similarity_transform_to_points,
     inverse_Rt,
 )
 from typing import Any
 from kineo.annotations.camera_extrinsics import CameraExtrinsicsAnnotations
 from kineo.annotations.keypoints_3d import Keypoints3DAnnotations
+from kineo.annotations.keypoints_format import KeypointsFormat
+
+# Joint distance thresholds, in millimetres, at which PCK is reported.
+PCK_THRESHOLDS_MM = (50, 100, 150)
+
+# Minimum keypoints for a determined similarity transform.
+MIN_PROCRUSTES_KEYPOINTS = 3
+
+
+def _root_keypoints_indices(kps_format: KeypointsFormat) -> list[int]:
+    """Indices of the keypoints whose mean defines the root joint.
+
+    Args:
+        kps_format: Format the keypoints are expressed in.
+
+    Returns:
+        The pelvis index, or both hip indices when the format has no pelvis.
+
+    Raises:
+        ValueError: If the format carries neither a pelvis nor both hips.
+    """
+    names = kps_format.keypoints_names
+
+    if "pelvis" in names:
+        return [names.index("pelvis")]
+    if "left_hip" in names and "right_hip" in names:
+        return [names.index("left_hip"), names.index("right_hip")]
+
+    raise ValueError(
+        f"Keypoints format '{kps_format.name}' has no pelvis and no hip pair "
+        "to derive a root joint from"
+    )
+
 
 def get_min_median_max_frames(
     human_metrics: dict[int, dict[str, float]]
@@ -144,6 +178,10 @@ def compute_human_metrics(
     pred_valid = torch.zeros(
         (n_frames, n_subjects, n_keypoints), dtype=torch.bool, device=device
     )
+    # Keypoints the GT does not annotate leave the metrics entirely.
+    gt_valid = torch.zeros(
+        (n_frames, n_subjects, n_keypoints), dtype=torch.bool, device=device
+    )
 
     view_id_to_idx = {view_id: i for i, view_id in enumerate(views_ids)}
     subject_id_to_idx = {subject_id: i for i, subject_id in enumerate(gt_subjects_ids)}
@@ -169,6 +207,9 @@ def compute_human_metrics(
         subject_idx = subject_id_to_idx[ann.subject_id]
         frame_idx = frame_to_idx[ann.frame_idx]
         gt_kps3d[frame_idx, subject_idx, :] = ann.xyz
+        gt_valid[frame_idx, subject_idx] = (
+            torch.as_tensor(ann.scores, device=device) > 0
+        )
 
     for ann in pred_keypoints_3d_annotations.annotations:
         subject_idx = subject_id_to_idx[ann.subject_id]
@@ -222,37 +263,61 @@ def compute_human_metrics(
         s,
     ).reshape(n_frames, n_subjects, n_keypoints, 3)
 
+    scored = pred_valid & gt_valid
+
     w_mpjpe = torch.norm(
         gt_kps3d - pred_kps3d_aligned,
         dim=-1,
     )
-    w_mpjpe = torch.where(pred_valid, w_mpjpe, torch.nan).cpu()
+    w_mpjpe = torch.where(scored, w_mpjpe, torch.nan).cpu()
 
-    # One Sim(3) for everyone at once: scores placement between people.
-    R_ga, t_ga, s_ga = compute_similarity_transform(
+    # One Sim(3) for everyone at once: scores placement between people. Missing
+    # predictions sit at the origin and are weighted out of the fit.
+    R_ga, t_ga, s_ga = compute_weighted_similarity_transform(
         X=pred_kps3d.reshape(n_frames, n_subjects * n_keypoints, 3),
         Y=gt_kps3d.reshape(n_frames, n_subjects * n_keypoints, 3),
+        weights=scored.reshape(n_frames, n_subjects * n_keypoints).to(
+            pred_kps3d.dtype
+        ),
         estimate_scale=True,
     )
-    ga_mpjpe = torch.norm(
-        gt_kps3d
-        - apply_similarity_transform_to_points(
-            pred_kps3d.reshape(n_frames, -1, 3),
-            R_ga.reshape(n_frames, 3, 3),
-            t_ga.reshape(n_frames, 3),
-            s_ga.reshape(n_frames),
-        ).reshape(n_frames, n_subjects, n_keypoints, 3),
-        dim=-1,
+    pred_kps3d_ga_aligned = apply_similarity_transform_to_points(
+        pred_kps3d.reshape(n_frames, -1, 3),
+        R_ga.reshape(n_frames, 3, 3),
+        t_ga.reshape(n_frames, 3),
+        s_ga.reshape(n_frames),
+    ).reshape(n_frames, n_subjects, n_keypoints, 3)
+    ga_mpjpe = torch.norm(gt_kps3d - pred_kps3d_ga_aligned, dim=-1)
+    ga_mpjpe = torch.where(scored, ga_mpjpe, torch.nan).cpu()
+
+    # Root-relative error on the GA-aligned poses, which PCK thresholds: the
+    # alignment takes out the estimated metric scale, the root subtraction the
+    # placement. Undefined when the root itself is missing.
+    root_indices = _root_keypoints_indices(gt_kps_format)
+    gt_root = gt_kps3d[..., root_indices, :].mean(dim=-2, keepdim=True)
+    pred_root = pred_kps3d_ga_aligned[..., root_indices, :].mean(
+        dim=-2, keepdim=True
     )
-    ga_mpjpe = torch.where(pred_valid, ga_mpjpe, torch.nan).cpu()
+    root_valid = scored[..., root_indices].all(dim=-1, keepdim=True)
+    rr_mpjpe = torch.norm(
+        (gt_kps3d - gt_root) - (pred_kps3d_ga_aligned - pred_root), dim=-1
+    )
+    rr_mpjpe = torch.where(scored & root_valid, rr_mpjpe, torch.nan).cpu()
+
+    reconstructed = torch.where(
+        gt_valid, pred_valid.to(torch.float32) * 100.0, torch.nan
+    ).cpu()
 
     pa_mpjpe = torch.zeros((n_frames, n_subjects, n_keypoints))
 
     for subject_idx in range(n_subjects):
-        # Estimates one similarity transform for each frame
-        R, t, s = compute_similarity_transform(
+        subject_scored = scored[:, subject_idx]
+
+        # One similarity transform per frame, over the keypoints it scores.
+        R, t, s = compute_weighted_similarity_transform(
             X=pred_kps3d[:, subject_idx].reshape(n_frames, n_keypoints, 3),
             Y=gt_kps3d[:, subject_idx].reshape(n_frames, n_keypoints, 3),
+            weights=subject_scored.to(pred_kps3d.dtype),
             estimate_scale=True,
         )
         subject_pred_kps3d_aligned = apply_similarity_transform_to_points(
@@ -262,9 +327,10 @@ def compute_human_metrics(
             s.reshape(n_frames),
         ).reshape(n_frames, n_keypoints, 3)
 
-        subject_pose_valid = pred_valid[:, subject_idx].all(dim=-1)
+        # Below three points the fit absorbs any error.
+        subject_pose_valid = subject_scored.sum(dim=-1) >= MIN_PROCRUSTES_KEYPOINTS
         pa_mpjpe[:, subject_idx] = torch.where(
-            subject_pose_valid.unsqueeze(-1),
+            subject_scored & subject_pose_valid.unsqueeze(-1),
             torch.norm(
                 gt_kps3d[:, subject_idx] - subject_pred_kps3d_aligned,
                 dim=-1,
@@ -282,6 +348,10 @@ def compute_human_metrics(
                         "w-mpjpe": w_mpjpe[frame_idx, subject_idx, kp_idx].item(),
                         "ga-mpjpe": ga_mpjpe[frame_idx, subject_idx, kp_idx].item(),
                         "pa-mpjpe": pa_mpjpe[frame_idx, subject_idx, kp_idx].item(),
+                        "rr-mpjpe": rr_mpjpe[frame_idx, subject_idx, kp_idx].item(),
+                        "reconstructed": reconstructed[
+                            frame_idx, subject_idx, kp_idx
+                        ].item(),
                     }
                     for kp_idx in range(n_keypoints)
                 ],
@@ -298,6 +368,8 @@ def flatten_human_metrics(human_metrics: dict[str, Any]) -> dict[str, Any]:
     all_w_mpjpe = []
     all_ga_mpjpe = []
     all_pa_mpjpe = []
+    all_rr_mpjpe = []
+    all_reconstruction_rate = []
 
     for frame_metrics in human_metrics.values():
         for subject_metrics in frame_metrics:
@@ -305,16 +377,31 @@ def flatten_human_metrics(human_metrics: dict[str, Any]) -> dict[str, Any]:
                 all_w_mpjpe.append(keypoint_metrics["w-mpjpe"])
                 all_ga_mpjpe.append(keypoint_metrics["ga-mpjpe"])
                 all_pa_mpjpe.append(keypoint_metrics["pa-mpjpe"])
+                all_rr_mpjpe.append(keypoint_metrics["rr-mpjpe"])
+                all_reconstruction_rate.append(keypoint_metrics["reconstructed"])
 
-    # w-mpjpe drops unpredicted keypoints as NaN; its mean is only interpretable
-    # alongside the percentage that were recovered at all.
-    all_reconstruction_rate = [
-        0.0 if math.isnan(value) else 100.0 for value in all_w_mpjpe
-    ]
-
-    return {
+    out = {
         "w-mpjpe": all_w_mpjpe,
         "ga-mpjpe": all_ga_mpjpe,
         "pa-mpjpe": all_pa_mpjpe,
+        "rr-mpjpe": all_rr_mpjpe,
         "reconstruction-rate": all_reconstruction_rate,
     }
+
+    # A keypoint counts as correct only when it was reconstructed and lands
+    # within the threshold, so PCK scores accuracy and completeness together.
+    for threshold_mm in PCK_THRESHOLDS_MM:
+        out[f"pck{threshold_mm}"] = [
+            math.nan
+            if math.isnan(reconstruction_rate)
+            else (
+                100.0
+                if not math.isnan(error) and error < threshold_mm / 1000.0
+                else 0.0
+            )
+            for error, reconstruction_rate in zip(
+                all_rr_mpjpe, all_reconstruction_rate
+            )
+        ]
+
+    return out

@@ -35,6 +35,7 @@ pipeline:
       order: 10
       runtime_cfg:
         _target_: kineo.pipeline.stages.moge_intrinsics_estimation.MoGeIntrinsicsEstimationRuntimeConfig
+        shared_focal_init: False
         use_cache: ${use_cache}
         use_half_precision: ${use_half_precision}
         cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
@@ -146,6 +147,7 @@ pipeline:
       runtime_cfg:
         _target_: kineo.pipeline.stages.mvs_triangulation.MVSTriangulationRuntimeConfig
         use_eigendecomposition: True
+        min_parallax_deg: 10.0
         triangulation_chunk_size: 50
 
     smpl_global_scale_estimation:

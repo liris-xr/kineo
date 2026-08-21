@@ -15,6 +15,50 @@ from kineo.geometry.conversions import convert_points_from_homogeneous
 from kineo.torch_utils import check_shape
 
 
+def triangulation_parallax_angles(
+    points_3d: torch.Tensor,
+    camera_centers: torch.Tensor,
+    points_weights: torch.Tensor | None = None,
+) -> torch.Tensor:
+    r"""Widest angle each point subtends between a pair of cameras.
+
+    Depth uncertainty of a triangulated point grows as :math:`1/\sin\theta`
+    with :math:`\theta` the angle between the rays that fixed it, so this is
+    the conditioning of the triangulation.
+
+    Args:
+        points_3d: Triangulated points with shape :math:`(*, N, 3)`.
+        camera_centers: Camera centers in the world frame, shape
+            :math:`(*, C, 3)`.
+        points_weights: Per-view weights with shape :math:`(*, C, N)`. Views
+            weighting a point at zero contributed no ray to it and are left
+            out of its angle.
+
+    Returns:
+        Angles in radians with shape :math:`(*, N)`. Zero where fewer than two
+        cameras contributed.
+    """
+    check_shape(points_3d, ["*", "N", "3"])
+    check_shape(camera_centers, ["*", "C", "3"])
+    C = camera_centers.shape[-2]
+    N = points_3d.shape[-2]
+    if points_weights is not None:
+        check_shape(points_weights, ["*", C, N])
+
+    rays = points_3d.unsqueeze(-3) - camera_centers.unsqueeze(-2)
+    rays = rays / rays.norm(dim=-1, keepdim=True).clamp_min(1e-12)
+    # Widest angle == smallest cosine. The unit diagonal never wins that
+    # minimum, so self-pairs need no masking.
+    cosines = torch.einsum("...cnk,...dnk->...cdn", rays, rays)
+
+    if points_weights is not None:
+        contributes = points_weights > 0
+        pair_contributes = contributes.unsqueeze(-2) & contributes.unsqueeze(-3)
+        cosines = torch.where(pair_contributes, cosines, torch.ones_like(cosines))
+
+    return torch.arccos(cosines.amin(dim=(-3, -2)).clamp(-1.0, 1.0))
+
+
 def triangulate_points(
     Ps: torch.Tensor,
     points: torch.Tensor,

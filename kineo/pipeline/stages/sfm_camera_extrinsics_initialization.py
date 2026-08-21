@@ -29,7 +29,11 @@ from kineo.annotations.camera_extrinsics import (
     CameraExtrinsicsAnnotation,
     CameraExtrinsicsAnnotationsMetadata,
 )
-from kineo.geometry.camera import inverse_Rt
+from kineo.geometry.camera import (
+    inverse_Rt,
+    transform_points_from_world_to_camera,
+)
+from kineo.geometry.triangulation import triangulate_points
 from kineo.geometry.rotation_averaging import (
     average_rotations,
     edge_closure_rates,
@@ -285,6 +289,8 @@ def _estimate_camera_extrinsics(
         refinement_huber_delta=refinement_huber_delta,
     )
 
+    graph = _enforce_cheirality(graph)
+
     device = graph.nodes[0]["K"].device
     n_views = len(graph.nodes())
     Rts_init = torch.empty((n_views, 3, 4), dtype=torch.float32, device=device)
@@ -293,6 +299,62 @@ def _estimate_camera_extrinsics(
         Rts_init[view_idx] = graph.nodes[view_idx]["Rt"]
 
     return Rts_init
+
+
+def _enforce_cheirality(graph: nx.DiGraph) -> nx.DiGraph:
+    """Flips the reconstruction when it triangulates behind the cameras.
+
+    Negating every camera translation together with every 3D point leaves all
+    reprojections unchanged, so neither the epipolar cost minimized above nor
+    the reprojection cost minimized by bundle adjustment can tell the two
+    apart. RANSAC selects its inliers on that same sign-blind criterion, so the
+    cheirality test inside recoverPose can pass on a corrupted inlier set.
+    Only the full correspondence set distinguishes them.
+
+    Args:
+        graph: Graph whose nodes carry the absolute camera poses.
+
+    Returns:
+        The graph, with every node translation negated if the reconstruction
+        was mirrored.
+    """
+    n_views = len(graph.nodes())
+    Ks = torch.stack([graph.nodes[i]["K"] for i in range(n_views)])
+    Rts = torch.stack([graph.nodes[i]["Rt"] for i in range(n_views)])
+    Ps = Ks @ Rts
+
+    in_front = 0
+    behind = 0
+
+    for view_i, view_j in itertools.combinations(range(n_views), 2):
+        if not _pair_has_correspondences(graph, view_i, view_j):
+            continue
+
+        points = torch.stack(
+            [
+                graph.edges[view_i, view_j]["points1"],
+                graph.edges[view_i, view_j]["points2"],
+            ]
+        )
+        points_3d = triangulate_points(Ps=Ps[[view_i, view_j]], points=points)
+        valid = torch.isfinite(points_3d).all(dim=-1)
+
+        for view_idx in (view_i, view_j):
+            depths = transform_points_from_world_to_camera(
+                points_3d[valid], Rts[view_idx]
+            )[..., 2]
+            in_front += int((depths > 0).sum())
+            behind += int((depths <= 0).sum())
+
+    if behind > in_front:
+        warnings.warn(
+            f"Reconstruction triangulates behind the cameras "
+            f"({behind}/{behind + in_front} points); flipping to its mirror."
+        )
+        for view_idx in range(n_views):
+            graph.nodes[view_idx]["Rt"][:3, 3] *= -1
+
+    return graph
 
 
 def _pair_has_correspondences(graph: nx.DiGraph, view_i: int, view_j: int) -> bool:

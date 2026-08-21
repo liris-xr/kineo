@@ -37,6 +37,7 @@ def _summarize(values_by_metric: dict[str, list[float]]) -> dict[str, dict[str, 
             "max": np.nanmax(values),
         }
         for name, values in values_by_metric.items()
+        if values
     }
 
 
@@ -59,10 +60,14 @@ def aggregate_sequence_metrics_files(
     for metrics_file in metrics_files:
         with open(metrics_file, "rb") as f:
             metrics = orjson.loads(f.read())
+        # Metrics undefined for a sequence (e.g. s-TE below three cameras)
+        # are exported as null and must not enter the aggregate.
         for name, stats in metrics["cam_stats"].items():
-            cam_values[name].append(stats["mean"])
+            if stats["mean"] is not None:
+                cam_values[name].append(stats["mean"])
         for name, stats in metrics["human_stats"].items():
-            human_values[name].append(stats["mean"])
+            if stats["mean"] is not None:
+                human_values[name].append(stats["mean"])
 
     return _summarize(cam_values), _summarize(human_values)
 
@@ -73,20 +78,20 @@ def print_metrics_statistics(
     failed_sequences: list[str],
 ):
     print("\n=== Statistics Report ===\n")
-    print("📷 Camera Metrics:")
+    print("Camera Metrics:")
     for metric_name, metric_stats in cam_metrics_stats.items():
         print(f"- {metric_name}:")
         for key, value in metric_stats.items():
             print(f"\t- {key:<10}: {value:.4f}")
 
-    print("\n🧑 Human Metrics:")
+    print("\nHuman Metrics:")
     for metric_name, metric_stats in human_metrics_stats.items():
         print(f"- {metric_name}:")
         for key, value in metric_stats.items():
             print(f"\t- {key:<10}: {value:.4f}")
 
     if failed_sequences:
-        print("\n❌ Failed Sequences:")
+        print("\nFailed Sequences:")
         for seq in failed_sequences:
             print(f"  - {seq}")
 

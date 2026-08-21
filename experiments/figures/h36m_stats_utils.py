@@ -190,28 +190,28 @@ def print_h36m_stats(
     missing_sequences_predictions: list[str],
 ):
     print("\n=== Statistics Report ===\n")
-    print("📷 Camera Metrics:")
+    print("Camera Metrics:")
     for metric_name, metric_stats in camera_metrics_stats.items():
         print(f"- {metric_name}:")
         for key, value in metric_stats.items():
             print(f"\t- {key:<10}: {value:.4f}")
 
-    print("\n🧑 Human Metrics:")
+    print("\nHuman Metrics:")
     for metric_name, metric_stats in human_metrics_stats.items():
         print(f"- {metric_name}:")
         for key, value in metric_stats.items():
             print(f"\t- {key:<10}: {value:.4f}")
 
-    print("\n🕒 Stage Timings:")
+    print("\nStage Timings:")
     for stage_name, stage_stats in stage_timings_stats.items():
         print(f"- {stage_name}:")
         for key, value in stage_stats.items():
             print(f"\t- {key:<10}: {value:.4f}")
 
-    print(f"\n🔍 Total Number of Frames: {n_total_frames}")
+    print(f"\nTotal Number of Frames: {n_total_frames}")
 
     if missing_sequences_predictions:
-        print("\n❌ Failed Sequences:")
+        print("\nFailed Sequences:")
         for seq in missing_sequences_predictions:
             print(f"  - {seq}")
 

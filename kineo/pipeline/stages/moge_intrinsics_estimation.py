@@ -33,6 +33,54 @@ class MoGeIntrinsicsEstimationRuntimeConfig:
     use_cache: bool = True
     cache_output_path_template: str = "cache/{sequence_name}/{annotation_key}.pkl"
     use_half_precision: bool = True
+    shared_focal_init: bool = False
+
+
+def share_focal_lengths(
+    intrinsics: CameraIntrinsicsAnnotations,
+) -> CameraIntrinsicsAnnotations:
+    """Gives every view the median focal length of the rig.
+
+    Per-view monocular estimates disagree by far more than the cameras really
+    differ, and the two-view relative pose is sensitive enough to that spread to
+    settle on a mirrored geometry. The median is robust to a single bad view;
+    bundle adjustment is free to pull the focals apart again afterwards.
+
+    Args:
+        intrinsics: Per-view estimated intrinsics.
+
+    Returns:
+        The same intrinsics with fx and fy replaced by their median over views,
+        principal points untouched.
+    """
+    annotations = list(intrinsics.annotations)
+
+    if len(annotations) < 2:
+        return intrinsics
+
+    fx = torch.stack([a.K[0, 0] for a in annotations]).median()
+    fy = torch.stack([a.K[1, 1] for a in annotations]).median()
+
+    shared_annotations = []
+    for annotation in annotations:
+        K = annotation.K.clone()
+        K[0, 0] = fx
+        K[1, 1] = fy
+        shared_annotations.append(
+            CameraIntrinsicsAnnotation(
+                view_id=annotation.view_id,
+                frame_idx=annotation.frame_idx,
+                K=K,
+                distortion_coefficients=annotation.distortion_coefficients,
+                distortion_model=annotation.distortion_model,
+                resolution_hw=annotation.resolution_hw,
+            )
+        )
+
+    return CameraIntrinsicsAnnotations(
+        metadata=intrinsics.metadata,
+        annotations=shared_annotations,
+    )
 
 
 class MoGeIntrinsicsEstimationStage(PipelineStage):
@@ -109,6 +157,10 @@ class MoGeIntrinsicsEstimationStage(PipelineStage):
                     print(
                         f"Loaded camera intrinsics annotations from cache: {intrinsics_cache_filepath}"
                     )
+                    if runtime_cfg.shared_focal_init:
+                        intrinsics_annotations = share_focal_lengths(
+                            intrinsics_annotations
+                        )
                     annotations["camera_intrinsics"] = intrinsics_annotations
                     return
 
@@ -150,6 +202,8 @@ class MoGeIntrinsicsEstimationStage(PipelineStage):
 
         self.moge_model = self.moge_model.cpu()
 
+        # Cache what the model estimated, so the cache stays valid whatever the
+        # sharing setting; sharing is applied on read as well.
         if runtime_cfg.use_cache:
             os.makedirs(os.path.dirname(intrinsics_cache_filepath), exist_ok=True)
 
@@ -158,3 +212,8 @@ class MoGeIntrinsicsEstimationStage(PipelineStage):
                 print(
                     f"Saved camera intrinsics annotations to cache: {intrinsics_cache_filepath}"
                 )
+
+        if runtime_cfg.shared_focal_init:
+            annotations["camera_intrinsics"] = share_focal_lengths(
+                camera_intrinsics_annotations
+            )
