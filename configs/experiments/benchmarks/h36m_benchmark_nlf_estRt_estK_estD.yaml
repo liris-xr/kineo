@@ -123,7 +123,7 @@ pipeline:
         _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentRuntimeConfig
         n_iters: 300
         use_lbfgs: True
-        optimize_distortion_coefficients: True
+        optimize_distortion_coefficients: [0, 1]
         optimize_focal_length: True
         optimize_principal_point: False
         optimize_rotation: True
