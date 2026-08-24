@@ -395,10 +395,8 @@ def batched_epipolar_huber_loss(
 ) -> torch.Tensor:
     """Mean over edges of each edge's mean Huber-ed Sampson distance.
 
-    Evaluating one edge at a time launches a handful of tiny kernels per edge,
-    and a 20-camera rig has 190 of them inside every line-search evaluation, so
-    the loop costs far more than the arithmetic it performs. Stacking the edges
-    turns it into a constant number of batched kernels.
+    Batched over edges: a 20-camera rig has 190 of them and LBFGS re-evaluates
+    this every line-search step, so per-edge kernel launches dominate.
 
     Args:
         Rts: Absolute camera poses, shape (V, 3, 4).
@@ -485,9 +483,8 @@ def _refine_camera_extrinsics(
 
     print(f"Refining camera extrinsics using {len(edges_no_selfloops)} edges.")
 
-    # Stack every edge's correspondences once. Pairs keep different numbers of
-    # points, so short edges are padded with a repeat of their first point and
-    # masked out of the reduction.
+    # Pairs keep different numbers of points, so short edges are padded with a
+    # repeat of their first point and masked out of the reduction.
     edge_index = torch.tensor(
         edges_no_selfloops, dtype=torch.long, device=device
     )
@@ -1008,13 +1005,10 @@ def edge_cost_triplet_weights(
 ) -> torch.Tensor:
     """Weights a triplet by how cheap its three edges were, best to worst.
 
-    The pre-IRLS scale solve scored a triplet by the mean Sampson distance of
-    its edges, min-max normalised across the sequence. Costs are only
-    comparable within a sequence, hence the normalisation; invalid triplets
-    stay out of it so one unusable triplet cannot flatten the rest.
-
-    The caller square-roots these before folding them into the design matrix,
-    which reproduces that solve's sqrt(1 - cost) factor.
+    The pre-IRLS scale weighting. Costs only compare within a sequence, hence
+    the min-max normalisation; invalid triplets stay out of it so one unusable
+    triplet cannot flatten the rest. The caller square-roots these, reproducing
+    that solve's sqrt(1 - cost) factor.
 
     Args:
         costs: Mean edge cost per triplet, shape (L,).

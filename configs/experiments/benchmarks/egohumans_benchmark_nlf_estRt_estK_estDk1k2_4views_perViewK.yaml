@@ -1,31 +1,7 @@
 # EgoHumans 4-view benchmark with per-view intrinsics.
 #
-# Identical to egohumans_benchmark_nlf_estRt_estK_estDk1k2_4views except that bundle
-# adjustment fits one focal, principal point and distortion set per
-# camera instead of one for the whole rig. The 4-view volleyball
-# selection spans 59.9% in GT focal (it draws in a ~953 px camera
-# alongside ~1900 px ones), which a single shared focal cannot
-# represent at all; badminton and fencing span ~9.5%.
-# EgoHumans benchmark, 4-view setting.
-#
-# Camera sets follow HSfM (Muller & Choi et al., "Reconstructing People,
-# Places, and Cameras", CVPR 2025), supplementary S.4.2, which lists one
-# camera configuration per activity for each of the 2-, 4- and 8-view
-# settings. The main-paper tables report the 4-view case; Table S.1 adds
-# 2- and 8-view. Paper "camera N" maps to view id "camNN".
-#
-# camera_selection below is fully resolved per sequence. Where a sequence
-# cannot supply a camera the paper names, the nearest available camera id
-# not already selected is substituted (ties to the lower id) and the line
-# carries a comment saying which camera was replaced and why. HSfM's own
-# rule (Table S.1 caption) is to exclude such samples instead; we keep them
-# for coverage, so per-activity numbers on badminton and fencing are not
-# strictly comparable to the paper. fencing_014 is the worst case, 4 of 8
-# cameras replaced out of only 9 available views.
-#
-# Resolved against the 131-sequence snapshot. A sequence absent from this
-# table is skipped by experiments/egohumans_eval.py, so re-preprocessing the
-# dataset with different camera availability needs this block regenerated.
+# shared_intrinsics off: bundle adjustment fits one focal, principal
+# point and distortion set per camera instead of one for the rig.
 
 camera_selection:
   badminton_001: [cam01, cam02, cam05, cam07]
@@ -161,9 +137,8 @@ camera_selection:
   volleyball_011: [cam02, cam04, cam08, cam11]
 
 output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/egohumans_benchmark_nlf_estRt_estK_estDk1k2_4views_perViewK"
-# Shares the 4views cache on purpose: the cached stages (MoGe intrinsics,
-# NLF keypoints) do not read shared_intrinsics, so their outputs are
-# identical. Re-point this if either config changes detector or sampling.
+# Shares the base config's cache: the cached stages do not read the
+# flag this arm varies.
 cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/egohumans_benchmark_nlf_estRt_estK_estDk1k2_4views"
 use_cache: False
 batch_size: 32

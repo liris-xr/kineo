@@ -1,14 +1,10 @@
 # EgoHumans all-view benchmark, pre-IRLS scale weighting.
 #
-# Ablation arm for egohumans_benchmark_nlf_estRt_estK_estDk1k2: the relative
-# scale solve weights each triplet once by the mean Sampson cost of its
-# three edges (min-max normalised) instead of iteratively reweighting on
-# the scaled loop-closure residual. Restores the behaviour that IRLS
-# replaced in b7b74f4, so the two can be compared.
+# The scale solve weights each triplet once by its edges' mean Sampson
+# cost instead of iteratively reweighting on the closure residual.
 output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/egohumans_benchmark_nlf_estRt_estK_estDk1k2_edgeCost"
-# Shares the estDk1k2 cache on purpose: the cached stages (MoGe
-# intrinsics, NLF keypoints) run before the scale solve and never read
-# scale_triplet_weighting, so their outputs are identical.
+# Shares the base config's cache: the cached stages do not read the
+# flag this arm varies.
 cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/egohumans_benchmark_nlf_estRt_estK_estDk1k2"
 use_cache: False
 batch_size: 32

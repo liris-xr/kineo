@@ -10,7 +10,6 @@
 
 import itertools
 import torch
-from tqdm import tqdm
 from kineo.geometry.conversions import convert_points_from_homogeneous
 from kineo.torch_utils import check_shape
 
@@ -94,34 +93,37 @@ def triangulate_points(
 
     pairs = list(itertools.combinations(range(C), 2))
     n_pairs = len(pairs)
-
     batch_dims = points.shape[:-3]
-    X = torch.zeros(
-        (*batch_dims, N, n_pairs, 4, 4), dtype=points.dtype, device=points.device
+
+    # Pair axis carried as a batch axis; laid out as (*, N, n_pairs, 4, 4)
+    # directly, which is what the reshape below wants.
+    view_i = torch.tensor([i for i, _ in pairs], device=points.device)
+    view_j = torch.tensor([j for _, j in pairs], device=points.device)
+
+    pair_points1 = points[..., view_i, :, :].transpose(-3, -2)
+    pair_points2 = points[..., view_j, :, :].transpose(-3, -2)
+    pair_P1 = Ps[..., view_i, :, :]
+    pair_P2 = Ps[..., view_j, :, :]
+    pair_weights = torch.sqrt(
+        points_weights[..., view_i, :] * points_weights[..., view_j, :]
+    ).transpose(-2, -1).unsqueeze(-1)
+
+    P1_row0 = pair_P1[..., 0, :].unsqueeze(-3)
+    P1_row1 = pair_P1[..., 1, :].unsqueeze(-3)
+    P1_row2 = pair_P1[..., 2, :].unsqueeze(-3)
+    P2_row0 = pair_P2[..., 0, :].unsqueeze(-3)
+    P2_row1 = pair_P2[..., 1, :].unsqueeze(-3)
+    P2_row2 = pair_P2[..., 2, :].unsqueeze(-3)
+
+    X = torch.stack(
+        [
+            pair_weights * (pair_points1[..., 0:1] * P1_row2 - P1_row0),
+            pair_weights * (pair_points1[..., 1:2] * P1_row2 - P1_row1),
+            pair_weights * (pair_points2[..., 0:1] * P2_row2 - P2_row0),
+            pair_weights * (pair_points2[..., 1:2] * P2_row2 - P2_row1),
+        ],
+        dim=-2,
     )
-
-    for pair_idx, (view_i, view_j) in tqdm(enumerate(pairs), total=n_pairs, desc="Building linear system", leave=False):
-        pair_points1 = points[..., view_i, :, :]
-        pair_points2 = points[..., view_j, :, :]
-        pair_P1 = Ps[..., view_i, :, :]
-        pair_P2 = Ps[..., view_j, :, :]
-        pair_weights = torch.sqrt(
-            points_weights[..., view_i, :] * points_weights[..., view_j, :]
-        )
-
-        for i in range(4):
-            X[..., pair_idx, 0, i] = pair_weights * (
-                pair_points1[..., 0] * pair_P1[..., 2:3, i] - pair_P1[..., 0:1, i]
-            )
-            X[..., pair_idx, 1, i] = pair_weights * (
-                pair_points1[..., 1] * pair_P1[..., 2:3, i] - pair_P1[..., 1:2, i]
-            )
-            X[..., pair_idx, 2, i] = pair_weights * (
-                pair_points2[..., 0] * pair_P2[..., 2:3, i] - pair_P2[..., 0:1, i]
-            )
-            X[..., pair_idx, 3, i] = pair_weights * (
-                pair_points2[..., 1] * pair_P2[..., 2:3, i] - pair_P2[..., 1:2, i]
-            )
 
     X = X.reshape(-1, n_pairs * 4, 4)
 

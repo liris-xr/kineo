@@ -149,13 +149,35 @@ class MVSTriangulationStage(PipelineStage[MVSTriangulationRuntimeConfig]):
             (n_frames, n_views, n_subjects, n_keypoints), device=device
         )
 
-        for annot in tqdm(
-            kps_2d.annotations, desc="Collecting 2D keypoints", leave=False
-        ):
-            view_idx = view_id_to_idx[annot.view_id]
-            subject_idx = subject_id_to_idx[annot.subject_id]
-            all_kps_2d[annot.frame_idx, view_idx, subject_idx] = annot.xy
-            all_kps_2d_scores[annot.frame_idx, view_idx, subject_idx] = annot.scores
+        # Staged into one tensor: assigning per annotation would cost a
+        # host-to-device round trip each, and there are tens of thousands.
+        annots = kps_2d.annotations
+        annot_frame_idx = torch.tensor(
+            [annot.frame_idx for annot in annots], dtype=torch.long
+        )
+        annot_view_idx = torch.tensor(
+            [view_id_to_idx[annot.view_id] for annot in annots], dtype=torch.long
+        )
+        annot_subject_idx = torch.tensor(
+            [subject_id_to_idx[annot.subject_id] for annot in annots],
+            dtype=torch.long,
+        )
+        stacked_xy = torch.stack(
+            [torch.as_tensor(annot.xy) for annot in annots]
+        ).to(device)
+        stacked_scores = torch.stack(
+            [torch.as_tensor(annot.scores) for annot in annots]
+        ).to(device)
+        annot_frame_idx = annot_frame_idx.to(device)
+        annot_view_idx = annot_view_idx.to(device)
+        annot_subject_idx = annot_subject_idx.to(device)
+
+        all_kps_2d[
+            annot_frame_idx, annot_view_idx, annot_subject_idx
+        ] = stacked_xy
+        all_kps_2d_scores[
+            annot_frame_idx, annot_view_idx, annot_subject_idx
+        ] = stacked_scores
 
         all_kps_2d_undistorted = all_kps_2d.clone()
 
@@ -237,10 +259,9 @@ class MVSTriangulationStage(PipelineStage[MVSTriangulationRuntimeConfig]):
                     )
                 )
 
-        # Depth error scales as 1/sin(parallax), so rays that meet too
-        # shallowly put the point anywhere along their length. Those are
-        # dropped rather than exported, which costs reconstruction rate
-        # instead of hiding a metres-wide error inside an accuracy metric.
+        # Depth error scales as 1/sin(parallax): rays meeting too shallowly
+        # place the point anywhere along their length. Dropped rather than
+        # exported, so the cost lands on reconstruction rate.
         valid_kps_3d_mask = torch.isfinite(all_kps_3d).all(dim=-1) & (
             all_kps_3d_parallax >= radians(runtime_cfg.min_parallax_deg)
         )

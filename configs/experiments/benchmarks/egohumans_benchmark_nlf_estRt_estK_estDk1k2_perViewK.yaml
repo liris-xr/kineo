@@ -1,14 +1,10 @@
 # EgoHumans all-view benchmark with per-view intrinsics.
 #
-# Identical to egohumans_benchmark_nlf_estRt_estK_estDk1k2 except that
-# bundle adjustment fits one focal, principal point and distortion set per
-# camera instead of one for the whole rig. Full rigs are the most
-# heterogeneous case: volleyball spans 55.6% in GT focal across its 15
-# cameras (953 to 1909 px), fencing 10.0%, badminton 9.6%.
+# shared_intrinsics off: bundle adjustment fits one focal, principal
+# point and distortion set per camera instead of one for the rig.
 output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/egohumans_benchmark_nlf_estRt_estK_estDk1k2_perViewK"
-# Shares the base config cache on purpose: the cached stages (MoGe
-# intrinsics, NLF keypoints) do not read shared_intrinsics, so their
-# outputs are identical. Re-point if detector or sampling changes.
+# Shares the base config's cache: the cached stages do not read the
+# flag this arm varies.
 cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/egohumans_benchmark_nlf_estRt_estK_estDk1k2"
 use_cache: False
 batch_size: 32

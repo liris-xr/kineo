@@ -1,14 +1,10 @@
 # EgoHumans all-view benchmark, full Brown-Conrady distortion.
 #
-# Ablation arm for egohumans_benchmark_nlf_estRt_estK_estDk1k2: the third bundle
-# adjustment fits all five coefficients (k1, k2, p1, p2, k3) instead of
-# the two radial ones. EgoHumans GT is opencv_fisheye, so neither model
-# is correct here - this measures whether the extra tangential and
-# higher-order radial terms help or just absorb error.
+# Fits all five coefficients instead of the two radial ones. GT is
+# opencv_fisheye, so neither model is correct here.
 output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/egohumans_benchmark_nlf_estRt_estK_estD"
-# Shares the estDk1k2 cache on purpose: the cached stages (MoGe
-# intrinsics, NLF keypoints) do not read optimize_distortion_coefficients,
-# so their outputs are identical. Re-point if detector or sampling changes.
+# Shares the base config's cache: the cached stages do not read the
+# flag this arm varies.
 cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/egohumans_benchmark_nlf_estRt_estK_estDk1k2"
 use_cache: False
 batch_size: 32
