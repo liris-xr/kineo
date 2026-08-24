@@ -13,7 +13,10 @@ from kineo.annotations.keypoints_3d import (
     Keypoints3DAnnotationsMetadata,
 )
 from kineo.pipeline.stages.nlf.skeleton_keypoints_format import SMPL_22_KEYPOINTS_FORMAT
-from kineo.eval.human_metrics import compute_human_metrics, flatten_human_metrics
+from kineo.eval.human_metrics import (
+    compute_human_metrics,
+    flatten_human_metrics,
+)
 
 _CENTERS = {"cam01": [1.0, 0.0, 0.0], "cam02": [0.0, 1.0, 0.0],
             "cam03": [0.0, 0.0, 1.0], "cam04": [1.0, 1.0, 0.0]}
@@ -105,8 +108,11 @@ def test_unpredicted_keypoints_are_nan_not_origin_errors():
     w = torch.tensor(flat["w-mpjpe"])
     assert torch.isnan(w).sum() == 2, "one masked keypoint per frame expected"
     assert w.nanmean() < 1e-3, "remaining keypoints match, so the mean stays ~0"
-    # The whole pose is dropped from PA-MPJPE, its Procrustes fit is contaminated.
-    assert torch.isnan(torch.tensor(flat["pa-mpjpe"])).all()
+    # The Procrustes fit weights the unpredicted keypoint out, so the pose
+    # survives: only that keypoint is masked, and the rest still align exactly.
+    pa = torch.tensor(flat["pa-mpjpe"])
+    assert torch.isnan(pa).sum() == 2, "only the masked keypoint is dropped"
+    assert pa.nanmean() < 1e-3, "excluding it leaves an uncontaminated fit"
 
 
 def test_gt_frames_without_a_prediction_are_nan():
@@ -143,6 +149,36 @@ def _keypoints_with_unreconstructed(unreconstructed_per_frame: int):
         metadata=Keypoints3DAnnotationsMetadata(formats=[SMPL_22_KEYPOINTS_FORMAT]),
         annotations=anns,
     )
+
+
+def test_pa_mpjpe_needs_three_keypoints_to_score_a_pose():
+    # A similarity transform needs three points to be determined; with fewer it
+    # absorbs any error, so the whole pose must be dropped rather than scored.
+    # The counts are literal on purpose: deriving them from
+    # MIN_PROCRUSTES_KEYPOINTS would move them in lockstep with the guard and
+    # the test could never catch it changing.
+    n_kp = SMPL_22_KEYPOINTS_FORMAT.n_keypoints
+    ext = _extrinsics([(v, 0, [0.0, 0.0, 0.0]) for v in _CENTERS])
+    gt = _keypoints()
+
+    def pa_for(n_scored):
+        flat = flatten_human_metrics(
+            compute_human_metrics(
+                gt,
+                ext,
+                _keypoints_with_unreconstructed(
+                    unreconstructed_per_frame=n_kp - n_scored
+                ),
+                ext,
+            )
+        )
+        return torch.tensor(flat["pa-mpjpe"])
+
+    three = pa_for(3)
+    assert not torch.isnan(three).all(), "three keypoints determine the fit"
+    assert torch.isnan(three).sum() == 2 * (n_kp - 3)
+
+    assert torch.isnan(pa_for(2)).all(), "two keypoints cannot determine a fit"
 
 
 def test_reconstruction_rate_counts_unreconstructed_keypoints():
