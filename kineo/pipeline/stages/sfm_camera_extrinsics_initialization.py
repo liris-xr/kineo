@@ -57,6 +57,8 @@ class SfMCameraExtrinsicsInitializationRuntimeConfig:
     tolerance_change: float = 1e-09
     use_lbfgs: bool = True
     n_relative_scale_factors_iters: int = 10
+    scale_triplet_weighting: str = "irls"
+    n_scale_irls_iters: int = 5
     refinement_huber_delta: float = 1.0
     rotation_outlier_thresh_deg: float = 7.0
     n_rotation_averaging_iters: int = 100
@@ -170,6 +172,8 @@ class SfMCameraExtrinsicsInitializationStage(
             tolerance_grad=runtime_cfg.tolerance_grad,
             tolerance_change=runtime_cfg.tolerance_change,
             n_relative_scale_factors_iters=runtime_cfg.n_relative_scale_factors_iters,
+        scale_triplet_weighting=runtime_cfg.scale_triplet_weighting,
+        n_scale_irls_iters=runtime_cfg.n_scale_irls_iters,
             refinement_huber_delta=runtime_cfg.refinement_huber_delta,
             rotation_outlier_thresh_deg=runtime_cfg.rotation_outlier_thresh_deg,
             n_rotation_averaging_iters=runtime_cfg.n_rotation_averaging_iters,
@@ -209,6 +213,8 @@ def _estimate_camera_extrinsics(
     tolerance_grad: float = 1e-05,
     tolerance_change: float = 1e-09,
     n_relative_scale_factors_iters: int = 10,
+    scale_triplet_weighting: str = "irls",
+    n_scale_irls_iters: int = 5,
     refinement_huber_delta: float = 1.0,
     rotation_outlier_thresh_deg: float = 7.0,
     n_rotation_averaging_iters: int = 100,
@@ -274,6 +280,8 @@ def _estimate_camera_extrinsics(
     graph = _compute_relative_scale_factors(
         graph,
         n_iters=n_relative_scale_factors_iters,
+        n_irls_iters=n_scale_irls_iters,
+        weighting=scale_triplet_weighting,
         tolerance_grad=tolerance_grad,
         tolerance_change=tolerance_change,
     )
@@ -926,10 +934,50 @@ def _refine_fundamental_matrix(
     return F_refined
 
 
+SCALE_TRIPLET_WEIGHTINGS = ("irls", "edge_cost", "uniform")
+
+
+def edge_cost_triplet_weights(
+    costs: torch.Tensor, valid: torch.Tensor
+) -> torch.Tensor:
+    """Weights a triplet by how cheap its three edges were, best to worst.
+
+    The pre-IRLS scale solve scored a triplet by the mean Sampson distance of
+    its edges, min-max normalised across the sequence. Costs are only
+    comparable within a sequence, hence the normalisation; invalid triplets
+    stay out of it so one unusable triplet cannot flatten the rest.
+
+    The caller square-roots these before folding them into the design matrix,
+    which reproduces that solve's sqrt(1 - cost) factor.
+
+    Args:
+        costs: Mean edge cost per triplet, shape (L,).
+        valid: Whether each triplet's edges all yielded a relative pose.
+
+    Returns:
+        Weights in [0, 1] with shape (L,), zero wherever valid is False.
+    """
+    weights = torch.zeros_like(costs)
+
+    if not bool(valid.any()):
+        return weights
+
+    valid_costs = costs[valid]
+    lo, hi = valid_costs.min(), valid_costs.max()
+    normalized = (
+        (valid_costs - lo) / (hi - lo)
+        if hi > lo
+        else torch.zeros_like(valid_costs)
+    )
+    weights[valid] = (1.0 - normalized).clamp_min(0.0)
+    return weights
+
+
 def _compute_relative_scale_factors(
     graph: nx.DiGraph,
     n_iters: int = 10,
     n_irls_iters: int = 5,
+    weighting: str = "irls",
     tolerance_grad: float = 1e-05,
     tolerance_change: float = 1e-09,
 ) -> nx.DiGraph:
@@ -980,8 +1028,15 @@ def _compute_relative_scale_factors(
     # the averaged absolute node rotations (trustworthy) rather than raw edge
     # rotations. A triplet is invalid when any of its edges failed pose estimation.
     L, M = n_triplets, n_pairs
+    if weighting not in SCALE_TRIPLET_WEIGHTINGS:
+        raise ValueError(
+            f"Unknown scale triplet weighting: {weighting}. "
+            f"Expected one of {SCALE_TRIPLET_WEIGHTINGS}."
+        )
+
     A_base = torch.zeros((3, L, M), device=device)
     valid = torch.zeros(L, dtype=torch.bool, device=device)
+    triplet_costs = torch.zeros(L, device=device)
 
     for triplet_idx, (i, j, k) in enumerate(triplets):
         if any(
@@ -990,6 +1045,10 @@ def _compute_relative_scale_factors(
         ):
             continue
         valid[triplet_idx] = True
+        triplet_costs[triplet_idx] = sum(
+            torch.as_tensor(graph[a][b]["cost"], device=device)
+            for a, b in ((i, j), (j, k), (k, i))
+        ) / 3.0
 
         R_i = graph.nodes[i]["Rt"][:3, :3]
         R_j = graph.nodes[j]["Rt"][:3, :3]
@@ -1009,7 +1068,12 @@ def _compute_relative_scale_factors(
         A_base[:, triplet_idx, graph[k][i]["lambda_idx"]] = t_ki_hat
 
     log_lmb = torch.zeros((M,), device=device, requires_grad=True)
-    weights = valid.float()
+    if weighting == "edge_cost":
+        weights = edge_cost_triplet_weights(triplet_costs, valid)
+    else:
+        weights = valid.float()
+    # Only IRLS revisits its weights; the others solve once.
+    n_rounds = n_irls_iters if weighting == "irls" else 1
 
     def closure():
         optimizer.zero_grad()
@@ -1022,7 +1086,7 @@ def _compute_relative_scale_factors(
         return total_loss
 
     pbar = tqdm(
-        range(n_irls_iters), desc="Computing relative scale factors", leave=False
+        range(n_rounds), desc="Computing relative scale factors", leave=False
     )
     for _ in pbar:
         optimizer = torch.optim.LBFGS(
@@ -1042,6 +1106,9 @@ def _compute_relative_scale_factors(
             ):
                 break
             prev_losses.append(loss.detach())
+
+        if weighting != "irls":
+            continue
 
         # Reweight triplets by their closure residual (Huber IRLS, adaptive scale).
         with torch.no_grad():

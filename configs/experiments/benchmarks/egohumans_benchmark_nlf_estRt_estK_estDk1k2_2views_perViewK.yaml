@@ -235,6 +235,8 @@ pipeline:
         ransac_confidence: 0.999
         ransac_reproj_threshold: 3.0
         n_refinement_iters: 200
+        scale_triplet_weighting: "irls"
+        n_scale_irls_iters: 5
         tolerance_grad: 1e-05
         tolerance_change: 1e-09
 
