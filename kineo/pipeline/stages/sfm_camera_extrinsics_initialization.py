@@ -384,6 +384,60 @@ def _pair_has_correspondences(graph: nx.DiGraph, view_i: int, view_j: int) -> bo
     return not bool(torch.isinf(cost))
 
 
+def batched_epipolar_huber_loss(
+    Rts: torch.Tensor,
+    Ks: torch.Tensor,
+    edge_index: torch.Tensor,
+    points1: torch.Tensor,
+    points2: torch.Tensor,
+    valid: torch.Tensor,
+    huber_delta: float,
+) -> torch.Tensor:
+    """Mean over edges of each edge's mean Huber-ed Sampson distance.
+
+    Evaluating one edge at a time launches a handful of tiny kernels per edge,
+    and a 20-camera rig has 190 of them inside every line-search evaluation, so
+    the loop costs far more than the arithmetic it performs. Stacking the edges
+    turns it into a constant number of batched kernels.
+
+    Args:
+        Rts: Absolute camera poses, shape (V, 3, 4).
+        Ks: Camera intrinsic matrices, shape (V, 3, 3).
+        edge_index: View pairs, shape (E, 2).
+        points1: Correspondences in the first view, padded, shape (E, N, 2).
+        points2: Correspondences in the second view, padded, shape (E, N, 2).
+        valid: Which correspondences are real rather than padding, shape (E, N).
+        huber_delta: Huber threshold on the Sampson distance.
+
+    Returns:
+        Scalar loss.
+    """
+    view_i, view_j = edge_index[:, 0], edge_index[:, 1]
+
+    E_mat = kornia.geometry.essential_from_Rt(
+        R1=Rts[view_i][:, :3, :3],
+        t1=Rts[view_i][:, :3, 3:],
+        R2=Rts[view_j][:, :3, :3],
+        t2=Rts[view_j][:, :3, 3:],
+    )
+    F_mat = kornia.geometry.epipolar.fundamental_from_essential(
+        E_mat, Ks[view_i], Ks[view_j]
+    )
+    sampson = kornia.geometry.epipolar.sampson_epipolar_distance(
+        pts1=points1, pts2=points2, Fm=F_mat
+    )
+    huber = torch.nn.functional.huber_loss(
+        input=sampson,
+        target=torch.zeros_like(sampson),
+        reduction="none",
+        delta=huber_delta,
+    )
+    # Padding must not enter any edge's mean, so mask before reducing.
+    weights = valid.to(huber.dtype)
+    per_edge = (huber * weights).sum(dim=-1) / weights.sum(dim=-1).clamp_min(1.0)
+    return per_edge.mean()
+
+
 def _refine_camera_extrinsics(
     graph: nx.DiGraph,
     n_iters: int = 100,
@@ -431,6 +485,43 @@ def _refine_camera_extrinsics(
 
     print(f"Refining camera extrinsics using {len(edges_no_selfloops)} edges.")
 
+    # Stack every edge's correspondences once. Pairs keep different numbers of
+    # points, so short edges are padded with a repeat of their first point and
+    # masked out of the reduction.
+    edge_index = torch.tensor(
+        edges_no_selfloops, dtype=torch.long, device=device
+    )
+    Ks_all = torch.stack(
+        [graph.nodes[view_idx]["K"] for view_idx in range(n_views)]
+    )
+    edge_points1 = [
+        graph.edges[view_i, view_j]["points1"]
+        for view_i, view_j in edges_no_selfloops
+    ]
+    edge_points2 = [
+        graph.edges[view_i, view_j]["points2"]
+        for view_i, view_j in edges_no_selfloops
+    ]
+    n_points_max = max(points.shape[0] for points in edge_points1)
+    n_edges = len(edges_no_selfloops)
+    points1_padded = torch.zeros(
+        (n_edges, n_points_max, 2), dtype=torch.float32, device=device
+    )
+    points2_padded = torch.zeros_like(points1_padded)
+    points_valid = torch.zeros(
+        (n_edges, n_points_max), dtype=torch.bool, device=device
+    )
+    for edge_idx, (points_i, points_j) in enumerate(
+        zip(edge_points1, edge_points2)
+    ):
+        n_points = points_i.shape[0]
+        points1_padded[edge_idx, :n_points] = points_i
+        points2_padded[edge_idx, :n_points] = points_j
+        points1_padded[edge_idx, n_points:] = points_i[0]
+        points2_padded[edge_idx, n_points:] = points_j[0]
+        points_valid[edge_idx, :n_points] = True
+
+
     had_finite_loss = False
 
     def opt_closure():
@@ -441,40 +532,15 @@ def _refine_camera_extrinsics(
             [origin_camera_extrinsics.Rt, other_cameras_extrinsics.Rt], dim=0
         )
 
-        sampson_loss = torch.tensor(0.0, device=device)
-
-        for view_i, view_j in edges_no_selfloops:
-            # Take the points from the original graph, because the undirected one might have dropped the attributes
-            undistorted_points1 = graph.edges[view_i, view_j]["points1"]
-            undistorted_points2 = graph.edges[view_i, view_j]["points2"]
-            K_i = graph.nodes[view_i]["K"]
-            K_j = graph.nodes[view_j]["K"]
-
-            E = kornia.geometry.essential_from_Rt(
-                R1=Rts[view_i][:3, :3],
-                t1=Rts[view_i][:3, 3:],
-                R2=Rts[view_j][:3, :3],
-                t2=Rts[view_j][:3, 3:],
-            )
-
-            F = kornia.geometry.epipolar.fundamental_from_essential(E, K_i, K_j)
-
-            sampson_dist = kornia.geometry.epipolar.sampson_epipolar_distance(
-                pts1=undistorted_points1,
-                pts2=undistorted_points2,
-                Fm=F.unsqueeze(0),
-            ).squeeze(0)
-
-            huber_loss = torch.nn.functional.huber_loss(
-                input=sampson_dist,
-                target=torch.zeros_like(sampson_dist),
-                reduction="none",
-                delta=refinement_huber_delta,
-            )
-
-            sampson_loss += huber_loss.mean()
-
-        total_loss = sampson_loss / len(edges_no_selfloops)
+        total_loss = batched_epipolar_huber_loss(
+            Rts=Rts,
+            Ks=Ks_all,
+            edge_index=edge_index,
+            points1=points1_padded,
+            points2=points2_padded,
+            valid=points_valid,
+            huber_delta=refinement_huber_delta,
+        )
         # A non-finite step mid-optimization (e.g. degenerate pose, |t|->0) gets a
         # large finite loss so LBFGS line-search backtracks. But a non-finite very
         # first evaluation means the seed geometry itself is degenerate: there is
