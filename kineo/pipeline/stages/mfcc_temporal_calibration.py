@@ -194,9 +194,17 @@ def _mfcc_cross_correlate(ref: torch.Tensor, sub: torch.Tensor) -> torch.Tensor:
     """
     FFT-based cross-correlation summed across MFCC coefficients.
 
-    Each coefficient is normalized to unit variance before correlation so that
-    no single cepstral band dominates the alignment signal (low-order MFCC
-    coefficients carry much more energy than high-order ones without this step).
+    Each coefficient is centered and normalized to unit variance before
+    correlation so that no single cepstral band dominates the alignment signal
+    (low-order MFCC coefficients carry much more energy than high-order ones
+    without this step).
+
+    Centering is what makes the peak meaningful, not a refinement of it: c0
+    (log energy) has a mean on the order of 60x its standard deviation, and an
+    uncentered correlation is therefore dominated by the product of the two
+    means times the overlap length. That term is a triangular envelope peaking
+    at full overlap, which pins ``argmax`` at zero lag for equal-length clips
+    whatever the true offset is.
 
     Uses the time-reversal trick: convolving ``ref`` with ``sub[::-1]`` is
     equivalent to cross-correlating ``ref`` with ``sub``, without needing
@@ -210,10 +218,10 @@ def _mfcc_cross_correlate(ref: torch.Tensor, sub: torch.Tensor) -> torch.Tensor:
         1D float64 tensor of length ``T_ref + T_sub - 1``. Zero-lag is at index
         ``T_sub - 1``; a peak at index k gives ``lag = k - (T_sub - 1)`` hops.
     """
-    ref_std = ref.std(dim=1, keepdim=True).clamp(min=1e-8)
-    sub_std = sub.std(dim=1, keepdim=True).clamp(min=1e-8)
-    ref_n = ref / ref_std
-    sub_rev = sub.flip(dims=[1]) / sub_std
+    ref_c = ref - ref.mean(dim=1, keepdim=True)
+    sub_c = sub - sub.mean(dim=1, keepdim=True)
+    ref_n = ref_c / ref_c.std(dim=1, keepdim=True).clamp(min=1e-8)
+    sub_rev = sub_c.flip(dims=[1]) / sub_c.std(dim=1, keepdim=True).clamp(min=1e-8)
 
     # Pad >= linear-conv length so the FFT's circular convolution equals the linear one.
     valid_len = ref.shape[1] + sub.shape[1] - 1
