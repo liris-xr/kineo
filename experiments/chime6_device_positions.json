@@ -1,0 +1,145 @@
+{
+  "provenance": "Unit positions measured by hand in pixels off the floorplan rasters embedded in floorplans/dev/<session>.pdf, origin at top-left with y increasing downward. Converted with a per-axis scale from annotated wall spans. Kinect cones on the plan mark device position at the cone apex. Room labels as annotated on the plan.",
+  "coordinate_frame": "x right, y down, origin top-left of the floorplan image, metres. Only pairwise distances are used downstream, so the y-down convention is harmless.",
+  "sound_speed_m_per_s": 343.0,
+  "sessions": {
+    "S02": {
+      "scale_m_per_px": {
+        "x": 0.004243,
+        "y": 0.004245
+      },
+      "scale_anisotropy_pct": 0.03,
+      "units": {
+        "U01": {
+          "x": 2.987,
+          "y": 1.851,
+          "room": "kitchen",
+          "pixel": [
+            704,
+            436
+          ],
+          "has_audio": true
+        },
+        "U02": {
+          "x": 0.484,
+          "y": 1.04,
+          "room": "kitchen",
+          "pixel": [
+            114,
+            245
+          ],
+          "has_audio": true
+        },
+        "U03": {
+          "x": 2.907,
+          "y": 0.25,
+          "room": "dining",
+          "pixel": [
+            685,
+            59
+          ],
+          "has_audio": true
+        },
+        "U04": {
+          "x": 5.096,
+          "y": 0.934,
+          "room": "dining",
+          "pixel": [
+            1201,
+            220
+          ],
+          "has_audio": true
+        },
+        "U05": {
+          "x": 4.171,
+          "y": 2.025,
+          "room": "living",
+          "pixel": [
+            983,
+            477
+          ],
+          "has_audio": true
+        },
+        "U06": {
+          "x": 2.092,
+          "y": 5.556,
+          "room": "living",
+          "pixel": [
+            493,
+            1309
+          ],
+          "has_audio": true
+        }
+      }
+    },
+    "S09": {
+      "scale_m_per_px": {
+        "x": 0.005989,
+        "y": 0.006164
+      },
+      "scale_anisotropy_pct": 2.89,
+      "units": {
+        "U01": {
+          "x": 0.335,
+          "y": 6.83,
+          "room": "kitchen_dining",
+          "pixel": [
+            56,
+            1108
+          ],
+          "has_audio": true
+        },
+        "U02": {
+          "x": 4.408,
+          "y": 6.713,
+          "room": "kitchen_dining",
+          "pixel": [
+            736,
+            1089
+          ],
+          "has_audio": true
+        },
+        "U03": {
+          "x": 4.408,
+          "y": 5.498,
+          "room": "kitchen_dining",
+          "pixel": [
+            736,
+            892
+          ],
+          "has_audio": true
+        },
+        "U04": {
+          "x": 4.324,
+          "y": 4.463,
+          "room": "kitchen_dining",
+          "pixel": [
+            722,
+            724
+          ],
+          "has_audio": true
+        },
+        "U05": {
+          "x": 6.042,
+          "y": 4.056,
+          "room": "living",
+          "pixel": [
+            1009,
+            658
+          ],
+          "has_audio": false
+        },
+        "U06": {
+          "x": 3.509,
+          "y": 3.433,
+          "room": "living",
+          "pixel": [
+            586,
+            557
+          ],
+          "has_audio": true
+        }
+      }
+    }
+  }
+}
