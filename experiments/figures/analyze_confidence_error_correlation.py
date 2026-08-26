@@ -1,5 +1,5 @@
 """Within-joint Spearman correlation between 3D confidence score and per-joint
-reconstruction error (W-MPJPE / PA-MPJPE).
+reconstruction error (PA-MPJPE).
 
 Quick check: does the pipeline's per-joint confidence track per-joint error?
 Expect NEGATIVE rho (high confidence -> low error).
@@ -10,20 +10,26 @@ Method:
   - Report distribution across joints (median + IQR). Avoids Simpson-paradox
     from pooling joints with different confidence/error scales.
   - Also reports a naive pooled rho over all (joint, frame) pairs for reference.
+  - Finally reports how far the score is explained by visibility alone, since
+    the consensus score averages over view pairs that never saw the keypoint.
 
 Usage:
   python -m experiments.figures.analyze_confidence_error_correlation \
-      <dataset_dir> <predictions_dir> [--metric w-mpjpe|pa-mpjpe] \
-      [--sequences-file NAME.json] [--drop-zero-conf] [--min-samples N]
+      <dataset_dir> <predictions_dir> [--metric pa-mpjpe] \
+      [--sequences-file NAME.json] [--drop-zero-conf] [--min-samples N] \
+      [--visibility-threshold T]
 """
 
 import argparse
 import os
+import pickle
 
 import numpy as np
 import orjson
 from scipy.stats import spearmanr
 
+from kineo.annotations.keypoints_2d import Keypoints2DAnnotations
+from kineo.annotations.keypoints_3d import Keypoints3DAnnotations
 from kineo.eval.human_metrics import compute_human_metrics
 from experiments.figures.egohumans_stats_utils import (
     load_gt_annotations,
@@ -97,6 +103,71 @@ def collect_pairs(dataset_dir, predictions_dir, metric, sequences_file, drop_zer
     return per_joint
 
 
+def collect_visibility(predictions_dir, sequences, threshold):
+    """Per triangulated keypoint: 3D score, view count and pair-weight sum.
+
+    The consensus score averages over every view pair, so pairs whose views
+    never saw the joint stay in the denominator and pull the score down. That
+    makes the score partly a visibility proxy; these are the paired samples
+    needed to measure how much of it visibility explains.
+
+    The pair-weight sum is the threshold-free counterpart of the view count:
+    it is the score's own weighting, sum over pairs of sqrt(w_i * w_j),
+    evaluated in closed form rather than by forming the pairs.
+
+    Args:
+        predictions_dir: Directory holding one subdirectory per sequence.
+        sequences: Sequence entries from the dataset index.
+        threshold: 2D score above which a view counts as seeing the joint.
+
+    Returns:
+        Sequence name -> (scores, view_counts, pair_weight_sums), each a 1-D
+        array over the keypoints the pipeline kept.
+    """
+    per_sequence = {}
+
+    for sequence in sequences:
+        seq_name = sequence["sequence_name"]
+        kps_2d_file = os.path.join(predictions_dir, seq_name, "keypoints_2d.pkl")
+        kps_3d_file = os.path.join(predictions_dir, seq_name, "keypoints_3d.pkl")
+        if not (os.path.isfile(kps_2d_file) and os.path.isfile(kps_3d_file)):
+            continue
+
+        with open(kps_2d_file, "rb") as f:
+            kps_2d = Keypoints2DAnnotations.from_dict(pickle.load(f))
+        with open(kps_3d_file, "rb") as f:
+            kps_3d = Keypoints3DAnnotations.from_dict(pickle.load(f))
+
+        views_scores = {}
+        for ann in kps_2d.annotations:
+            key = (ann.frame_idx, ann.subject_id)
+            views_scores.setdefault(key, []).append(ann.scores.cpu().numpy())
+
+        scores, view_counts, pair_weight_sums = [], [], []
+        for ann in kps_3d.annotations:
+            per_view = views_scores.get((ann.frame_idx, ann.subject_id))
+            if per_view is None:
+                continue
+            per_view = np.stack(per_view)
+            score = ann.scores.cpu().numpy()
+            # Zeroed scores are keypoints triangulation dropped, not weak ones.
+            kept = score > 0
+            root = np.sqrt(per_view)
+            pair_sum = (root.sum(axis=0) ** 2 - per_view.sum(axis=0)) / 2.0
+            scores.append(score[kept])
+            view_counts.append((per_view > threshold).sum(axis=0)[kept])
+            pair_weight_sums.append(pair_sum[kept])
+
+        if scores:
+            per_sequence[seq_name] = (
+                np.concatenate(scores),
+                np.concatenate(view_counts),
+                np.concatenate(pair_weight_sums),
+            )
+
+    return per_sequence
+
+
 def compute_ause(conf, err, n_steps=100):
     """AUSE: does confidence rank errors like the oracle?
 
@@ -139,7 +210,11 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("dataset_dir")
     ap.add_argument("predictions_dir")
-    ap.add_argument("--metric", choices=["w-mpjpe", "pa-mpjpe"], default="w-mpjpe")
+    ap.add_argument(
+        "--metric",
+        choices=["pa-mpjpe"],
+        default="pa-mpjpe",
+    )
     ap.add_argument("--sequences-file", default="egohumans_sequences.json")
     ap.add_argument(
         "--drop-zero-conf",
@@ -147,6 +222,12 @@ def main():
         help="Drop samples with confidence==0 (invalid triangulation).",
     )
     ap.add_argument("--min-samples", type=int, default=30)
+    ap.add_argument(
+        "--visibility-threshold",
+        type=float,
+        default=0.3,
+        help="2D score above which a view counts as seeing the keypoint.",
+    )
     args = ap.parse_args()
 
     per_joint = collect_pairs(
@@ -211,6 +292,65 @@ def main():
         prho, pp = spearmanr(pc, pe)
         print(f"\n--- Naive pooled (all joints, reference only) ---")
         print(f"n = {len(pc)}   rho = {prho:.3f}   p = {pp:.2e}")
+
+    report_visibility(
+        args.predictions_dir,
+        args.dataset_dir,
+        args.sequences_file,
+        args.visibility_threshold,
+        args.min_samples,
+    )
+
+
+def report_visibility(
+    predictions_dir, dataset_dir, sequences_file, threshold, min_samples
+):
+    """Print how far the confidence score is explained by view visibility."""
+    with open(os.path.join(dataset_dir, sequences_file), "rb") as f:
+        sequences = orjson.loads(f.read())
+
+    per_sequence = collect_visibility(predictions_dir, sequences, threshold)
+    if not per_sequence:
+        print("\nno sequences with 2D and 3D predictions, skipping visibility")
+        return
+
+    rho_counts, rho_weights = [], []
+    for scores, counts, weight_sums in per_sequence.values():
+        if len(scores) < min_samples or np.std(scores) == 0:
+            continue
+        if np.std(counts) > 0:
+            rho_counts.append(spearmanr(scores, counts).statistic)
+        if np.std(weight_sums) > 0:
+            rho_weights.append(spearmanr(scores, weight_sums).statistic)
+
+    print(f"\n=== Confidence vs visibility (threshold {threshold}) ===")
+    print("(rho POSITIVE = score tracks how many views saw the keypoint)\n")
+    for label, rhos in (
+        (f"#views with 2D score > {threshold}", np.array(rho_counts)),
+        ("sum of pair weights (threshold-free)", np.array(rho_weights)),
+    ):
+        if not len(rhos):
+            print(f"{label:<38} --")
+            continue
+        q25, q50, q75 = np.percentile(rhos, [25, 50, 75])
+        print(
+            f"{label:<38} median rho {q50:>6.3f}   "
+            f"IQR [{q25:.3f}, {q75:.3f}]   "
+            f"min/max {rhos.min():.3f}/{rhos.max():.3f}   "
+            f"n_seq {len(rhos)}"
+        )
+
+    all_scores = np.concatenate([s for s, _, _ in per_sequence.values()])
+    all_counts = np.concatenate([c for _, c, _ in per_sequence.values()])
+    print("\n--- Median score by view count (pooled) ---")
+    for count in np.unique(all_counts):
+        mask = all_counts == count
+        if mask.sum() < min_samples:
+            continue
+        print(
+            f"  #views={count:>3}  n={mask.sum():>9}  "
+            f"score median={np.median(all_scores[mask]):.4f}"
+        )
 
 
 if __name__ == "__main__":
