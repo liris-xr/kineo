@@ -102,7 +102,7 @@ def _warn_if_robust_loss_saturated(
     )
     keep = (
         errors.isfinite()
-        & (depth.squeeze(-1).abs() > MIN_PROJECTION_DEPTH)
+        & (depth.squeeze(-1) > MIN_PROJECTION_DEPTH)
         & (kps_2d_scores > 0)
     )
     if not keep.any():
@@ -435,10 +435,12 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
 
             weights = kps_2d_scores.view(n_views, -1)
 
-            # A point on the camera plane projects to a bounded but meaningless
-            # residual; left in, it dwarfs every real observation.
+            # A point on or behind the camera plane projects to a bounded but
+            # meaningless residual: on the plane it dwarfs every real
+            # observation, and behind it the projection is mirrored, so a
+            # cheirality-violating pose can score a small error and be kept.
             valid_mask = residuals_huber.isfinite() & (
-                depth.squeeze(-1).abs() > MIN_PROJECTION_DEPTH
+                depth.squeeze(-1) > MIN_PROJECTION_DEPTH
             )
             n_valid = int(valid_mask.sum())
             residuals_huber = residuals_huber[valid_mask]
