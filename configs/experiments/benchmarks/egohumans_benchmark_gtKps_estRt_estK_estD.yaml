@@ -62,12 +62,12 @@ pipeline:
         tolerance_change: 1e-09
     
     bundle_adjustment_sampling:
-      _target_: kineo.pipeline.stages.bundle_adjustment_sampling.BundleAdjustmentSamplingStage
+      _target_: kineo.pipeline.stages.bundle_adjustment_random_sampling.BundleAdjustmentRandomSamplingStage
       name: "Bundle Adjustment Sampling"
       order: 55
       runtime_cfg:
-        _target_: kineo.pipeline.stages.bundle_adjustment_sampling.BundleAdjustmentSamplingRuntimeConfig
-        n_kp_samples: 200
+        _target_: kineo.pipeline.stages.bundle_adjustment_random_sampling.BundleAdjustmentRandomSamplingRuntimeConfig
+        n_kp_samples_per_view: 50
         min_kp_score: 0.5
 
     bundle_adjustment_1: # Only optimize camera extrinsics

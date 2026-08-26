@@ -19,7 +19,10 @@ from kineo.annotations.camera_intrinsics import (
     CameraIntrinsicsAnnotations,
     CameraDistortionModel,
 )
-from kineo.annotations.keypoints_2d import Keypoints2DAnnotations
+from kineo.annotations.keypoints_2d import (
+    Keypoints2DAnnotations,
+    stage_keypoints_2d,
+)
 from kineo.annotations.camera_extrinsics import CameraExtrinsicsAnnotations
 from kineo.geometry.triangulation import triangulate_points
 from kineo.annotations.global_time_reference import GlobalTimeReferenceAnnotation
@@ -34,27 +37,32 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
-class BundleAdjustmentSamplingRuntimeConfig:
+class BundleAdjustmentRandomSamplingRuntimeConfig:
     keypoints_indices: list[int] | None = None
-    n_kp_samples: int = 1000
+    # Per view, not per sequence: a rig's cameras each need their own share of
+    # the observations, and a shared budget would thin it as views are added.
+    # -1 keeps every candidate.
+    n_kp_samples_per_view: int = 50
     min_kp_score: float = 0.4
 
 
-class BundleAdjustmentSamplingStage(
-    PipelineStage[BundleAdjustmentSamplingRuntimeConfig]
+class BundleAdjustmentRandomSamplingStage(
+    PipelineStage[BundleAdjustmentRandomSamplingRuntimeConfig]
 ):
-    """
-    Graph-based stage for refining the camera extrinsics parameters.
+    """Draws the bundle adjustment observations uniformly at random.
 
-    Uses :class:`CameraIntrinsicsAnnotations` and :class:`Keypoints2DAnnotations` from the previous stages and produces :class:`CameraExtrinsicsAnnotations`.
+    Each view draws from its own confident observations and the selections are
+    unioned, so the draw is uniform over candidates rather than spread over the
+    image plane. :class:`BundleAdjustmentFpsSamplingStage` is the counterpart
+    that samples for coverage instead.
     """
 
     def __init__(
         self,
         name: str,
         order: int,
-        runtime_cfg: BundleAdjustmentSamplingRuntimeConfig,
-        dynamic_runtime_cfg: dict[str, BundleAdjustmentSamplingRuntimeConfig]
+        runtime_cfg: BundleAdjustmentRandomSamplingRuntimeConfig,
+        dynamic_runtime_cfg: dict[str, BundleAdjustmentRandomSamplingRuntimeConfig]
         | None = None,
     ):
         super().__init__(
@@ -71,7 +79,7 @@ class BundleAdjustmentSamplingStage(
         views: list[ViewInput],
         annotations: dict[str, Annotations],
         gt_annotations: dict[str, Annotations],
-        runtime_cfg: BundleAdjustmentSamplingRuntimeConfig,
+        runtime_cfg: BundleAdjustmentRandomSamplingRuntimeConfig,
     ):
         device = pipeline.device
 
@@ -102,7 +110,6 @@ class BundleAdjustmentSamplingStage(
 
         subjects_ids = kps_2d.subjects_ids
         n_views = len(views_ids)
-        n_subjects = len(subjects_ids)
         n_keypoints = kps_2d.metadata.formats[0].n_keypoints
         distortion_model = cameras_intrinsics.first_or_default().distortion_model
 
@@ -148,43 +155,57 @@ class BundleAdjustmentSamplingStage(
         else:
             keypoints_indices = torch.arange(n_keypoints)
 
-        n_selected_keypoints = len(keypoints_indices)
-
         world_timestamps = global_time_reference.timestamps
         n_frames = len(world_timestamps)
 
-        kps_xy = torch.zeros(
-            n_views, n_frames, n_subjects, n_selected_keypoints, 2, device=device
-        )
-        kps_scores = torch.zeros(
-            n_views, n_frames, n_subjects, n_selected_keypoints, device=device
+        kps_xy, kps_scores = stage_keypoints_2d(
+            kps_2d=kps_2d,
+            view_id_to_idx=view_id_to_idx,
+            subject_id_to_idx=subject_id_to_idx,
+            n_frames=n_frames,
+            keypoints_indices=keypoints_indices,
         )
 
-        for annot in tqdm(
-            kps_2d.annotations, desc="Collecting 2D keypoints", leave=False
-        ):
-            view_idx = view_id_to_idx[annot.view_id]
-            subject_idx = subject_id_to_idx[annot.subject_id]
-            kps_xy[view_idx, annot.frame_idx, subject_idx] = annot.xy[keypoints_indices]
-            kps_scores[view_idx, annot.frame_idx, subject_idx] = annot.scores[
-                keypoints_indices
-            ]
-
-        kps_xy = kps_xy.reshape(n_views, -1, 2)
-        kps_scores = kps_scores.reshape(n_views, -1)
+        # Staged frame-major, sampled view-major; the flat candidate axis stays
+        # ordered (frame, subject, keypoint) either way.
+        kps_xy = kps_xy.permute(1, 0, 2, 3, 4).reshape(n_views, -1, 2).to(device)
+        kps_scores = kps_scores.permute(1, 0, 2, 3).reshape(n_views, -1).to(device)
 
         # Candidates are the keypoints with at least two views with score > min_kp_score
-        candidates_mask = (kps_scores > runtime_cfg.min_kp_score).sum(dim=0) >= 2
+        confident_mask = kps_scores > runtime_cfg.min_kp_score
+        candidates_indices = torch.where(confident_mask.sum(dim=0) >= 2)[0]
 
-        candidates_indices = torch.where(candidates_mask)[0]
+        n_candidates = len(candidates_indices)
+        per_view_budget = (
+            n_candidates
+            if runtime_cfg.n_kp_samples_per_view == -1
+            else min(runtime_cfg.n_kp_samples_per_view, n_candidates)
+        )
 
-        if runtime_cfg.n_kp_samples == -1:
-            picked_indices = candidates_indices
-        else:
-            # Uses a temporary generator for deterministic results
-            picked_indices = candidates_indices[
-                torch.randperm(candidates_indices.shape[0])[: runtime_cfg.n_kp_samples]
-            ]
+        generator = torch.Generator(device=device)
+        generator.manual_seed(pipeline.seed)
+
+        views_orders = []
+
+        for view_idx in tqdm(
+            range(n_views), desc="Sampling candidates per view", leave=False
+        ):
+            view_candidates = torch.where(
+                confident_mask[view_idx, candidates_indices]
+            )[0]
+            order = torch.randperm(
+                len(view_candidates), generator=generator, device=device
+            )[:per_view_budget]
+            # Read back once: deduplicating the union is a per-element Python
+            # loop, and indexing a device tensor per element would synchronize
+            # on every lookup.
+            views_orders.append(view_candidates[order].tolist())
+
+        # Every view's draw is kept, so the union is a plain deduplication.
+        union = dict.fromkeys(idx for order in views_orders for idx in order)
+        picked_indices = candidates_indices[
+            torch.as_tensor(list(union), dtype=torch.long, device=device)
+        ]
 
         n_samples = len(picked_indices)
         # Shape is (n_views, n_kps, 2)

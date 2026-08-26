@@ -86,12 +86,12 @@ pipeline:
         tolerance_change: 1e-09
 
     bundle_adjustment_sampling:
-      _target_: kineo.pipeline.stages.bundle_adjustment_sampling.BundleAdjustmentSamplingStage
+      _target_: kineo.pipeline.stages.bundle_adjustment_random_sampling.BundleAdjustmentRandomSamplingStage
       name: "Bundle Adjustment Sampling"
       order: 55
       runtime_cfg:
-        _target_: kineo.pipeline.stages.bundle_adjustment_sampling.BundleAdjustmentSamplingRuntimeConfig
-        n_kp_samples: 500
+        _target_: kineo.pipeline.stages.bundle_adjustment_random_sampling.BundleAdjustmentRandomSamplingRuntimeConfig
+        n_kp_samples_per_view: 50
         min_kp_score: 0.6
 
     bundle_adjustment_1: # Only optimize camera extrinsics
@@ -150,7 +150,6 @@ pipeline:
         _target_: kineo.pipeline.stages.mvs_triangulation.MVSTriangulationRuntimeConfig
         use_eigendecomposition: True
         min_parallax_deg: 10.0
-        triangulation_chunk_size: 50
 
     smpl_global_scale_estimation:
       _target_: kineo.pipeline.stages.smpl_global_scale_estimation.SMPLGlobalScaleEstimationStage
