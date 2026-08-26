@@ -8,7 +8,7 @@
 # Contact: guillaume.lavoue@enise.ec-lyon.fr
 # -----------------------------------------------------------------------------
 
-from math import ceil, radians
+from math import radians
 import torch
 from kineo.pipeline.pipeline import PipelineStage
 from kineo.pipeline.pipeline import Pipeline
@@ -17,7 +17,10 @@ from kineo.annotations import Annotations
 from kineo.geometry.transformations import undistort_points
 from kineo.annotations.camera_intrinsics import CameraIntrinsicsAnnotations
 from kineo.annotations.camera_extrinsics import CameraExtrinsicsAnnotations
-from kineo.annotations.keypoints_2d import Keypoints2DAnnotations
+from kineo.annotations.keypoints_2d import (
+    Keypoints2DAnnotations,
+    stage_keypoints_2d,
+)
 from kineo.annotations.keypoints_3d import (
     Keypoints3DAnnotations,
     Keypoints3DAnnotationsMetadata,
@@ -26,6 +29,7 @@ from kineo.annotations.keypoints_3d import (
 from kineo.annotations.global_time_reference import (
     GlobalTimeReferenceAnnotation,
 )
+from kineo.geometry.camera import camera_centers_from_extrinsics
 from kineo.geometry.triangulation import (
     triangulate_points,
     triangulation_parallax_angles,
@@ -39,7 +43,9 @@ from typing import Optional
 
 @dataclass(frozen=True)
 class MVSTriangulationRuntimeConfig:
-    triangulation_chunk_size: int = 200
+    # The design matrix is quadratic in the view count, so a frame budget
+    # means something different on every rig. Peak runs to about twice this.
+    triangulation_chunk_bytes: int = 128 * 1024 * 1024
     use_eigendecomposition: bool = True
     min_parallax_deg: float = 10.0
 
@@ -137,47 +143,18 @@ class MVSTriangulationStage(PipelineStage[MVSTriangulationRuntimeConfig]):
             dist_coeffs[view_idx] = view_camera_intrinsics.distortion_coefficients
             cameras_resolutions_hw.append(views[view_idx]["frame_loader"].resolution_hw)
 
-        camera_centers = -Rts[:, :, :3].transpose(-1, -2) @ Rts[:, :, 3:]
-        camera_centers = camera_centers.squeeze(-1)
+        camera_centers = camera_centers_from_extrinsics(Rts)
 
         kps_3d_annotations: list[Keypoints3DAnnotation] = []
 
-        all_kps_2d = torch.zeros(
-            (n_frames, n_views, n_subjects, n_keypoints, 2), device=device
+        all_kps_2d, all_kps_2d_scores = stage_keypoints_2d(
+            kps_2d=kps_2d,
+            view_id_to_idx=view_id_to_idx,
+            subject_id_to_idx=subject_id_to_idx,
+            n_frames=n_frames,
         )
-        all_kps_2d_scores = torch.zeros(
-            (n_frames, n_views, n_subjects, n_keypoints), device=device
-        )
-
-        # Staged into one tensor: assigning per annotation would cost a
-        # host-to-device round trip each, and there are tens of thousands.
-        annots = kps_2d.annotations
-        annot_frame_idx = torch.tensor(
-            [annot.frame_idx for annot in annots], dtype=torch.long
-        )
-        annot_view_idx = torch.tensor(
-            [view_id_to_idx[annot.view_id] for annot in annots], dtype=torch.long
-        )
-        annot_subject_idx = torch.tensor(
-            [subject_id_to_idx[annot.subject_id] for annot in annots],
-            dtype=torch.long,
-        )
-        stacked_xy = torch.stack(
-            [torch.as_tensor(annot.xy) for annot in annots]
-        ).to(device)
-        stacked_scores = torch.stack(
-            [torch.as_tensor(annot.scores) for annot in annots]
-        ).to(device)
-        annot_frame_idx = annot_frame_idx.to(device)
-        annot_view_idx = annot_view_idx.to(device)
-        annot_subject_idx = annot_subject_idx.to(device)
-
-        all_kps_2d[
-            annot_frame_idx, annot_view_idx, annot_subject_idx
-        ] = stacked_xy
-        all_kps_2d_scores[
-            annot_frame_idx, annot_view_idx, annot_subject_idx
-        ] = stacked_scores
+        all_kps_2d = all_kps_2d.to(device)
+        all_kps_2d_scores = all_kps_2d_scores.to(device)
 
         all_kps_2d_undistorted = all_kps_2d.clone()
 
@@ -197,67 +174,66 @@ class MVSTriangulationStage(PipelineStage[MVSTriangulationRuntimeConfig]):
         all_kps_2d_undistorted[~valid_kps_2d_mask] = 0
         all_kps_2d_scores[~valid_kps_2d_mask] = 0
 
-        all_kps_3d = torch.zeros((n_frames, n_subjects, n_keypoints, 3), device=device)
-        all_kps_3d_scores = torch.zeros(
-            (n_frames, n_subjects, n_keypoints), device=device
+        # Subjects and keypoints are both just independent points to
+        # triangulate, so they are folded into one axis and the chunking runs
+        # over frames alone.
+        n_points = n_subjects * n_keypoints
+        points_2d = all_kps_2d_undistorted.reshape(n_frames, n_views, n_points, 2)
+        points_2d_distorted = all_kps_2d.reshape(n_frames, n_views, n_points, 2)
+        points_2d_scores = all_kps_2d_scores.reshape(n_frames, n_views, n_points)
+
+        all_kps_3d = torch.zeros((n_frames, n_points, 3), device=device)
+        all_kps_3d_scores = torch.zeros((n_frames, n_points), device=device)
+        all_kps_3d_parallax = torch.zeros((n_frames, n_points), device=device)
+
+        n_pairs = n_views * (n_views - 1) // 2
+        # 4 rows of 4 per pair, per point, for every frame in the slice.
+        bytes_per_frame = max(
+            16 * n_pairs * n_points * points_2d.element_size(), 1
         )
-        all_kps_3d_parallax = torch.zeros(
-            (n_frames, n_subjects, n_keypoints), device=device
+        frames_per_chunk = max(
+            1, runtime_cfg.triangulation_chunk_bytes // bytes_per_frame
         )
 
-        for subject_idx, subject_id in enumerate(subjects_ids):
-            points_2d = all_kps_2d_undistorted[..., subject_idx, :, :].reshape(
-                -1, n_views, n_keypoints, 2
+        for start in tqdm(
+            range(0, n_frames, frames_per_chunk),
+            desc="Triangulating 3D keypoints",
+            leave=False,
+            unit="chunk",
+        ):
+            chunk = slice(start, start + frames_per_chunk)
+            chunk_points_2d_scores = points_2d_scores[chunk]
+
+            chunk_points_3d = triangulate_points(
+                Ps=Ps,
+                points=points_2d[chunk],
+                points_weights=chunk_points_2d_scores,
+                use_eigendecomposition=runtime_cfg.use_eigendecomposition,
             )
-            points_2d_distorted = all_kps_2d[..., subject_idx, :, :].reshape(
-                -1, n_views, n_keypoints, 2
+
+            all_kps_3d[chunk] = chunk_points_3d
+            all_kps_3d_scores[chunk] = pairwise_reprojection_consensus_score(
+                kps_3d=chunk_points_3d,
+                kps_2d=points_2d_distorted[chunk],
+                kps_2d_scores=chunk_points_2d_scores,
+                Rts=Rts,
+                Ks=Ks,
+                Ds=dist_coeffs,
+                distortion_model=distortion_model.value,
             )
-            points_2d_scores = all_kps_2d_scores[..., subject_idx, :].reshape(
-                -1, n_views, n_keypoints
+            all_kps_3d_parallax[chunk] = triangulation_parallax_angles(
+                points_3d=chunk_points_3d,
+                camera_centers=camera_centers,
+                points_weights=chunk_points_2d_scores,
             )
 
-            n_chunks = int(ceil(n_frames / runtime_cfg.triangulation_chunk_size))
-
-            for chunk_idx in tqdm(
-                range(0, n_chunks),
-                desc=f"Triangulating 3D keypoints for subject {subject_id}",
-                leave=False,
-                unit="chunk",
-            ):
-                chunk_start_frame = chunk_idx * runtime_cfg.triangulation_chunk_size
-                chunk_end_frame = min(
-                    chunk_start_frame + runtime_cfg.triangulation_chunk_size, n_frames
-                )
-                chunk_frames = torch.arange(chunk_start_frame, chunk_end_frame)
-
-                chunk_points_2d = points_2d[chunk_frames]
-                chunk_points_2d_scores = points_2d_scores[chunk_frames]
-                chunk_points_3d = triangulate_points(
-                    Ps=Ps,
-                    points=chunk_points_2d,
-                    points_weights=chunk_points_2d_scores,
-                    use_eigendecomposition=runtime_cfg.use_eigendecomposition,
-                ).reshape(-1, n_keypoints, 3)
-
-                chunk_points_3d_scores = pairwise_reprojection_consensus_score(
-                    kps_3d=chunk_points_3d,
-                    kps_2d=points_2d_distorted[chunk_frames],
-                    kps_2d_scores=chunk_points_2d_scores,
-                    Rts=Rts,
-                    Ks=Ks,
-                    Ds=dist_coeffs,
-                    distortion_model=distortion_model.value,
-                )
-
-                all_kps_3d[chunk_frames, subject_idx, :, :] = chunk_points_3d
-                all_kps_3d_scores[chunk_frames, subject_idx, :] = chunk_points_3d_scores
-                all_kps_3d_parallax[chunk_frames, subject_idx, :] = (
-                    triangulation_parallax_angles(
-                        points_3d=chunk_points_3d,
-                        camera_centers=camera_centers,
-                        points_weights=chunk_points_2d_scores,
-                    )
-                )
+        all_kps_3d = all_kps_3d.reshape(n_frames, n_subjects, n_keypoints, 3)
+        all_kps_3d_scores = all_kps_3d_scores.reshape(
+            n_frames, n_subjects, n_keypoints
+        )
+        all_kps_3d_parallax = all_kps_3d_parallax.reshape(
+            n_frames, n_subjects, n_keypoints
+        )
 
         # Depth error scales as 1/sin(parallax): rays meeting too shallowly
         # place the point anywhere along their length. Dropped rather than
