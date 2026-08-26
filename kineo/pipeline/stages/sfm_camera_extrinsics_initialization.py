@@ -10,7 +10,9 @@
 
 import torch
 import networkx as nx
+import concurrent.futures
 import itertools
+import os
 import warnings
 import cv2
 import kornia
@@ -62,6 +64,13 @@ class SfMCameraExtrinsicsInitializationRuntimeConfig:
     refinement_huber_delta: float = 1.0
     rotation_outlier_thresh_deg: float = 7.0
     n_rotation_averaging_iters: int = 100
+    # Chain translations along a tree ranked by full-pose loop closure rather
+    # than rotation closure alone. An edge can be rotation-consistent and still
+    # have no observable scale, and chaining through one collapses the child
+    # camera onto its parent. False restores the rotation tree.
+    use_pose_closure_tree: bool = True
+    # Loop-closure tolerance, relative to the largest term in the loop.
+    closure_rel_thresh: float = 0.10
 
 
 class SfMCameraExtrinsicsInitializationStage(
@@ -98,7 +107,12 @@ class SfMCameraExtrinsicsInitializationStage(
         gt_annotations: dict[str, Annotations],
         runtime_cfg: SfMCameraExtrinsicsInitializationRuntimeConfig,
     ):
-        device = pipeline.device
+        # The estimation below is a 190-iteration loop over small tensors built
+        # around cv2.recoverPose, which is CPU-only. On GPU every iteration pays
+        # launch and transfer latency that dwarfs the arithmetic, so the whole
+        # estimation runs on CPU. The stage's annotations are stored on CPU
+        # either way, so nothing downstream sees the difference.
+        device = torch.device("cpu")
 
         calibration_points_annotations: CalibrationPointsAnnotations = annotations[
             "calibration_points"
@@ -177,6 +191,8 @@ class SfMCameraExtrinsicsInitializationStage(
             refinement_huber_delta=runtime_cfg.refinement_huber_delta,
             rotation_outlier_thresh_deg=runtime_cfg.rotation_outlier_thresh_deg,
             n_rotation_averaging_iters=runtime_cfg.n_rotation_averaging_iters,
+            use_pose_closure_tree=runtime_cfg.use_pose_closure_tree,
+            closure_rel_thresh=runtime_cfg.closure_rel_thresh,
         )
 
         camera_extrinsics_annotations = []
@@ -218,6 +234,8 @@ def _estimate_camera_extrinsics(
     refinement_huber_delta: float = 1.0,
     rotation_outlier_thresh_deg: float = 7.0,
     n_rotation_averaging_iters: int = 100,
+    use_pose_closure_tree: bool = True,
+    closure_rel_thresh: float = 0.10,
 ) -> torch.Tensor:
     """
     Estimate camera extrinsics from 2D keypoint correspondences across multiple views.
@@ -282,11 +300,14 @@ def _estimate_camera_extrinsics(
         n_iters=n_relative_scale_factors_iters,
         n_irls_iters=n_scale_irls_iters,
         weighting=scale_triplet_weighting,
+        closure_rel_thresh=closure_rel_thresh,
         tolerance_grad=tolerance_grad,
         tolerance_change=tolerance_change,
     )
 
-    graph = _compute_absolute_Rts(graph)
+    graph = _compute_absolute_Rts(
+        graph, use_pose_closure_tree=use_pose_closure_tree
+    )
 
     graph = _refine_camera_extrinsics(
         graph,
@@ -712,105 +733,207 @@ def _initialize_graph(
 
     pairs = list(itertools.combinations(range(n_views), 2))
 
-    for pair_idx, (view_i, view_j) in tqdm(
-        enumerate(pairs),
-        total=len(pairs),
-        leave=False,
-        desc="Computing pairwise relative extrinsics",
-    ):
-        pair_points1 = points1[pair_idx].to(device)
-        pair_points2 = points2[pair_idx].to(device)
-        # pair_confidence_scores = confidence_scores[pair_idx]
+    # cv2.recoverPose releases the GIL and draws from a call-local RNG, not
+    # cv2.theRNG(), so threading the 190 pairs of a 20-view rig is bit-exact.
+    # Only the RANSAC is threaded; torch stays on the calling thread.
+    undistorted_points: dict[int, tuple[torch.Tensor, torch.Tensor]] = {}
+    pose_futures: dict[int, concurrent.futures.Future] = {}
 
-        n_points = pair_points1.shape[0]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
+        for pair_idx, (view_i, view_j) in enumerate(pairs):
+            pair_points1 = points1[pair_idx].to(device)
+            pair_points2 = points2[pair_idx].to(device)
+            # pair_confidence_scores = confidence_scores[pair_idx]
 
-        if n_points < 5:
-            warnings.warn(
-                f"Not enough points in pair ({view_i}, {view_j}). Expected at least 5, got {n_points}"
+            n_points = pair_points1.shape[0]
+
+            if n_points < 5:
+                warnings.warn(
+                    f"Not enough points in pair ({view_i}, {view_j}). Expected at least 5, got {n_points}"
+                )
+                graph.add_edge(
+                    view_i,
+                    view_j,
+                    cost=torch.tensor(math.inf, device=device),
+                    Rt=torch.eye(4, device=device)[:3, :],
+                )
+                graph.add_edge(
+                    view_j,
+                    view_i,
+                    cost=torch.tensor(math.inf, device=device),
+                    Rt=torch.eye(4, device=device)[:3, :],
+                )
+                continue
+
+            undistorted_points1 = undistort_points(
+                points=pair_points1.to(device),
+                K=Ks[view_i].to(device),
+                D=dist_coeffs[view_i].to(device),
+                distortion_model=distortion_models[view_i],
             )
+            undistorted_points2 = undistort_points(
+                points=pair_points2.to(device),
+                K=Ks[view_j].to(device),
+                D=dist_coeffs[view_j].to(device),
+                distortion_model=distortion_models[view_j],
+            )
+            undistorted_points[pair_idx] = (undistorted_points1, undistorted_points2)
+
+            pose_futures[pair_idx] = executor.submit(
+                cv2.recoverPose,
+                points1=undistorted_points1.cpu().numpy(),
+                points2=undistorted_points2.cpu().numpy(),
+                cameraMatrix1=Ks[view_i].cpu().numpy(),
+                distCoeffs1=np.zeros(5),
+                cameraMatrix2=Ks[view_j].cpu().numpy(),
+                distCoeffs2=np.zeros(5),
+                prob=ransac_confidence,
+                threshold=ransac_reproj_threshold,
+                method=cv2.FM_RANSAC,
+            )
+
+        for pair_idx, (view_i, view_j) in tqdm(
+            enumerate(pairs),
+            total=len(pairs),
+            leave=False,
+            desc="Computing pairwise relative extrinsics",
+        ):
+            if pair_idx not in pose_futures:
+                continue
+
+            undistorted_points1, undistorted_points2 = undistorted_points[pair_idx]
+            _, E, R, t, inliers_mask = pose_futures[pair_idx].result()
+
+            inliers_mask = torch.from_numpy(inliers_mask).squeeze(-1).bool().to(device)
+            E = torch.from_numpy(E).to(dtype=torch.float32, device=device)
+            R = torch.from_numpy(R).to(dtype=torch.float32, device=device)
+            t = torch.from_numpy(t).to(dtype=torch.float32, device=device)
+            t = t / torch.norm(t)
+
+            pair_points1_norm = kornia.geometry.normalize_points_with_intrinsics(
+                undistorted_points1, camera_matrix=Ks[view_i].to(device)
+            )
+            pair_points2_norm = kornia.geometry.normalize_points_with_intrinsics(
+                undistorted_points2, camera_matrix=Ks[view_j].to(device)
+            )
+
+            best_error = (
+                kornia.geometry.sampson_epipolar_distance(
+                    pts1=pair_points1_norm,
+                    pts2=pair_points2_norm,
+                    Fm=E.unsqueeze(0),
+                )
+                .mean()
+                .item()
+            )
+
+            best_candidate_Rt = torch.cat([R, t], dim=-1)
+
             graph.add_edge(
                 view_i,
                 view_j,
-                cost=torch.tensor(math.inf, device=device),
-                Rt=torch.eye(4, device=device)[:3, :],
+                points1=undistorted_points1,
+                points2=undistorted_points2,
+                cost=best_error,
+                Rt=best_candidate_Rt,
+                inliers_mask=inliers_mask,
             )
             graph.add_edge(
                 view_j,
                 view_i,
-                cost=torch.tensor(math.inf, device=device),
-                Rt=torch.eye(4, device=device)[:3, :],
+                points1=undistorted_points2,
+                points2=undistorted_points1,
+                cost=best_error,
+                Rt=inverse_Rt(best_candidate_Rt),
+                inliers_mask=inliers_mask,
             )
-            continue
-
-        undistorted_points1 = undistort_points(
-            points=pair_points1.to(device),
-            K=Ks[view_i].to(device),
-            D=dist_coeffs[view_i].to(device),
-            distortion_model=distortion_models[view_i],
-        )
-        undistorted_points2 = undistort_points(
-            points=pair_points2.to(device),
-            K=Ks[view_j].to(device),
-            D=dist_coeffs[view_j].to(device),
-            distortion_model=distortion_models[view_j],
-        )
-
-        _, E, R, t, inliers_mask = cv2.recoverPose(
-            points1=undistorted_points1.cpu().numpy(),
-            points2=undistorted_points2.cpu().numpy(),
-            cameraMatrix1=Ks[view_i].cpu().numpy(),
-            distCoeffs1=np.zeros(5),
-            cameraMatrix2=Ks[view_j].cpu().numpy(),
-            distCoeffs2=np.zeros(5),
-            prob=ransac_confidence,
-            threshold=ransac_reproj_threshold,
-            method=cv2.FM_RANSAC,
-        )
-        inliers_mask = torch.from_numpy(inliers_mask).squeeze(-1).bool().to(device)
-        E = torch.from_numpy(E).to(dtype=torch.float32, device=device)
-        R = torch.from_numpy(R).to(dtype=torch.float32, device=device)
-        t = torch.from_numpy(t).to(dtype=torch.float32, device=device)
-        t = t / torch.norm(t)
-
-        pair_points1_norm = kornia.geometry.normalize_points_with_intrinsics(
-            undistorted_points1, camera_matrix=Ks[view_i].to(device)
-        )
-        pair_points2_norm = kornia.geometry.normalize_points_with_intrinsics(
-            undistorted_points2, camera_matrix=Ks[view_j].to(device)
-        )
-
-        best_error = (
-            kornia.geometry.sampson_epipolar_distance(
-                pts1=pair_points1_norm,
-                pts2=pair_points2_norm,
-                Fm=E.unsqueeze(0),
-            )
-            .mean()
-            .item()
-        )
-
-        best_candidate_Rt = torch.cat([R, t], dim=-1)
-
-        graph.add_edge(
-            view_i,
-            view_j,
-            points1=undistorted_points1,
-            points2=undistorted_points2,
-            cost=best_error,
-            Rt=best_candidate_Rt,
-            inliers_mask=inliers_mask,
-        )
-        graph.add_edge(
-            view_j,
-            view_i,
-            points1=undistorted_points2,
-            points2=undistorted_points1,
-            cost=best_error,
-            Rt=inverse_Rt(best_candidate_Rt),
-            inliers_mask=inliers_mask,
-        )
 
     return graph
+
+
+def translation_spanning_tree(consistency: "nx.Graph") -> "nx.Graph":
+    """Spanning tree for chaining translations.
+
+    Ranked by full-pose loop closure rather than rotation closure: an edge can
+    be perfectly rotation-consistent and still have no observable scale, and
+    chaining a translation through one places the child camera on top of its
+    parent. One cost, in the same ``-log(rate)`` units as the rotation tree, so
+    there is nothing to blend and no weight to calibrate.
+
+    Args:
+        consistency: Undirected graph carrying ``pose_closure_cost`` per edge.
+
+    Returns:
+        A minimum spanning tree over the same nodes.
+    """
+    return nx.minimum_spanning_tree(consistency, weight="pose_closure_cost")
+
+
+def edge_pose_closure_rates(
+    node_R: dict,
+    edges: dict,
+    n_views: int,
+    rel_thresh: float = 0.10,
+) -> dict:
+    """Fraction of each edge's triplets whose full pose loop closes.
+
+    The rotation-only rate in :func:`edge_closure_rates` is silent about
+    whether an edge's scale was ever observable, so a scale-degenerate edge
+    scores near-perfect and is free to carry translations. Closing the whole
+    SE(3) loop instead folds both failure modes into one rate:
+
+        lambda_ij R_ki R_jk t_ij + lambda_jk R_ki t_jk + lambda_ki t_ki ~ 0
+
+    A broken rotation breaks this loop too, so nothing the rotation rate
+    catches is lost. Unlike a collapse detector it also catches a scale that is
+    merely *wrong* rather than zero, which is what survives once a prior stops
+    the scale from collapsing.
+
+    The residual is measured against the largest term, so the rate is
+    invariant to the reconstruction's arbitrary overall scale.
+
+    Args:
+        node_R: Absolute rotation per view index.
+        edges: Maps (i, j) to (R_ij, t_hat_ij, scale_ij).
+        n_views: Number of views.
+        rel_thresh: Closure tolerance, relative to the largest loop term.
+
+    Returns:
+        Maps ``frozenset((i, j))`` to a rate in [0, 1]. Edges appearing in no
+        complete triplet score 1, matching the rotation rate's convention.
+    """
+    good: dict = {}
+    total: dict = {}
+
+    for i, j, k in itertools.combinations(range(n_views), 3):
+        legs = ((i, j), (j, k), (k, i))
+        if not all(e in edges for e in legs):
+            continue
+
+        R_ki = node_R[i] @ node_R[k].transpose(-1, -2)
+        R_jk = node_R[k] @ node_R[j].transpose(-1, -2)
+
+        terms = []
+        magnitudes = []
+        for (a, b), pre in zip(legs, (R_ki @ R_jk, R_ki, None)):
+            _, t_hat, scale = edges[(a, b)]
+            leg = scale * (t_hat if pre is None else pre @ t_hat)
+            terms.append(leg)
+            magnitudes.append(float(leg.norm()))
+
+        residual = float(torch.stack(terms).sum(dim=0).norm())
+        closed = float(residual <= rel_thresh * max(max(magnitudes), 1e-12))
+
+        for a, b in legs:
+            key = frozenset((a, b))
+            good[key] = good.get(key, 0.0) + closed
+            total[key] = total.get(key, 0.0) + 1.0
+
+    rates = {}
+    for (a, b) in edges:
+        key = frozenset((a, b))
+        rates[key] = good[key] / total[key] if total.get(key) else 1.0
+    return rates
 
 
 def _average_rotations(
@@ -865,9 +988,18 @@ def _average_rotations(
     consistency.add_nodes_from(range(n_views))
     for key, rate in undirected_rate.items():
         i, j = tuple(key)
-        consistency.add_edge(i, j, cw=-math.log(rate + 1e-3))
-    mst = nx.minimum_spanning_tree(consistency, weight="cw")
+        # Cost, not a rate: an edge whose rotation loops mostly fail scores
+        # near -log(1e-3) ~ 6.9, one whose loops all close scores ~0.
+        consistency.add_edge(
+            i, j, rotation_consistency_cost=-math.log(rate + 1e-3)
+        )
+    mst = nx.minimum_spanning_tree(
+        consistency, weight="rotation_consistency_cost"
+    )
     graph.graph["mst"] = mst
+    # Kept so translation placement can rerank the same edges once the scales
+    # are known.
+    graph.graph["consistency"] = consistency
 
     R_seed = torch.eye(3, device=device).repeat(n_views, 1, 1)
     for view_idx in range(1, n_views):
@@ -1040,6 +1172,7 @@ def _compute_relative_scale_factors(
     weighting: str = "irls",
     tolerance_grad: float = 1e-05,
     tolerance_change: float = 1e-09,
+    closure_rel_thresh: float = 0.10,
 ) -> nx.DiGraph:
     """
     Compute the scale factors for the relative transformations in the graph.
@@ -1140,6 +1273,11 @@ def _compute_relative_scale_factors(
         lmb = torch.exp(log_lmb)
         A = torch.sqrt(weights).view(1, L, 1) * A_base
         sq_error = ((A @ lmb).norm(p=2) ** 2) / (3 * L)
+        # Left as-is deliberately. Replacing this with a log-space or
+        # one-sided prior stops the collapse but costs accuracy: an
+        # unobservable scale then takes a plausible-but-wrong value that
+        # neither the closure rate nor a collapse detector can flag.
+        # Measured on badminton_001: AE 0.79 -> 3.76.
         reg_loss = torch.abs(1 - lmb).mean()
         total_loss = sq_error + 0.001 * reg_loss
         total_loss.backward()
@@ -1183,10 +1321,31 @@ def _compute_relative_scale_factors(
         graph[view_i][view_j]["scale"] = lmb[pair_idx]
         graph[view_j][view_i]["scale"] = lmb[pair_idx]
 
+    # Whether each edge's full pose loop closes now that the scales exist. The
+    # rotation rate computed earlier could not see the scales at all.
+    node_R = {n: d["Rt"][:3, :3] for n, d in graph.nodes(data=True) if "Rt" in d}
+    pose_edges = {
+        (i, j): (d["Rt"][:3, :3], d["Rt"][:3, 3], float(d.get("scale", 0.0)))
+        for i, j, d in graph.edges(data=True)
+        if i != j and "scale" in d
+    }
+    rates = edge_pose_closure_rates(
+        node_R, pose_edges, n_views, rel_thresh=closure_rel_thresh
+    )
+    for key, rate in rates.items():
+        view_i, view_j = tuple(key)
+        cost = -math.log(rate + 1e-3)
+        if graph.has_edge(view_i, view_j):
+            graph[view_i][view_j]["pose_closure_cost"] = cost
+            graph[view_j][view_i]["pose_closure_cost"] = cost
+
     return graph
 
 
-def _compute_absolute_Rts(graph: nx.DiGraph) -> nx.DiGraph:
+def _compute_absolute_Rts(
+    graph: nx.DiGraph,
+    use_pose_closure_tree: bool = True,
+) -> nx.DiGraph:
     """
     Place camera translations along the MST using the fixed averaged rotations.
 
@@ -1204,7 +1363,15 @@ def _compute_absolute_Rts(graph: nx.DiGraph) -> nx.DiGraph:
     device = graph.nodes[0]["K"].device
     # Reuse the cycle-consistency-weighted MST built by _average_rotations so
     # translation placement routes along the same trustworthy edges.
-    mst = graph.graph["mst"]
+    consistency = graph.graph.get("consistency")
+    if consistency is not None and use_pose_closure_tree:
+        for i, j in consistency.edges:
+            consistency[i][j]["pose_closure_cost"] = graph[i][j].get(
+                "pose_closure_cost", 0.0
+            )
+        mst = translation_spanning_tree(consistency)
+    else:
+        mst = graph.graph["mst"]
 
     graph.nodes[0]["Rt"][:3, 3] = torch.zeros(3, device=device)
 
