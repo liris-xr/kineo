@@ -1,5 +1,6 @@
 import torch
 
+from kineo.geometry.camera import positive_depth_mask
 from kineo.pipeline.stages.bundle_adjustment_fps_sampling import (
     farthest_point_sampling,
     valid_observations_mask,
@@ -24,43 +25,106 @@ def _four_clusters(n_per_cluster: int = 25) -> torch.Tensor:
     return (centers[:, None, :] + noise).reshape(-1, 2)
 
 
+def _reference_fps(features, n_samples, generator, valid_mask):
+    """Naive per-row greedy loop, the shape the batched version replaced."""
+    orders = []
+    for row in range(features.shape[0]):
+        row_points = torch.where(valid_mask[row])[0]
+        points = features[row, row_points]
+        n = min(n_samples, len(row_points))
+        selected = torch.empty(n, dtype=torch.long)
+        selected[0] = torch.randint(len(row_points), (1,), generator=generator)
+        min_sq = torch.full((len(row_points),), float("inf"))
+        for i in range(1, n):
+            sq = ((points - points[selected[i - 1]]) ** 2).sum(dim=-1)
+            min_sq = torch.minimum(min_sq, sq)
+            min_sq[selected[i - 1]] = -1.0
+            selected[i] = min_sq.argmax()
+        orders.append(row_points[selected].tolist())
+    return orders
+
+
 def test_fps_covers_every_cluster():
-    features = _four_clusters()
-    n_per_cluster = features.shape[0] // 4
+    features = _four_clusters().unsqueeze(0)
+    n_per_cluster = features.shape[1] // 4
 
     for seed in range(5):
-        selected = farthest_point_sampling(features, 4, _generator(seed))
-        cluster_ids = torch.unique(selected // n_per_cluster)
+        selected, _ = farthest_point_sampling(features, 4, _generator(seed))
+        cluster_ids = torch.unique(selected[0] // n_per_cluster)
         assert cluster_ids.numel() == 4, f"seed {seed} missed a cluster"
 
 
 def test_fps_is_deterministic_for_a_given_seed():
-    features = torch.rand(200, 3, generator=_generator(7))
+    features = torch.rand(1, 200, 3, generator=_generator(7))
 
-    first = farthest_point_sampling(features, 10, _generator(19))
-    second = farthest_point_sampling(features, 10, _generator(19))
-    other = farthest_point_sampling(features, 10, _generator(20))
+    first, _ = farthest_point_sampling(features, 10, _generator(19))
+    second, _ = farthest_point_sampling(features, 10, _generator(19))
+    other, _ = farthest_point_sampling(features, 10, _generator(20))
 
     assert torch.equal(first, second)
-    assert first[0] != other[0]
+    assert first[0, 0] != other[0, 0]
 
 
 def test_fps_returns_every_index_when_asked_for_more_than_available():
-    features = torch.rand(17, 2, generator=_generator(3))
+    features = torch.rand(1, 17, 2, generator=_generator(3))
 
-    selected = farthest_point_sampling(features, 40, _generator(1))
+    selected, valid = farthest_point_sampling(features, 40, _generator(1))
 
     assert selected.dtype == torch.long
-    assert torch.equal(torch.sort(selected).values, torch.arange(17))
+    assert bool(valid.all())
+    assert torch.equal(torch.sort(selected[0]).values, torch.arange(17))
 
 
 def test_fps_with_zero_samples_returns_empty():
-    features = torch.rand(17, 2, generator=_generator(3))
+    features = torch.rand(1, 17, 2, generator=_generator(3))
 
-    selected = farthest_point_sampling(features, 0, _generator(1))
+    selected, valid = farthest_point_sampling(features, 0, _generator(1))
 
     assert selected.dtype == torch.long
-    assert selected.numel() == 0
+    assert selected.numel() == 0 and valid.numel() == 0
+
+
+def test_batched_fps_matches_a_sequential_reference():
+    n_rows, n_points = 4, 60
+    features = torch.rand(n_rows, n_points, 3, generator=_generator(5))
+    valid_mask = torch.rand(n_rows, n_points, generator=_generator(6)) > 0.3
+
+    selected, keep = farthest_point_sampling(
+        features, 12, _generator(19), valid_mask
+    )
+    reference = _reference_fps(features, 12, _generator(19), valid_mask)
+
+    for row in range(n_rows):
+        assert selected[row][keep[row]].tolist() == reference[row], row
+
+
+def test_batched_fps_only_selects_points_a_row_may_see():
+    n_rows, n_points = 3, 40
+    features = torch.rand(n_rows, n_points, 2, generator=_generator(8))
+    valid_mask = torch.zeros(n_rows, n_points, dtype=torch.bool)
+    for row in range(n_rows):
+        valid_mask[row, row::n_rows] = True
+
+    selected, keep = farthest_point_sampling(
+        features, 10, _generator(2), valid_mask
+    )
+
+    for row in range(n_rows):
+        assert bool(valid_mask[row][selected[row][keep[row]]].all())
+
+
+def test_batched_fps_flags_rows_that_run_out_of_points():
+    features = torch.rand(2, 30, 2, generator=_generator(4))
+    valid_mask = torch.ones(2, 30, dtype=torch.bool)
+    valid_mask[1, 5:] = False  # only 5 selectable points in the second row
+
+    selected, keep = farthest_point_sampling(
+        features, 12, _generator(3), valid_mask
+    )
+
+    assert int(keep[0].sum()) == 12
+    assert int(keep[1].sum()) == 5
+    assert len(set(selected[1][keep[1]].tolist())) == 5
 
 
 def test_valid_observations_mask_rejects_off_frame_and_non_finite():
@@ -244,7 +308,14 @@ def _synthetic_annotations():
     return views, annotations
 
 
-def _run_stage(n_kp_samples: int, sampler: str = "fps"):
+def _run_stage(
+    n_kp_samples_per_view: int,
+    sampler: str = "fps",
+    filter_negative_depth: bool = False,
+    min_parallax_deg: float | None = None,
+    max_reproj_error: float | None = None,
+    w_d: float = 0.0,
+):
     from kineo.pipeline.stages.bundle_adjustment_fps_sampling import (
         BundleAdjustmentFpsSamplingRuntimeConfig,
         BundleAdjustmentFpsSamplingStage,
@@ -252,9 +323,13 @@ def _run_stage(n_kp_samples: int, sampler: str = "fps"):
 
     views, annotations = _synthetic_annotations()
     runtime_cfg = BundleAdjustmentFpsSamplingRuntimeConfig(
-        n_kp_samples=n_kp_samples,
+        n_kp_samples_per_view=n_kp_samples_per_view,
         min_kp_score=MIN_KP_SCORE,
         sampler=sampler,
+        filter_negative_depth=filter_negative_depth,
+        min_parallax_deg=min_parallax_deg,
+        max_reproj_error=max_reproj_error,
+        w_d=w_d,
     )
     stage = BundleAdjustmentFpsSamplingStage(
         name="Bundle Adjustment FPS Sampling", order=55, runtime_cfg=runtime_cfg
@@ -277,26 +352,14 @@ def _contains_point(points: torch.Tensor, point: tuple[float, float]) -> bool:
 
 
 def test_stage_rejects_off_frame_and_single_view_candidates():
-    annotation = _run_stage(n_kp_samples=-1)
+    annotation = _run_stage(n_kp_samples_per_view=-1)
 
     assert not _contains_point(annotation.kps_2d_xy[1], OFF_FRAME_SENTINEL)
     assert not _contains_point(annotation.kps_2d_xy[0], SINGLE_VIEW_SENTINEL)
 
 
-def test_stage_emits_the_annotation_contract():
-    n_kp_samples = 30
-    annotation = _run_stage(n_kp_samples=n_kp_samples)
-
-    n_samples = annotation.kps_2d_xy.shape[1]
-    assert n_samples == n_kp_samples
-    assert annotation.kps_2d_xy.shape == (N_VIEWS, n_samples, 2)
-    assert annotation.kps_2d_scores.shape == (N_VIEWS, n_samples)
-    assert annotation.kps_3d.shape == (n_samples, 3)
-    assert annotation.view_ids == [f"view_{i}" for i in range(N_VIEWS)]
-
-
 def test_stage_keeps_every_surviving_candidate_when_unbounded():
-    annotation = _run_stage(n_kp_samples=-1)
+    annotation = _run_stage(n_kp_samples_per_view=-1)
 
     # Every slot survives except the two planted ones.
     assert annotation.kps_2d_xy.shape[1] == N_FRAMES * N_KEYPOINTS - 2
@@ -323,4 +386,175 @@ def test_stage_rejects_an_unknown_sampler():
     import pytest
 
     with pytest.raises(ValueError, match="Unsupported sampler"):
-        _run_stage(n_kp_samples=10, sampler="grid")
+        _run_stage(n_kp_samples_per_view=10, sampler="grid")
+
+
+# --- Cheirality filter -------------------------------------------------------
+
+
+def test_positive_depth_mask_separates_front_from_behind():
+    # Identity rotation, camera at the world origin: depth is just z.
+    Rts = torch.eye(3, 4).unsqueeze(0)
+    kps_3d = torch.tensor([[0.0, 0.0, 5.0], [0.0, 0.0, -5.0], [0.0, 0.0, 0.0]])
+
+    mask = positive_depth_mask(kps_3d, Rts)
+
+    assert mask.dtype == torch.bool
+    assert torch.equal(mask, torch.tensor([[True, False, False]]))
+
+
+def test_positive_depth_mask_is_per_view():
+    # Second view is translated so the same point lands behind it.
+    Rts = torch.stack([torch.eye(3, 4), torch.eye(3, 4)])
+    Rts[1, 2, 3] = -10.0
+    kps_3d = torch.tensor([[0.0, 0.0, 5.0]])
+
+    mask = positive_depth_mask(kps_3d, Rts)
+
+    assert torch.equal(mask, torch.tensor([[True], [False]]))
+
+
+def _rig_extrinsics() -> torch.Tensor:
+    """The (n_views, 3, 4) extrinsics the synthetic rig is built with."""
+    return torch.stack(
+        [
+            torch.cat(
+                [torch.eye(3), torch.tensor([i - 1.0, 0.0, 5.0]).reshape(3, 1)],
+                dim=1,
+            )
+            for i in range(N_VIEWS)
+        ]
+    )
+
+
+def _weighted_observations(annotation) -> torch.Tensor:
+    return annotation.kps_2d_scores > 0
+
+
+def test_stage_emits_observations_behind_their_view_without_the_gate():
+    # Each view's 2D is drawn independently, so the rig triangulates to an
+    # incoherent cloud. That is what gives the gate something to reject here;
+    # it says nothing about how often this happens on real sequences.
+    annotation = _run_stage(n_kp_samples_per_view=-1)
+
+    in_front = positive_depth_mask(annotation.kps_3d, _rig_extrinsics())
+
+    assert bool((_weighted_observations(annotation) & ~in_front).any())
+
+
+def test_cheirality_gate_drops_observations_behind_their_view():
+    annotation = _run_stage(n_kp_samples_per_view=-1, filter_negative_depth=True)
+
+    in_front = positive_depth_mask(annotation.kps_3d, _rig_extrinsics())
+
+    assert bool((_weighted_observations(annotation) & ~in_front).sum() == 0)
+    assert bool((_weighted_observations(annotation).sum(dim=0) >= 2).all())
+
+
+def test_reprojection_gate_bounds_the_residual_of_every_kept_observation():
+    from kineo.geometry.metrics import compute_normalized_reprojection_residuals
+
+    max_reproj_error = 0.01
+    annotation = _run_stage(n_kp_samples_per_view=-1, max_reproj_error=max_reproj_error)
+
+    height, width = RESOLUTION_HW
+    Ks = torch.tensor(
+        [[500.0, 0.0, width / 2], [0.0, 500.0, height / 2], [0.0, 0.0, 1.0]]
+    ).expand(N_VIEWS, 3, 3)
+    residuals, _ = compute_normalized_reprojection_residuals(
+        kps_3d=annotation.kps_3d,
+        kps_2d=annotation.kps_2d_xy,
+        Ks=Ks,
+        Rts=_rig_extrinsics(),
+        Ds=torch.zeros(N_VIEWS, 5),
+        distortion_model="brown_conrady",
+    )
+
+    kept = _weighted_observations(annotation)
+    assert bool(kept.any())
+    # The emitted points are retriangulated from the gated weights, so this
+    # rechecks the residual against the point the stage actually exports.
+    assert float(residuals[kept].max()) < 2.0 * max_reproj_error
+
+
+def test_the_gate_only_ever_shrinks_the_candidate_set():
+    ungated = _run_stage(n_kp_samples_per_view=-1)
+    gated = _run_stage(
+        n_kp_samples_per_view=-1,
+        filter_negative_depth=True,
+        min_parallax_deg=1.0,
+        max_reproj_error=0.01,
+    )
+
+    assert 0 < gated.kps_3d.shape[0] < ungated.kps_3d.shape[0]
+
+
+def test_depth_axis_changes_the_selection():
+    per_view = 20
+    without = _run_stage(n_kp_samples_per_view=per_view, w_d=0.0)
+    with_depth = _run_stage(n_kp_samples_per_view=per_view, w_d=1.0)
+
+    def selection(annotation):
+        return {tuple(p) for p in annotation.kps_2d_xy[0].tolist()}
+
+    # The unions need not be the same size: the depth axis changes which
+    # candidates each view picks, and so how much the views overlap.
+    assert selection(with_depth) != selection(without)
+    for annotation in (without, with_depth):
+        assert per_view <= annotation.kps_2d_xy.shape[1] <= per_view * N_VIEWS
+
+
+def test_gate_keeps_the_annotation_contract():
+    annotation = _run_stage(n_kp_samples_per_view=-1, filter_negative_depth=True)
+
+    n_samples = annotation.kps_2d_xy.shape[1]
+    assert 0 < n_samples < N_FRAMES * N_KEYPOINTS
+    assert annotation.kps_2d_scores.shape == (N_VIEWS, n_samples)
+    assert annotation.kps_3d.shape == (n_samples, 3)
+
+
+# --- Per-view budget ---------------------------------------------------------
+
+
+def _observed_counts(annotation) -> torch.Tensor:
+    """How many emitted points each view actually observes."""
+    return (annotation.kps_2d_scores > 0).sum(dim=1)
+
+
+def test_per_view_budget_gives_every_view_its_own_coverage():
+    per_view = 10
+    annotation = _run_stage(n_kp_samples_per_view=per_view)
+
+    assert bool((_observed_counts(annotation) >= per_view).all())
+
+
+def test_per_view_budget_applies_to_the_random_sampler_too():
+    per_view = 10
+    annotation = _run_stage(
+        n_kp_samples_per_view=per_view, sampler="random"
+    )
+
+    assert bool((_observed_counts(annotation) >= per_view).all())
+    assert annotation.kps_2d_xy.shape[1] <= per_view * N_VIEWS
+
+
+
+def test_stage_emits_the_annotation_contract():
+    per_view = 10
+    annotation = _run_stage(n_kp_samples_per_view=per_view)
+
+    n_samples = annotation.kps_2d_xy.shape[1]
+    assert per_view <= n_samples <= per_view * N_VIEWS
+    assert annotation.kps_2d_xy.shape == (N_VIEWS, n_samples, 2)
+    assert annotation.kps_2d_scores.shape == (N_VIEWS, n_samples)
+    assert annotation.kps_3d.shape == (n_samples, 3)
+    assert annotation.view_ids == [f"view_{i}" for i in range(N_VIEWS)]
+
+
+def test_every_view_keeps_its_own_budget_in_the_union():
+    per_view = 10
+
+    for sampler in ("fps", "random"):
+        annotation = _run_stage(n_kp_samples_per_view=per_view, sampler=sampler)
+        observed = (annotation.kps_2d_scores > 0).sum(dim=1)
+        assert bool((observed >= per_view).all()), sampler
