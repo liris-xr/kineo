@@ -8,6 +8,8 @@
 # Contact: guillaume.lavoue@enise.ec-lyon.fr
 # -----------------------------------------------------------------------------
 
+import warnings
+
 import torch
 from tqdm import tqdm
 
@@ -65,6 +67,62 @@ class BundleAdjustmentRuntimeConfig:
     dist_coeffs_regularization_weight: float = 1.0
     use_lbfgs: bool = True
     lr: float = 1.0
+
+
+def _warn_if_robust_loss_saturated(
+    kps_3d: torch.Tensor,
+    kps_2d_xy: torch.Tensor,
+    kps_2d_scores: torch.Tensor,
+    Ks: torch.Tensor,
+    Rts: torch.Tensor,
+    dist_coeffs: torch.Tensor,
+    distortion_model: CameraDistortionModel,
+    huber_delta: float,
+) -> None:
+    """Warn when the Huber loss starts with no inliers left to distinguish.
+
+    Huber is linear past ``huber_delta``, so when the bulk of the observations
+    already sits above it every residual is treated as an outlier: the objective
+    is L1 almost everywhere and the refinement has no quadratic basin to settle
+    into. That is worth surfacing, because the symptom otherwise shows up only
+    as a mediocre fit that still looks like it converged.
+
+    The median is weighted by the observation scores, because that is what the
+    objective sees. Gate-rejected observations are kept in the tensors with a
+    zero score and reproject thousands of pixels away; counting them would fire
+    this warning on data the optimizer correctly ignores.
+    """
+    errors, depth = compute_reprojection_residuals(
+        kps_3d=kps_3d,
+        kps_2d=kps_2d_xy,
+        Ks=Ks,
+        Rts=Rts,
+        Ds=dist_coeffs,
+        distortion_model=distortion_model.value,
+    )
+    keep = (
+        errors.isfinite()
+        & (depth.squeeze(-1).abs() > MIN_PROJECTION_DEPTH)
+        & (kps_2d_scores > 0)
+    )
+    if not keep.any():
+        return
+
+    kept_errors, kept_weights = errors[keep], kps_2d_scores[keep]
+    order = kept_errors.argsort()
+    cumulative = kept_weights[order].cumsum(0) / kept_weights.sum()
+    median = float(kept_errors[order][int(torch.searchsorted(cumulative, 0.5))])
+    if median <= huber_delta:
+        return
+
+    warnings.warn(
+        f"Bundle adjustment robust loss is saturated: median reprojection error "
+        f"is {median:.1f}px against huber_delta={huber_delta}px, so the bulk of "
+        f"the observations is past the knee and the loss is L1 almost "
+        f"everywhere. Check the correspondences and the initial geometry.",
+        stacklevel=2,
+    )
+
 
 class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
     """
@@ -286,6 +344,17 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
         device = torch.device("cpu")
 
         n_views, n_samples, _ = kps_2d_xy.shape
+
+        _warn_if_robust_loss_saturated(
+            kps_3d=kps_3d,
+            kps_2d_xy=kps_2d_xy,
+            kps_2d_scores=kps_2d_scores,
+            Ks=Ks,
+            Rts=Rts,
+            dist_coeffs=dist_coeffs,
+            distortion_model=distortion_model,
+            huber_delta=huber_delta,
+        )
 
         kps_3d_opt = kps_3d.clone()
         kps_3d_opt.requires_grad = True
