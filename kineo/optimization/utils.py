@@ -8,6 +8,8 @@
 # Contact: guillaume.lavoue@enise.ec-lyon.fr
 # -----------------------------------------------------------------------------
 
+import warnings
+
 import torch
 
 def _gather_flat_grad(optimizer: torch.optim.Optimizer):
@@ -66,6 +68,17 @@ def optimizer_should_stop(
             torch.abs(loss - prev_losses[-patience:]) < tolerance_change
         ).all()
     ):
+        # A frozen loss means either a minimum or a line search that can no
+        # longer find a step. Both end the optimization, but only the first is
+        # a converged result, so say which one this was.
+        grad_max = flat_grad.abs().max()
+        if grad_max > tolerance_grad:
+            warnings.warn(
+                f"Optimizer stopped without converging: the loss did not move "
+                f"over {patience} steps but |grad|_max={grad_max:.3e} still "
+                f"exceeds tolerance_grad={tolerance_grad:.1e}. The line search "
+                f"stalled at a non-stationary point."
+            )
         return True
 
     return False
