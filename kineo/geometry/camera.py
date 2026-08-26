@@ -328,6 +328,48 @@ def transform_points_from_world_to_camera(
     return points_transformed
 
 
+def camera_centers_from_extrinsics(Rts: torch.Tensor) -> torch.Tensor:
+    r"""Camera centers in the world frame.
+
+    Inverts :math:`X_{cam} = R X_{world} + t` at :math:`X_{cam} = 0`, giving
+    :math:`C = -R^{T} t`.
+
+    Args:
+        Rts: World-to-camera extrinsics with shape :math:`(*, C, 3, 4)`.
+
+    Returns:
+        Camera centers with shape :math:`(*, C, 3)`.
+    """
+    check_shape(Rts, ["*", "C", "3", "4"])
+    return -(Rts[..., :3].transpose(-2, -1) @ Rts[..., 3:]).squeeze(-1)
+
+
+def positive_depth_mask(
+    points_3d: torch.Tensor,
+    Rts: torch.Tensor,
+    min_depth: float = MIN_PROJECTION_DEPTH,
+) -> torch.Tensor:
+    """Flags the points lying in front of each camera.
+
+    A point behind a camera still projects, to a mirrored image position, so
+    the cheirality test is what separates a real observation from one the
+    pinhole model merely produces a number for.
+
+    Args:
+        points_3d: Points in the world frame with shape (n_points, 3).
+        Rts: World-to-camera extrinsics with shape (n_views, 3, 4).
+        min_depth: Lower bound on the camera-frame depth. Points below it sit
+            on the focal plane, where the projection is singular.
+
+    Returns:
+        Bool tensor of shape (n_views, n_points), True where the point is in
+        front of that view.
+    """
+    check_shape(points_3d, ["N", "3"])
+    check_shape(Rts, ["C", "3", "4"])
+    return transform_points_from_world_to_camera(points_3d, Rts)[..., 2] > min_depth
+
+
 def project_points_from_camera_to_image(
     points_3d_cam: torch.Tensor,
     K: torch.Tensor,
