@@ -47,6 +47,8 @@ pipeline:
         max_points_pairs: 3000
         pair_avg_conf_score_thr: 0.6
         keypoints_indices: null
+        sampler: "random"
+        reject_invalid_observations: false
 
     sfm_camera_extrinsics_initialization:
       _target_: kineo.pipeline.stages.sfm_camera_extrinsics_initialization.SfMCameraExtrinsicsInitializationStage
@@ -63,13 +65,15 @@ pipeline:
         tolerance_change: 1e-09
 
     bundle_adjustment_sampling:
-      _target_: kineo.pipeline.stages.bundle_adjustment_random_sampling.BundleAdjustmentRandomSamplingStage
+      _target_: kineo.pipeline.stages.bundle_adjustment_sampling.BundleAdjustmentSamplingStage
       name: "Bundle Adjustment Sampling"
       order: 55
       runtime_cfg:
-        _target_: kineo.pipeline.stages.bundle_adjustment_random_sampling.BundleAdjustmentRandomSamplingRuntimeConfig
+        _target_: kineo.pipeline.stages.bundle_adjustment_sampling.BundleAdjustmentSamplingRuntimeConfig
         n_kp_samples_per_view: 50
         min_kp_score: 0.6
+        sampler: "random"
+        reject_invalid_observations: false
 
     bundle_adjustment_1: # Only optimize camera extrinsics
       _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentStage

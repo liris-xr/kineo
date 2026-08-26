@@ -60,6 +60,8 @@ pipeline:
         _target_: kineo.pipeline.stages.keypoints_pairs_sampling.KeypointsPairsSamplingRuntimeConfig
         max_points_pairs: 3000
         pair_avg_conf_score_thr: 0.6
+        sampler: "random"
+        reject_invalid_observations: false
 
     sfm_camera_extrinsics_initialization:
       _target_: kineo.pipeline.stages.sfm_camera_extrinsics_initialization.SfMCameraExtrinsicsInitializationStage
@@ -76,11 +78,11 @@ pipeline:
         tolerance_change: 1e-09
 
     bundle_adjustment_sampling:
-      _target_: kineo.pipeline.stages.bundle_adjustment_fps_sampling.BundleAdjustmentFpsSamplingStage
+      _target_: kineo.pipeline.stages.bundle_adjustment_sampling.BundleAdjustmentSamplingStage
       name: "Bundle Adjustment FPS Sampling"
       order: 55
       runtime_cfg:
-        _target_: kineo.pipeline.stages.bundle_adjustment_fps_sampling.BundleAdjustmentFpsSamplingRuntimeConfig
+        _target_: kineo.pipeline.stages.bundle_adjustment_sampling.BundleAdjustmentSamplingRuntimeConfig
         n_kp_samples_per_view: 50
         min_kp_score: 0.6
         sampler: "fps"

@@ -2,9 +2,9 @@ import itertools
 
 import torch
 
-from kineo.pipeline.stages.keypoints_pairs_fps_sampling import (
-    KeypointsPairsFpsSamplingRuntimeConfig,
-    KeypointsPairsFpsSamplingStage,
+from kineo.pipeline.stages.keypoints_pairs_sampling import (
+    KeypointsPairsSamplingRuntimeConfig,
+    KeypointsPairsSamplingStage,
     pair_candidates_mask,
     pair_sampling_features,
     pairs_chunk_size,
@@ -182,9 +182,7 @@ def test_fps_over_the_joint_space_separates_correspondences_view_i_cannot():
     in view 1, so a ``[u_i, v_i, t]`` feature sees one cluster while the joint
     ``[u_i, v_i, u_j, v_j, t]`` feature sees four.
     """
-    from kineo.pipeline.stages.bundle_adjustment_fps_sampling import (
-        farthest_point_sampling,
-    )
+    from kineo.sampling import farthest_point_sampling
 
     corners = torch.tensor(
         [[0.0, 0.0], [100.0, 0.0], [0.0, 100.0], [100.0, 100.0]]
@@ -214,13 +212,13 @@ def test_fps_over_the_joint_space_separates_correspondences_view_i_cannot():
 
 def _sample(sampler, max_chunk_bytes, n_views=4, n_flat=60, seed=19):
     """Runs the stage hot path over a synthetic rig."""
-    cfg = KeypointsPairsFpsSamplingRuntimeConfig(
+    cfg = KeypointsPairsSamplingRuntimeConfig(
         max_points_pairs=8,
         pair_avg_conf_score_thr=0.5,
         sampler=sampler,
         max_chunk_bytes=max_chunk_bytes,
     )
-    stage = KeypointsPairsFpsSamplingStage(name="t", order=0, runtime_cfg=cfg)
+    stage = KeypointsPairsSamplingStage(name="t", order=0, runtime_cfg=cfg)
 
     kps_xy = torch.rand(n_views, n_flat, 2, generator=_generator(1)) * 100.0
     kps_scores = torch.rand(n_views, n_flat, generator=_generator(2))
@@ -285,8 +283,8 @@ def test_both_samplers_draw_from_the_same_candidate_set():
 
 
 def test_an_unsupported_sampler_is_rejected():
-    cfg = KeypointsPairsFpsSamplingRuntimeConfig(sampler="nearest")
-    stage = KeypointsPairsFpsSamplingStage(name="t", order=0, runtime_cfg=cfg)
+    cfg = KeypointsPairsSamplingRuntimeConfig(sampler="nearest")
+    stage = KeypointsPairsSamplingStage(name="t", order=0, runtime_cfg=cfg)
 
     try:
         stage.forward(
@@ -301,3 +299,46 @@ def test_an_unsupported_sampler_is_rejected():
         assert "Unsupported sampler" in str(error)
     else:
         raise AssertionError("expected a ValueError")
+
+
+def _emits_an_off_frame_point(reject_invalid_observations: bool) -> bool:
+    """Runs the full stage over the bundle adjustment fixture.
+
+    That fixture builds every annotation this stage reads, and plants a
+    keypoint far outside view 0's frame, which is what the filter gates.
+    """
+    from test_bundle_adjustment_sampling import (
+        RESOLUTION_HW,
+        _StubPipeline,
+        _synthetic_annotations,
+    )
+
+    views, annotations = _synthetic_annotations()
+    cfg = KeypointsPairsSamplingRuntimeConfig(
+        max_points_pairs=-1,
+        pair_avg_conf_score_thr=0.0,
+        sampler="random",
+        reject_invalid_observations=reject_invalid_observations,
+    )
+    KeypointsPairsSamplingStage(name="t", order=40, runtime_cfg=cfg).forward(
+        sequence_name="synthetic",
+        pipeline=_StubPipeline(),
+        views=views,
+        annotations=annotations,
+        gt_annotations={},
+        runtime_cfg=cfg,
+    )
+
+    height, width = RESOLUTION_HW
+    points = torch.cat(
+        [a.points1 for a in annotations["calibration_points"].annotations]
+    )
+    off_frame = (points < 0) | (points > torch.tensor([width, height]))
+    return bool(off_frame.any())
+
+
+def test_the_filter_gates_off_frame_correspondences():
+    # The uniform-baseline arm emits the planted off-frame keypoint; the
+    # filtered arm drops it. 73 migrated configs ride on this flag.
+    assert not _emits_an_off_frame_point(reject_invalid_observations=True)
+    assert _emits_an_off_frame_point(reject_invalid_observations=False)
