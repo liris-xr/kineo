@@ -15,6 +15,7 @@ from kineo.datasets.keypoints_sequence_dataset import ViewInput
 from kineo.annotations import Annotations
 from kineo.pipeline.pipeline import Pipeline
 from kineo.annotations import Keypoints2DAnnotations
+from kineo.annotations.keypoints_2d import stage_keypoints_2d
 from kineo.annotations.calibration_points_pairs import (
     CalibrationPointsAnnotations,
     CalibrationPointsAnnotationsMetadata,
@@ -100,25 +101,16 @@ class KeypointsPairsSamplingStage(PipelineStage[KeypointsPairsSamplingRuntimeCon
 
         n_selected_keypoints = len(keypoints_indices)
 
-        kps_xy = torch.zeros(
-            (n_frames, n_views, n_subjects, n_selected_keypoints, 2),
-            dtype=torch.float32,
+        # Only the scores are moved: the pair loop below reads kps_xy on the
+        # host.
+        kps_xy, kps_scores = stage_keypoints_2d(
+            kps_2d=kps_2d,
+            view_id_to_idx=view_id_to_idx,
+            subject_id_to_idx=subject_id_to_idx,
+            n_frames=n_frames,
+            keypoints_indices=keypoints_indices,
         )
-        kps_scores = torch.zeros(
-            (n_frames, n_views, n_subjects, n_selected_keypoints),
-            dtype=torch.float32,
-            device=device,
-        )
-
-        for annot in tqdm(
-            kps_2d.annotations, desc="Collecting 2D keypoints", leave=False
-        ):
-            view_idx = view_id_to_idx[annot.view_id]
-            subject_idx = subject_id_to_idx[annot.subject_id]
-            kps_xy[annot.frame_idx, view_idx, subject_idx] = annot.xy[keypoints_indices]
-            kps_scores[annot.frame_idx, view_idx, subject_idx] = annot.scores[
-                keypoints_indices
-            ]
+        kps_scores = kps_scores.to(device)
 
         for view_i, view_j in tqdm(
             pairs, total=len(pairs), leave=False, desc="Sampling keypoints pairs"

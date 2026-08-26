@@ -425,3 +425,67 @@ def linear_interpolate_keypoints(
         scores=interpolated_scores,
         format=prev_annotation.format,
     )
+
+
+def stage_keypoints_2d(
+    kps_2d: Keypoints2DAnnotations,
+    view_id_to_idx: dict[str, int],
+    subject_id_to_idx: dict[str, int],
+    n_frames: int,
+    keypoints_indices: torch.Tensor | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Stages annotations into dense (frame, view, subject, keypoint) tensors.
+
+    Assigning one annotation at a time costs an indexing call per annotation,
+    and a host-to-device round trip on top when the destination lives on the
+    GPU. A sequence holds tens of thousands of them. Stacking once and
+    scattering once gives the same tensors for a fraction of the cost.
+
+    Returns CPU tensors: staging is host work, and leaving the transfer to the
+    caller keeps it to a single copy.
+
+    Args:
+        kps_2d: Annotations to stage.
+        view_id_to_idx: Position of each view id along the view axis.
+        subject_id_to_idx: Position of each subject id along the subject axis.
+        n_frames: Length of the frame axis.
+        keypoints_indices: Keypoints to keep, in output order. Defaults to all
+            of them.
+
+    Returns:
+        xy: (n_frames, n_views, n_subjects, n_keypoints, 2).
+        scores: (n_frames, n_views, n_subjects, n_keypoints).
+    """
+    annots = kps_2d.annotations
+
+    if keypoints_indices is None:
+        keypoints_indices = torch.arange(kps_2d.metadata.formats[0].n_keypoints)
+
+    shape = (
+        n_frames,
+        len(view_id_to_idx),
+        len(subject_id_to_idx),
+        len(keypoints_indices),
+    )
+    xy = torch.zeros(*shape, 2)
+    scores = torch.zeros(*shape)
+
+    if not annots:
+        return xy, scores
+
+    frame_idx = torch.tensor([a.frame_idx for a in annots], dtype=torch.long)
+    view_idx = torch.tensor(
+        [view_id_to_idx[a.view_id] for a in annots], dtype=torch.long
+    )
+    subject_idx = torch.tensor(
+        [subject_id_to_idx[a.subject_id] for a in annots], dtype=torch.long
+    )
+
+    xy[frame_idx, view_idx, subject_idx] = torch.stack(
+        [torch.as_tensor(a.xy) for a in annots]
+    )[:, keypoints_indices]
+    scores[frame_idx, view_idx, subject_idx] = torch.stack(
+        [torch.as_tensor(a.scores) for a in annots]
+    )[:, keypoints_indices]
+
+    return xy, scores
