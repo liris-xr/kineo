@@ -155,7 +155,7 @@ def _synthetic_annotations():
 
 def _run_stage(
     n_kp_samples_per_view: int,
-    sampler: str = "fps",
+    sampler: str = "farthest_point",
     filter_negative_depth: bool = False,
     min_parallax_deg: float | None = None,
     max_reproj_error: float | None = None,
@@ -224,7 +224,7 @@ def test_stage_keeps_every_surviving_candidate_when_unbounded():
     assert annotation.kps_2d_xy.shape[1] == N_FRAMES * N_KEYPOINTS - 2
 
 
-def test_fps_spreads_wider_than_random_on_the_same_input():
+def test_fps_spreads_wider_than_uniform_on_the_same_input():
     n_kp_samples = 20
     height, width = RESOLUTION_HW
     scale = torch.tensor([width, height], dtype=torch.float32)
@@ -235,10 +235,14 @@ def test_fps_spreads_wider_than_random_on_the_same_input():
         dists.fill_diagonal_(float("inf"))
         return float(dists.min(dim=1).values.mean())
 
-    fps = mean_nearest_neighbour_distance(_run_stage(n_kp_samples, "fps"))
-    random = mean_nearest_neighbour_distance(_run_stage(n_kp_samples, "random"))
+    fps = mean_nearest_neighbour_distance(
+        _run_stage(n_kp_samples, "farthest_point")
+    )
+    uniform = mean_nearest_neighbour_distance(
+        _run_stage(n_kp_samples, "uniform")
+    )
 
-    assert fps > random
+    assert fps > uniform
 
 
 def test_stage_rejects_an_unknown_sampler():
@@ -387,10 +391,10 @@ def test_per_view_budget_gives_every_view_its_own_coverage():
     assert bool((_observed_counts(annotation) >= per_view).all())
 
 
-def test_per_view_budget_applies_to_the_random_sampler_too():
+def test_per_view_budget_applies_to_the_uniform_sampler_too():
     per_view = 10
     annotation = _run_stage(
-        n_kp_samples_per_view=per_view, sampler="random"
+        n_kp_samples_per_view=per_view, sampler="uniform"
     )
 
     assert bool((_observed_counts(annotation) >= per_view).all())
@@ -413,7 +417,7 @@ def test_stage_emits_the_annotation_contract():
 def test_every_view_keeps_its_own_budget_in_the_union():
     per_view = 10
 
-    for sampler in ("fps", "random"):
+    for sampler in ("farthest_point", "uniform"):
         annotation = _run_stage(n_kp_samples_per_view=per_view, sampler=sampler)
         observed = (annotation.kps_2d_scores > 0).sum(dim=1)
         assert bool((observed >= per_view).all()), sampler

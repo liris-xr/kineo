@@ -102,12 +102,12 @@ def farthest_point_sampling(
     return selected, selected_valid
 
 
-def random_point_sampling(
+def uniform_point_sampling(
     valid_mask: torch.Tensor,
     n_samples: int,
     generator: torch.Generator,
 ) -> list[torch.Tensor]:
-    """Uniform draw per row, over the same candidate sets FPS would see.
+    """Uniform draw without replacement per row, over the FPS candidate sets.
 
     The ablation's other arm: same rows, same ``valid_mask``, no coverage
     criterion. Rows are drawn in order from the shared generator, so the result

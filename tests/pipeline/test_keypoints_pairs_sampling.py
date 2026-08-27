@@ -246,7 +246,7 @@ def test_chunking_does_not_change_which_pairs_are_picked():
     Rows draw their first point in row order whatever the chunk boundaries
     are, so a run split into chunks must reproduce the unchunked one exactly.
     """
-    for sampler in ("fps", "random"):
+    for sampler in ("farthest_point", "uniform"):
         unchunked = _sample(sampler, max_chunk_bytes=10**9)
         chunked = _sample(sampler, max_chunk_bytes=1)  # one pair per chunk
 
@@ -256,7 +256,7 @@ def test_chunking_does_not_change_which_pairs_are_picked():
 
 
 def test_sampling_is_deterministic_for_a_given_seed():
-    for sampler in ("fps", "random"):
+    for sampler in ("farthest_point", "uniform"):
         first = _sample(sampler, max_chunk_bytes=10**9, seed=19)
         again = _sample(sampler, max_chunk_bytes=10**9, seed=19)
         other = _sample(sampler, max_chunk_bytes=10**9, seed=20)
@@ -277,7 +277,7 @@ def test_both_samplers_draw_from_the_same_candidate_set():
         pair_avg_conf_score_thr=0.5,
     )
 
-    for sampler in ("fps", "random"):
+    for sampler in ("farthest_point", "uniform"):
         for pair_idx, picked in enumerate(_sample(sampler, max_chunk_bytes=10**9)):
             assert bool(candidates[pair_idx][picked].all()), sampler
 
@@ -317,7 +317,7 @@ def _emits_an_off_frame_point(reject_invalid_observations: bool) -> bool:
     cfg = KeypointsPairsSamplingRuntimeConfig(
         max_points_pairs=-1,
         pair_avg_conf_score_thr=0.0,
-        sampler="random",
+        sampler="uniform",
         reject_invalid_observations=reject_invalid_observations,
     )
     KeypointsPairsSamplingStage(name="t", order=40, runtime_cfg=cfg).forward(

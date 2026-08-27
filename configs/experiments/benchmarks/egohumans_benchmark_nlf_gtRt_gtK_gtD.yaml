@@ -46,7 +46,7 @@ pipeline:
         _target_: kineo.pipeline.stages.bundle_adjustment_sampling.BundleAdjustmentSamplingRuntimeConfig
         n_kp_samples_per_view: 50
         min_kp_score: 0.6
-        sampler: "random"
+        sampler: "uniform"
         reject_invalid_observations: false
 
     mvs_triangulation:

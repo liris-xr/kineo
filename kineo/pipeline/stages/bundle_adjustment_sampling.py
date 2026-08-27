@@ -28,7 +28,7 @@ from kineo.geometry.camera import transform_points_from_world_to_camera
 from kineo.sampling import (
     farthest_point_sampling,
     normalized_uv,
-    random_point_sampling,
+    uniform_point_sampling,
     valid_observations_mask,
 )
 from kineo.geometry.triangulation import (
@@ -85,7 +85,7 @@ class BundleAdjustmentSamplingRuntimeConfig:
     # every candidate.
     n_kp_samples_per_view: int = 50
     min_kp_score: float = 0.4
-    sampler: str = "fps"
+    sampler: str = "farthest_point"
     # Off-frame and non-finite keypoints are the extremes FPS chases, so the
     # rejection is on by default. Turning it off is the uniform-baseline arm,
     # and isolates the filter from the sampler in the ablation.
@@ -104,11 +104,11 @@ class BundleAdjustmentSamplingStage(
 ):
     """Samples the bundle adjustment observations, per view.
 
-    ``sampler="fps"`` runs farthest-point sampling over ``[u, v, t]`` per view
-    and unions the selections, so the observation set spans each camera's image
-    plane and the sequence duration. ``sampler="random"`` draws uniformly over
-    the same candidates instead, which is the baseline the coverage sampler is
-    measured against.
+    ``sampler="farthest_point"`` runs farthest-point sampling over
+    ``[u, v, t]`` per view and unions the selections, so the observation set
+    spans each camera's image plane and the sequence duration.
+    ``sampler="uniform"`` draws uniformly over the same candidates instead,
+    which is the baseline the coverage sampler is measured against.
 
     ``reject_invalid_observations`` gates off-frame and non-finite keypoints
     ahead of either sampler, so the filter and the sampler vary independently.
@@ -138,10 +138,10 @@ class BundleAdjustmentSamplingStage(
         gt_annotations: dict[str, Annotations],
         runtime_cfg: BundleAdjustmentSamplingRuntimeConfig,
     ):
-        if runtime_cfg.sampler not in ("fps", "random"):
+        if runtime_cfg.sampler not in ("farthest_point", "uniform"):
             raise ValueError(
                 f"Unsupported sampler: {runtime_cfg.sampler}, "
-                'expected "fps" or "random"'
+                'expected "farthest_point" or "uniform"'
             )
 
         device = pipeline.device
@@ -467,10 +467,10 @@ class BundleAdjustmentSamplingStage(
         # entries it observes, so the views form a uniform batch.
         view_candidates_mask = observations_mask[:, candidates_indices]
 
-        if runtime_cfg.sampler == "random":
+        if runtime_cfg.sampler == "uniform":
             views_orders = [
                 view_order.tolist()
-                for view_order in random_point_sampling(
+                for view_order in uniform_point_sampling(
                     view_candidates_mask, per_view_budget, generator
                 )
             ]

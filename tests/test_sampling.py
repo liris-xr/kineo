@@ -3,7 +3,7 @@ import torch
 from kineo.sampling import (
     farthest_point_sampling,
     normalized_uv,
-    random_point_sampling,
+    uniform_point_sampling,
     valid_observations_mask,
 )
 
@@ -165,12 +165,12 @@ def test_valid_observations_mask_uses_per_view_resolutions():
     assert torch.equal(mask, torch.tensor([[True], [False]]))
 
 
-def test_random_sampling_only_draws_points_a_row_may_see():
+def test_uniform_sampling_only_draws_points_a_row_may_see():
     valid_mask = torch.zeros(3, 40, dtype=torch.bool)
     for row in range(3):
         valid_mask[row, row::3] = True
 
-    picked = random_point_sampling(valid_mask, 10, _generator(2))
+    picked = uniform_point_sampling(valid_mask, 10, _generator(2))
 
     for row in range(3):
         assert len(picked[row]) == 10
@@ -178,22 +178,22 @@ def test_random_sampling_only_draws_points_a_row_may_see():
         assert len(set(picked[row].tolist())) == 10
 
 
-def test_random_sampling_yields_every_point_of_a_short_row():
+def test_uniform_sampling_yields_every_point_of_a_short_row():
     valid_mask = torch.ones(2, 30, dtype=torch.bool)
     valid_mask[1, 5:] = False
 
-    picked = random_point_sampling(valid_mask, 12, _generator(3))
+    picked = uniform_point_sampling(valid_mask, 12, _generator(3))
 
     assert len(picked[0]) == 12
     assert torch.equal(torch.sort(picked[1]).values, torch.arange(5))
 
 
-def test_random_sampling_is_deterministic_for_a_given_seed():
+def test_uniform_sampling_is_deterministic_for_a_given_seed():
     valid_mask = torch.rand(4, 60, generator=_generator(6)) > 0.3
 
-    first = random_point_sampling(valid_mask, 12, _generator(19))
-    second = random_point_sampling(valid_mask, 12, _generator(19))
-    other = random_point_sampling(valid_mask, 12, _generator(20))
+    first = uniform_point_sampling(valid_mask, 12, _generator(19))
+    second = uniform_point_sampling(valid_mask, 12, _generator(19))
+    other = uniform_point_sampling(valid_mask, 12, _generator(20))
 
     assert all(torch.equal(a, b) for a, b in zip(first, second))
     assert any(not torch.equal(a, b) for a, b in zip(first, other))

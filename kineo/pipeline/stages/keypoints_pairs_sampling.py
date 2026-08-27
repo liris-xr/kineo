@@ -29,7 +29,7 @@ from kineo.pipeline.pipeline import Pipeline, PipelineStage
 from kineo.sampling import (
     farthest_point_sampling,
     normalized_uv,
-    random_point_sampling,
+    uniform_point_sampling,
     valid_observations_mask,
 )
 
@@ -145,7 +145,7 @@ class KeypointsPairsSamplingRuntimeConfig:
     max_points_pairs: int = 2000
     pair_avg_conf_score_thr: float = 0.75
     keypoints_indices: list[int] | None = None
-    sampler: str = "fps"
+    sampler: str = "farthest_point"
     # Off-frame and non-finite keypoints are the extremes FPS chases, so the
     # rejection is on by default. Turning it off is the uniform-baseline arm,
     # and isolates the filter from the sampler in the ablation.
@@ -160,9 +160,9 @@ class KeypointsPairsSamplingStage(
 ):
     """Samples the calibration point pairs, per view pair.
 
-    ``sampler="fps"`` runs farthest-point sampling over
+    ``sampler="farthest_point"`` runs farthest-point sampling over
     ``[u_i, v_i, u_j, v_j, t]``, so each pair's correspondences span both image
-    planes and the sequence duration. ``sampler="random"`` draws uniformly over
+    planes and the sequence duration. ``sampler="uniform"`` draws uniformly over
     the same candidates instead, which is the baseline the coverage sampler is
     measured against.
 
@@ -194,10 +194,10 @@ class KeypointsPairsSamplingStage(
         gt_annotations: dict[str, Annotations],
         runtime_cfg: KeypointsPairsSamplingRuntimeConfig,
     ):
-        if runtime_cfg.sampler not in ("fps", "random"):
+        if runtime_cfg.sampler not in ("farthest_point", "uniform"):
             raise ValueError(
                 f"Unsupported sampler: {runtime_cfg.sampler}, "
-                'expected "fps" or "random"'
+                'expected "farthest_point" or "uniform"'
             )
 
         device = pipeline.device
@@ -389,9 +389,9 @@ class KeypointsPairsSamplingStage(
                 pair_avg_conf_score_thr=runtime_cfg.pair_avg_conf_score_thr,
             )
 
-            if runtime_cfg.sampler == "random":
+            if runtime_cfg.sampler == "uniform":
                 picked_per_pair.extend(
-                    random_point_sampling(candidates_mask, budget, generator)
+                    uniform_point_sampling(candidates_mask, budget, generator)
                 )
                 continue
 
