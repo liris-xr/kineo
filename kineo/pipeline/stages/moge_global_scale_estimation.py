@@ -44,7 +44,7 @@ class MoGeGlobalScaleEstimationRuntimeConfig:
     # Used when selecting the best frame for each view
     keypoints_indices: list[int] | None = None
     use_half_precision: bool = False
-    exponential_decay_factor: float = 1.0
+    frame_score_decay_per_px: float = 1.0
 
 
 class MoGeGlobalScaleEstimationStage(
@@ -78,7 +78,7 @@ class MoGeGlobalScaleEstimationStage(
         camera_intrinsics: CameraIntrinsicsAnnotations,
         camera_extrinsics: CameraExtrinsicsAnnotations,
         device: torch.device,
-        exponential_decay_factor: float = 1.0,
+        frame_score_decay_per_px: float = 1.0,
         keypoints_indices: list[int] | None = None,
     ) -> dict[str, tuple[int, torch.Tensor, torch.Tensor]]:
         result: dict[str, dict[str, torch.Tensor]] = {}
@@ -167,7 +167,7 @@ class MoGeGlobalScaleEstimationStage(
                 distortion_model=distortion_model,
             )
 
-            h = torch.exp(-exponential_decay_factor * e).sum(dim=-1) / (
+            h = torch.exp(-frame_score_decay_per_px * e).sum(dim=-1) / (
                 n_subjects * n_selected_keypoints
             )
             h = h.reshape(n_frames)
@@ -234,7 +234,7 @@ class MoGeGlobalScaleEstimationStage(
             camera_intrinsics=camera_intrinsics,
             camera_extrinsics=camera_extrinsics,
             device=device,
-            exponential_decay_factor=runtime_cfg.exponential_decay_factor,
+            frame_score_decay_per_px=runtime_cfg.frame_score_decay_per_px,
             keypoints_indices=runtime_cfg.keypoints_indices,
         )
 

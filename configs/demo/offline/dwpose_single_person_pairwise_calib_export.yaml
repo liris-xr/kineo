@@ -55,8 +55,8 @@ pipeline:
       order: 40
       runtime_cfg:
         _target_: kineo.pipeline.stages.keypoints_pairs_sampling.KeypointsPairsSamplingRuntimeConfig
-        max_points_pairs: 4000
-        pair_avg_conf_score_thr: 0.5
+        n_correspondences_per_view_pair: 4000
+        min_pair_geometric_mean_score: 0.5
         keypoints_indices: ${keypoints_indices}
         sampler: "uniform"
         filter_off_frame_keypoints: False
@@ -186,7 +186,7 @@ pipeline:
       order: 120
       runtime_cfg:
         _target_: kineo.pipeline.stages.scene_reorientation.SceneReorientationRuntimeConfig
-        min_kps_quantile: 0.01
+        floor_height_quantile: 0.01
 
     # bundle_adjustment_history_rerun_export:
     #   _target_: kineo.pipeline.stages.bundle_adjustment_history_rerun_export.BundleAdjustmentHistoryRerunExportStage
@@ -236,7 +236,7 @@ pipeline:
         min_keypoint_score_3d: 0.2
         min_keypoint_score_2d: 0.2
 
-        video_quality: 25
+        video_quality_pct: 25
         image_plane_distance_m: 0.2
 
         log_disconnected_joints: False

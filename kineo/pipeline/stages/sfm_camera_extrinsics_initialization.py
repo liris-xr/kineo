@@ -70,7 +70,7 @@ class SfMCameraExtrinsicsInitializationRuntimeConfig:
     # camera onto its parent. False restores the rotation tree.
     use_pose_closure_tree: bool = True
     # Loop-closure tolerance, relative to the largest term in the loop.
-    closure_rel_thresh: float = 0.10
+    max_closure_residual_ratio: float = 0.10
 
 
 class SfMCameraExtrinsicsInitializationStage(
@@ -192,7 +192,7 @@ class SfMCameraExtrinsicsInitializationStage(
             rotation_outlier_thresh_deg=runtime_cfg.rotation_outlier_thresh_deg,
             n_rotation_averaging_iters=runtime_cfg.n_rotation_averaging_iters,
             use_pose_closure_tree=runtime_cfg.use_pose_closure_tree,
-            closure_rel_thresh=runtime_cfg.closure_rel_thresh,
+            max_closure_residual_ratio=runtime_cfg.max_closure_residual_ratio,
         )
 
         camera_extrinsics_annotations = []
@@ -235,7 +235,7 @@ def _estimate_camera_extrinsics(
     rotation_outlier_thresh_deg: float = 7.0,
     n_rotation_averaging_iters: int = 100,
     use_pose_closure_tree: bool = True,
-    closure_rel_thresh: float = 0.10,
+    max_closure_residual_ratio: float = 0.10,
 ) -> torch.Tensor:
     """
     Estimate camera extrinsics from 2D keypoint correspondences across multiple views.
@@ -300,7 +300,7 @@ def _estimate_camera_extrinsics(
         n_iters=n_relative_scale_factors_iters,
         n_irls_iters=n_scale_irls_iters,
         weighting=scale_triplet_weighting,
-        closure_rel_thresh=closure_rel_thresh,
+        max_closure_residual_ratio=max_closure_residual_ratio,
         tolerance_grad=tolerance_grad,
         tolerance_change=tolerance_change,
     )
@@ -704,8 +704,6 @@ def _initialize_graph(
             Confidence level for RANSAC inlier selection (0-1)
         ransac_reproj_threshold_px: float, default=1.0
             Maximum reprojection error in pixels for RANSAC inlier selection
-        max_points_pairs: int, default=2000
-            Maximum number of point pairs to use for pose estimation
 
     Returns:
         tuple[torch.Tensor, torch.Tensor]:
@@ -1172,7 +1170,7 @@ def _compute_relative_scale_factors(
     weighting: str = "irls",
     tolerance_grad: float = 1e-05,
     tolerance_change: float = 1e-09,
-    closure_rel_thresh: float = 0.10,
+    max_closure_residual_ratio: float = 0.10,
 ) -> nx.DiGraph:
     """
     Compute the scale factors for the relative transformations in the graph.
@@ -1330,7 +1328,7 @@ def _compute_relative_scale_factors(
         if i != j and "scale" in d
     }
     rates = edge_pose_closure_rates(
-        node_R, pose_edges, n_views, rel_thresh=closure_rel_thresh
+        node_R, pose_edges, n_views, rel_thresh=max_closure_residual_ratio
     )
     for key, rate in rates.items():
         view_i, view_j = tuple(key)

@@ -70,7 +70,7 @@ class RerunExportRuntimeConfig:
     image_plane_distance_m: float = 0.2
     remove_world_points_outside_scene_radius: bool = False
     scene_radius_multiplier: float = 1.5
-    video_quality: int = 75
+    video_quality_pct: int = 75
     video_view_ids: str | list[str] | None = None
     world_translation: tuple[float, float, float] = (0.0, 0.0, 0.0)
 
@@ -393,7 +393,7 @@ class RerunExportStage(PipelineStage[RerunExportRuntimeConfig]):
                     views=video_views,
                     prefix="kineo",
                     global_time_reference=global_time_reference,
-                    video_quality=runtime_cfg.video_quality,
+                    video_quality_pct=runtime_cfg.video_quality_pct,
                     start_frame_idx=runtime_cfg.start_frame_idx,
                     end_frame_idx=runtime_cfg.end_frame_idx,
                 )
@@ -414,7 +414,7 @@ def log_videos(
         views: list[ViewInput],
         prefix: str,
         global_time_reference: GlobalTimeReferenceAnnotation,
-        video_quality: int = 75,
+        video_quality_pct: int = 75,
         start_frame_idx: int = 0,
         end_frame_idx: int = -1,
 ):
@@ -448,7 +448,7 @@ def log_videos(
         # Note that b-frames are generally not recommended for low-latency streaming and may make logging more complex.
         stream.max_b_frames = 0
         stream.options = {
-            "crf": str(quality_to_crf(video_quality)),
+            "crf": str(quality_to_crf(video_quality_pct)),
         }
 
         entity_path = f"{prefix}/cameras/{view_id}/rgb"

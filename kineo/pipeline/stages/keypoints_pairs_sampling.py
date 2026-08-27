@@ -88,7 +88,7 @@ def pair_candidates_mask(
     kps_scores: torch.Tensor,
     observations_mask: torch.Tensor,
     pairs: torch.Tensor,
-    pair_avg_conf_score_thr: float,
+    min_pair_score: float,
 ) -> torch.Tensor:
     """Flags the candidates each view pair may draw from.
 
@@ -96,18 +96,18 @@ def pair_candidates_mask(
         kps_scores: Keypoint scores of shape (n_views, n_flat).
         observations_mask: Valid observations, (n_views, n_flat) bool.
         pairs: View index pairs of shape (n_pairs, 2).
-        pair_avg_conf_score_thr: Lower bound on the geometric mean of the two
-            views' scores.
+        min_pair_score: Lower bound on the geometric mean of the two views'
+            scores.
 
     Returns:
         Bool tensor of shape (n_pairs, n_flat).
     """
     views_i, views_j = pairs[:, 0], pairs[:, 1]
 
-    pair_avg_conf_scores = torch.sqrt(kps_scores[views_i] * kps_scores[views_j])
+    pair_geometric_mean_scores = torch.sqrt(kps_scores[views_i] * kps_scores[views_j])
 
     return (
-        (pair_avg_conf_scores > pair_avg_conf_score_thr)
+        (pair_geometric_mean_scores > min_pair_score)
         & observations_mask[views_i]
         & observations_mask[views_j]
     )
@@ -142,8 +142,8 @@ def pairs_chunk_size(n_pairs: int, n_flat: int, max_chunk_bytes: int) -> int:
 
 @dataclass(frozen=True)
 class KeypointsPairsSamplingRuntimeConfig:
-    max_points_pairs: int = 2000
-    pair_avg_conf_score_thr: float = 0.75
+    n_correspondences_per_view_pair: int = 2000
+    min_pair_geometric_mean_score: float = 0.75
     keypoints_indices: list[int] | None = None
     sampler: str = "farthest_point"
     # Off-frame and non-finite keypoints are the extremes FPS chases, so the
@@ -152,7 +152,7 @@ class KeypointsPairsSamplingRuntimeConfig:
     filter_off_frame_keypoints: bool = True
     farthest_point_image_plane_weight: float = 1.0
     farthest_point_time_weight: float = 1.0
-    max_chunk_bytes: int = 128 * 1024 * 1024
+    farthest_point_features_chunk_bytes: int = 128 * 1024 * 1024
 
 
 class KeypointsPairsSamplingStage(
@@ -301,7 +301,7 @@ class KeypointsPairsSamplingStage(
         calibration_points_annotations: list[CalibrationPointsAnnotation] = []
 
         for (view_i, view_j), picked_indices in zip(pairs.tolist(), picked_per_pair):
-            pair_avg_conf_scores = torch.sqrt(
+            pair_geometric_mean_scores = torch.sqrt(
                 kps_scores[view_i, picked_indices]
                 * kps_scores[view_j, picked_indices]
             ).cpu()
@@ -315,7 +315,7 @@ class KeypointsPairsSamplingStage(
                     view2_id=views_ids[view_j],
                     points1=pair_points_i,
                     points2=pair_points_j,
-                    confidence_scores=pair_avg_conf_scores,
+                    confidence_scores=pair_geometric_mean_scores,
                     frame_indices=pair_frame_indices,
                 )
             )
@@ -325,7 +325,7 @@ class KeypointsPairsSamplingStage(
                     view2_id=views_ids[view_i],
                     points1=pair_points_j,
                     points2=pair_points_i,
-                    confidence_scores=pair_avg_conf_scores,
+                    confidence_scores=pair_geometric_mean_scores,
                     frame_indices=pair_frame_indices,
                 )
             )
@@ -368,10 +368,12 @@ class KeypointsPairsSamplingStage(
         n_pairs, n_flat = len(pairs), kps_xy.shape[1]
         budget = (
             n_flat
-            if runtime_cfg.max_points_pairs == -1
-            else runtime_cfg.max_points_pairs
+            if runtime_cfg.n_correspondences_per_view_pair == -1
+            else runtime_cfg.n_correspondences_per_view_pair
         )
-        chunk_size = pairs_chunk_size(n_pairs, n_flat, runtime_cfg.max_chunk_bytes)
+        chunk_size = pairs_chunk_size(
+            n_pairs, n_flat, runtime_cfg.farthest_point_features_chunk_bytes
+        )
 
         picked_per_pair: list[torch.Tensor] = []
 
@@ -386,7 +388,7 @@ class KeypointsPairsSamplingStage(
                 kps_scores=kps_scores,
                 observations_mask=observations_mask,
                 pairs=chunk_pairs,
-                pair_avg_conf_score_thr=runtime_cfg.pair_avg_conf_score_thr,
+                min_pair_score=runtime_cfg.min_pair_geometric_mean_score,
             )
 
             if runtime_cfg.sampler == "uniform":

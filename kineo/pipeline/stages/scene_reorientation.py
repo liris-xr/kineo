@@ -27,7 +27,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class SceneReorientationRuntimeConfig:
-    min_kps_quantile: float = 0.01
+    floor_height_quantile: float = 0.01
     min_keypoint_score: float = 0.2
 
 
@@ -95,7 +95,7 @@ class SceneReorientationStage(PipelineStage[SceneReorientationRuntimeConfig]):
             new_keypoints_3d,
             up_axis=up_axis,
             min_keypoint_score=runtime_cfg.min_keypoint_score,
-            min_kps_quantile=runtime_cfg.min_kps_quantile,
+            floor_height_quantile=runtime_cfg.floor_height_quantile,
         )
         t_vector = torch.zeros(3, device=device)
         t_vector[up_axis] = -floor_position
@@ -151,7 +151,7 @@ def _compute_floor_position(
     keypoints_3d: Keypoints3DAnnotations,
     up_axis: int = 1,
     min_keypoint_score: float = 0.2,
-    min_kps_quantile: float = 0.01,
+    floor_height_quantile: float = 0.01,
 ) -> float:
     n_frames = keypoints_3d.n_frames
     subject_ids = keypoints_3d.subjects_ids
@@ -194,7 +194,7 @@ def _compute_floor_position(
     if len(keypoints) == 0:
         return 0
 
-    return keypoints[..., up_axis].quantile(min_kps_quantile).item()
+    return keypoints[..., up_axis].quantile(floor_height_quantile).item()
 
 
 def rotation_matrix_from_vectors(u: torch.Tensor, v: torch.Tensor) -> torch.Tensor:

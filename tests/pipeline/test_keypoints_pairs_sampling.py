@@ -122,7 +122,7 @@ def test_candidates_require_both_views_above_the_threshold():
         kps_scores=kps_scores,
         observations_mask=observations_mask,
         pairs=_pairs(2),
-        pair_avg_conf_score_thr=0.6,
+        min_pair_score=0.6,
     )
 
     # sqrt(0.9*0.9)=0.9 passes; sqrt(0.9*0.1)=0.3 and sqrt(0.1*0.1)=0.1 do not.
@@ -139,7 +139,7 @@ def test_candidates_reject_an_observation_either_view_cannot_see():
         kps_scores=kps_scores,
         observations_mask=observations_mask,
         pairs=_pairs(2),
-        pair_avg_conf_score_thr=0.6,
+        min_pair_score=0.6,
     )
 
     assert mask.tolist() == [[True, False, False]]
@@ -153,7 +153,7 @@ def test_candidates_are_built_for_every_pair_in_order():
         kps_scores=kps_scores,
         observations_mask=observations_mask,
         pairs=_pairs(3),
-        pair_avg_conf_score_thr=0.6,
+        min_pair_score=0.6,
     )
 
     # Pairs are (0,1), (0,2), (1,2) in itertools.combinations order.
@@ -213,10 +213,10 @@ def test_fps_over_the_joint_space_separates_correspondences_view_i_cannot():
 def _sample(sampler, max_chunk_bytes, n_views=4, n_flat=60, seed=19):
     """Runs the stage hot path over a synthetic rig."""
     cfg = KeypointsPairsSamplingRuntimeConfig(
-        max_points_pairs=8,
-        pair_avg_conf_score_thr=0.5,
+        n_correspondences_per_view_pair=8,
+        min_pair_geometric_mean_score=0.5,
         sampler=sampler,
-        max_chunk_bytes=max_chunk_bytes,
+        farthest_point_features_chunk_bytes=max_chunk_bytes,
     )
     stage = KeypointsPairsSamplingStage(name="t", order=0, runtime_cfg=cfg)
 
@@ -274,7 +274,7 @@ def test_both_samplers_draw_from_the_same_candidate_set():
         kps_scores=kps_scores,
         observations_mask=observations_mask,
         pairs=_pairs(n_views),
-        pair_avg_conf_score_thr=0.5,
+        min_pair_score=0.5,
     )
 
     for sampler in ("farthest_point", "uniform"):
@@ -315,8 +315,8 @@ def _emits_an_off_frame_point(filter_off_frame_keypoints: bool) -> bool:
 
     views, annotations = _synthetic_annotations()
     cfg = KeypointsPairsSamplingRuntimeConfig(
-        max_points_pairs=-1,
-        pair_avg_conf_score_thr=0.0,
+        n_correspondences_per_view_pair=-1,
+        min_pair_geometric_mean_score=0.0,
         sampler="uniform",
         filter_off_frame_keypoints=filter_off_frame_keypoints,
     )
