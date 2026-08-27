@@ -35,6 +35,13 @@ from kineo.eval.dataset_metrics import (
 )
 from kineo.io.frame_sequence_loader import VideoLoader
 from kineo.pipeline.pipeline import Pipeline
+from kineo.pipeline.stages.nlf.skeleton_keypoints_detection import (
+    KEYPOINTS_FORMAT,
+)
+
+# Formats the dome's native coco_19 ground truth can be scored over, i.e. the
+# targets `Keypoints3DAnnotations.convert_to_format` knows how to reach from it.
+GT_KEYPOINTS_FORMATS = ("coco_17", "coco_19")
 
 torch.use_deterministic_algorithms(True)
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -58,11 +65,19 @@ def main(
     dataset_dir: str,
     config_file: str,
     split: str = "test",
+    gt_keypoints_format: str = "coco_17",
     sequences_filter: list[str] = [],
     use_cache: bool = False,
 ):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print_system_info(device)
+
+    # The metrics are computed in whatever format the ground truth is in:
+    # `human_metrics` converts the predictions to it. Converting the ground
+    # truth is therefore what picks the joint set the numbers are reported
+    # over, and coco_17 is the one TEMPO reports on.
+    target_kps_format = KEYPOINTS_FORMAT[gt_keypoints_format]
+    print(f"Ground truth keypoints format: {gt_keypoints_format}")
 
     cfg = OmegaConf.load(config_file)
     if use_cache:
@@ -111,6 +126,10 @@ def main(
                     orjson.loads(f.read())
                 )
 
+            gt_keypoints_3d = gt_keypoints_3d.convert_to_format(
+                target_kps_format
+            )
+
             keypoints_2d_file = sequence["annotations"]["keypoints_2d"]
             keypoints_2d_file = os.path.join(dataset_dir, keypoints_2d_file)
 
@@ -118,6 +137,14 @@ def main(
                 gt_keypoints_2d = Keypoints2DAnnotations.from_dict(
                     orjson.loads(f.read())
                 )
+
+            # Kept in the same format as the 3D ground truth: a config that
+            # feeds the ground-truth 2D keypoints to the pipeline instead of a
+            # detector would otherwise predict a different joint set than the
+            # one the metrics are scored over.
+            gt_keypoints_2d = gt_keypoints_2d.convert_to_format(
+                target_kps_format
+            )
 
             cam_intrinsics_file = sequence["annotations"]["cameras_intrinsics"]
             cam_intrinsics_file = os.path.join(dataset_dir, cam_intrinsics_file)
@@ -229,6 +256,16 @@ if __name__ == "__main__":
         help="TEMPO split to evaluate on",
     )
     parser.add_argument(
+        "--gt-keypoints-format",
+        type=str,
+        choices=GT_KEYPOINTS_FORMATS,
+        default="coco_17",
+        help="Joint set the metrics are reported over. The ground truth is "
+        "stored as coco_19, the dome's native format; TEMPO reports on "
+        "coco_17, so that is the default and makes the numbers directly "
+        "comparable to its Table 1.",
+    )
+    parser.add_argument(
         "--sequences-filter",
         nargs="+",
         default=[],
@@ -244,6 +281,7 @@ if __name__ == "__main__":
         args.dataset_dir,
         args.config_file,
         args.split,
+        args.gt_keypoints_format,
         args.sequences_filter,
         args.use_cache,
     )

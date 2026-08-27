@@ -104,6 +104,12 @@ dropped as corrupted. `panoptic-download` fetches the four test sequences only,
 about 16GB; pass `--split train` or `--split all` to the script directly for the
 other nine, about 40GB more.
 
+Annotations are stored in the dome's native `coco_19` format, but the metrics
+are reported over `coco_17` by default, which is the joint set TEMPO reports on,
+so the numbers are directly comparable to its results. Pass
+`--gt-keypoints-format coco_19` to `experiments/panoptic_eval.py` to score over
+the full 19 joints instead.
+
 If no `path-to-config.yaml` is not given, uses `configs/experiments/benchmarks/*_benchmark_nlf_estRt_estK_estD.yaml` by default.
 All configurations used in the paper are available in the `configs` directory.
 
