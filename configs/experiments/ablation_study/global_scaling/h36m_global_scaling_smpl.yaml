@@ -5,7 +5,7 @@
 # scale:  SMPL Scaling
 output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/h36m_global_scaling_smpl"
 cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/h36m_global_scaling_smpl"
-use_cache: False
+use_cache: True
 batch_size: 32
 use_half_precision: False
 shared_intrinsics: False
@@ -44,7 +44,7 @@ pipeline:
       _target_: kineo.pipeline.stages.smpl_global_scale_estimation.SMPLGlobalScaleEstimationStage
       name: "SMPL Global Scale Estimation"
       joint_regressor_path: "./body_models/smpl/h36m_joints_regressor.pt"
-      smpl_model_path: "./body_models/smpl/"
+      smpl_model_path: "./body_models/smpl/SMPL_NEUTRAL.pkl"
       order: 70
       runtime_cfg:
         _target_: kineo.pipeline.stages.smpl_global_scale_estimation.SMPLGlobalScaleEstimationRuntimeConfig

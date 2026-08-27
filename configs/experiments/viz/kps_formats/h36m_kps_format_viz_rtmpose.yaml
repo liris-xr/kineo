@@ -158,7 +158,7 @@ pipeline:
       _target_: kineo.pipeline.stages.smpl_global_scale_estimation.SMPLGlobalScaleEstimationStage
       name: "SMPL Global Scale Estimation"
       joint_regressor_path: "./body_models/smpl/h36m_joints_regressor.pt"
-      smpl_model_path: "./body_models/smpl/"
+      smpl_model_path: "./body_models/smpl/SMPL_NEUTRAL.pkl"
       order: 100
       runtime_cfg:
         _target_: kineo.pipeline.stages.smpl_global_scale_estimation.SMPLGlobalScaleEstimationRuntimeConfig

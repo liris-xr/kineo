@@ -222,7 +222,7 @@ def _estimate_camera_extrinsics(
     Ks_init: torch.Tensor,
     dist_coeffs_init: torch.Tensor,
     distortion_models: str,
-    ransac_confidence: float = 0.999,
+    ransac_confidence: float = 0.99,
     ransac_reproj_threshold_px: float = 3.0,
     n_refinement_iters: int = 100,
     use_lbfgs: bool = True,

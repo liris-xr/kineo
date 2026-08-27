@@ -1,6 +1,6 @@
 output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/infer_dwpose_single_person"
-cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/moge-rtmlib-fp16_b02f24f9"
-use_cache: False
+cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/moge-rtmlib-fp16_b609fcc3"
+use_cache: True
 batch_size: 32
 use_half_precision: True
 shared_intrinsics: True
@@ -31,7 +31,7 @@ pipeline:
     moge_intrinsics_estimation:
       _target_: kineo.pipeline.stages.moge_intrinsics_estimation.MoGeIntrinsicsEstimationStage
       name: "MoGe Intrinsics Estimation"
-      model_name_or_path: "Ruicheng/moge-2-vitl"
+      model_name_or_path: "./checkpoints/moge-2-vitl-normal.pt"
       order: 20
       runtime_cfg:
         _target_: kineo.pipeline.stages.moge_intrinsics_estimation.MoGeIntrinsicsEstimationRuntimeConfig
@@ -155,7 +155,7 @@ pipeline:
     moge_global_scale_estimation:
       _target_: kineo.pipeline.stages.moge_global_scale_estimation.MoGeGlobalScaleEstimationStage
       name: "MoGe Global Scale Estimation"
-      model_name_or_path: "Ruicheng/moge-2-vitl"
+      model_name_or_path: "./checkpoints/moge-2-vitl-normal.pt"
       order: 100
       runtime_cfg:
         _target_: kineo.pipeline.stages.moge_global_scale_estimation.MoGeGlobalScaleEstimationRuntimeConfig
@@ -187,7 +187,7 @@ pipeline:
       _target_: kineo.pipeline.stages.moge_scene_reconstruction.MoGeSceneReconstructionStage
       name: "Scene Reconstruction"
       order: 130
-      model_name_or_path: "Ruicheng/moge-2-vitl"
+      model_name_or_path: "./checkpoints/moge-2-vitl-normal.pt"
       runtime_cfg:
         _target_: kineo.pipeline.stages.moge_scene_reconstruction.MoGeSceneReconstructionRuntimeConfig
         use_half_precision: ${use_half_precision}

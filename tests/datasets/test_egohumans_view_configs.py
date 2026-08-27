@@ -5,7 +5,10 @@ import re
 import pytest
 from omegaconf import OmegaConf
 
-CONFIGS_GLOB = "configs/experiments/benchmarks/*_[0-9]views*.yaml"
+CONFIGS_GLOB = "configs/experiments/ablation_study/n_views/*_[0-9]*.yaml"
+BENCHMARK = (
+    "configs/experiments/benchmarks/egohumans_benchmark_nlf_estRt_estK_estDk1k2.yaml"
+)
 
 
 def _view_configs():
@@ -19,12 +22,7 @@ def _stem(config_path: str) -> str:
 
 
 def _view_count(config_path: str) -> int:
-    return int(re.search(r"_(\d+)views", _stem(config_path)).group(1))
-
-
-def _view_setting(config_path: str) -> str:
-    """The `<n>views` part, shared by a base config and its variants."""
-    return re.search(r"_(\d+views)", _stem(config_path)).group(1)
+    return int(re.search(r"_n_views_(\d+)", _stem(config_path)).group(1))
 
 
 @pytest.mark.parametrize("config_path", _view_configs())
@@ -48,14 +46,15 @@ def test_output_root_is_config_specific(config_path):
 
 
 @pytest.mark.parametrize("config_path", _view_configs())
-def test_cache_root_belongs_to_this_view_setting(config_path):
-    # Variants that only change a bundle-adjustment setting share their base
-    # config's cache on purpose - the cached stages (MoGe intrinsics, NLF
-    # keypoints) do not read it, so the outputs are identical. Sharing across
-    # view counts would be a real bug, so pin the `<n>views` part only.
+def test_cache_root_is_shared_with_the_benchmark(config_path):
+    # The cache holds one file per view, so a 2-view run and the full-rig
+    # benchmark read the same directory: the first fills in the views it needs
+    # and the other reuses them. A view count with its own directory would
+    # re-run MoGe and NLF over views that are already on disk.
     raw = OmegaConf.to_container(OmegaConf.load(config_path), resolve=False)
-    setting = _view_setting(config_path)
+    benchmark = OmegaConf.to_container(OmegaConf.load(BENCHMARK), resolve=False)
 
-    assert raw["cache_root_dir"].endswith(setting), (
-        f"cache_root_dir in {config_path} does not belong to {setting}"
+    assert raw["cache_root_dir"] == benchmark["cache_root_dir"], (
+        f"cache_root_dir in {config_path} does not match the benchmark, so the "
+        "per-view cache cannot be shared with it"
     )

@@ -1,6 +1,6 @@
 output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/egohumans_disabled_confidence_dwpose_estRt_estK_estD"
 cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/mmpose-moge-fp32_dfefc402"
-use_cache: False
+use_cache: True
 batch_size: 32
 # Don't use faces and hands in the pipeline (body only), except when triangulating the final result.
 # This is because hands and faces are often noisy, yet their score is anormaly high giving false positives.
@@ -73,7 +73,7 @@ pipeline:
       order: 50
       runtime_cfg:
         _target_: kineo.pipeline.stages.sfm_camera_extrinsics_initialization.SfMCameraExtrinsicsInitializationRuntimeConfig
-        ransac_confidence: 0.999
+        ransac_confidence: 0.99
         ransac_reproj_threshold_px: 3.0
         n_refinement_iters: 200
         scale_triplet_weighting: "irls"
@@ -156,7 +156,7 @@ pipeline:
       _target_: kineo.pipeline.stages.smpl_global_scale_estimation.SMPLGlobalScaleEstimationStage
       name: "SMPL Global Scale Estimation"
       joint_regressor_path: "./body_models/smpl/J_regressor_coco.npy"
-      smpl_model_path: "./body_models/smpl/"
+      smpl_model_path: "./body_models/smpl/SMPL_NEUTRAL.pkl"
       order: 100
       runtime_cfg:
         _target_: kineo.pipeline.stages.smpl_global_scale_estimation.SMPLGlobalScaleEstimationRuntimeConfig

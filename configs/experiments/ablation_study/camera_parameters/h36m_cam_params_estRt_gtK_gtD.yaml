@@ -5,7 +5,7 @@
 # scale:  GT
 output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/h36m_cam_params_estRt_gtK_gtD"
 cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/h36m_cam_params_estRt_gtK_gtD"
-use_cache: False
+use_cache: True
 batch_size: 32
 use_half_precision: False
 shared_intrinsics: False
@@ -104,6 +104,14 @@ pipeline:
       _target_: kineo.pipeline.stages.global_scale_application.GlobalScaleApplicationStage
       name: "Global Scale Application"
       order: 80
+
+    scene_reorientation:
+      _target_: kineo.pipeline.stages.scene_reorientation.SceneReorientationStage
+      name: "Scene Reorientation"
+      order: 90
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.scene_reorientation.SceneReorientationRuntimeConfig
+        floor_height_quantile: 0.01
 
     annotations_export:
       _target_: kineo.pipeline.stages.annotations_export.AnnotationsExportStage

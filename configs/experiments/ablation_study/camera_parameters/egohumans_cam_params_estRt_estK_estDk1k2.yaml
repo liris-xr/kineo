@@ -5,7 +5,7 @@
 # scale:  GT
 output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/egohumans_cam_params_estRt_estK_estDk1k2"
 cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/moge-fp32_ab56b5d3"
-use_cache: False
+use_cache: True
 batch_size: 32
 use_half_precision: False
 shared_intrinsics: True
@@ -61,7 +61,7 @@ pipeline:
       order: 30
       runtime_cfg:
         _target_: kineo.pipeline.stages.sfm_camera_extrinsics_initialization.SfMCameraExtrinsicsInitializationRuntimeConfig
-        ransac_confidence: 0.999
+        ransac_confidence: 0.99
         ransac_reproj_threshold_px: 3.0
         n_refinement_iters: 200
         scale_triplet_weighting: "irls"
@@ -82,10 +82,26 @@ pipeline:
         min_parallax_deg: 10.0
         filter_negative_depth: True
 
-    bundle_adjustment_1: # Optimize camera extrinsics + focal length
+    bundle_adjustment_1: # Only optimize camera extrinsics
       _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentStage
       name: "Bundle Adjustment (First Pass)"
       order: 50
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentRuntimeConfig
+        n_iters: 300
+        use_lbfgs: True
+        optimize_distortion_coefficients: False
+        optimize_focal_length: False
+        optimize_principal_point: False
+        optimize_rotation: True
+        optimize_translation: True
+        shared_intrinsics: ${shared_intrinsics}
+        reproj_huber_delta_px: 1.0
+
+    bundle_adjustment_2:
+      _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentStage
+      name: "Bundle Adjustment (Second Pass)"
+      order: 51
       runtime_cfg:
         _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentRuntimeConfig
         n_iters: 300
@@ -98,10 +114,10 @@ pipeline:
         shared_intrinsics: ${shared_intrinsics}
         reproj_huber_delta_px: 1.0
 
-    bundle_adjustment_2: # Add distortion coefficients (radial k1,k2 only)
+    bundle_adjustment_3:
       _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentStage
-      name: "Bundle Adjustment (Second Pass)"
-      order: 51
+      name: "Bundle Adjustment (Third Pass)"
+      order: 52
       runtime_cfg:
         _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentRuntimeConfig
         n_iters: 300
@@ -134,6 +150,14 @@ pipeline:
       _target_: kineo.pipeline.stages.global_scale_application.GlobalScaleApplicationStage
       name: "Global Scale Application"
       order: 80
+
+    scene_reorientation:
+      _target_: kineo.pipeline.stages.scene_reorientation.SceneReorientationStage
+      name: "Scene Reorientation"
+      order: 90
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.scene_reorientation.SceneReorientationRuntimeConfig
+        floor_height_quantile: 0.01
 
     annotations_export:
       _target_: kineo.pipeline.stages.annotations_export.AnnotationsExportStage

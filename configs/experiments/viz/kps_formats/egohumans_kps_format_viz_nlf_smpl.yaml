@@ -127,7 +127,7 @@ pipeline:
       order: 50
       runtime_cfg:
         _target_: kineo.pipeline.stages.sfm_camera_extrinsics_initialization.SfMCameraExtrinsicsInitializationRuntimeConfig
-        ransac_confidence: 0.999
+        ransac_confidence: 0.99
         ransac_reproj_threshold_px: 3.0
         n_refinement_iters: 200
         scale_triplet_weighting: "irls"

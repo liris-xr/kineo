@@ -154,7 +154,7 @@ camera_selection:
 
 output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/egohumans_n_views_2"
 cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/moge-nlfcoco19-fp32_4fbd05ac"
-use_cache: False
+use_cache: True
 batch_size: 32
 use_half_precision: False
 shared_intrinsics: True
@@ -223,7 +223,7 @@ pipeline:
       order: 50
       runtime_cfg:
         _target_: kineo.pipeline.stages.sfm_camera_extrinsics_initialization.SfMCameraExtrinsicsInitializationRuntimeConfig
-        ransac_confidence: 0.999
+        ransac_confidence: 0.99
         ransac_reproj_threshold_px: 3.0
         n_refinement_iters: 200
         scale_triplet_weighting: "irls"
