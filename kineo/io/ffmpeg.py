@@ -14,7 +14,8 @@ import torch
 from tqdm import tqdm
 import tempfile
 import os
-import torchaudio
+
+from kineo.io.audio_file import load_waveform
 
 def get_audio_stream_info(video_path: str, stream_idx: int = 0) -> Dict[str, Any]:
     ffprobe_cmd = [
@@ -123,7 +124,7 @@ def extract_audio(
     if p.returncode != 0:
         raise Exception("ffmpeg command failed.")
 
-    audio, sample_rate = torchaudio.load(output_path)
+    audio, sample_rate = load_waveform(output_path)
 
     # Remove temporary file
     os.remove(output_path)

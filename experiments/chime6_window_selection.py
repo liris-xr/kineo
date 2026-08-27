@@ -33,7 +33,8 @@ import os
 
 import numpy as np
 import orjson
-import soundfile as sf
+
+from kineo.io.audio_file import get_waveform_info
 
 WINDOW_LENGTHS_S = [30.0, 60.0, 120.0, 300.0, 600.0]
 
@@ -132,7 +133,7 @@ def session_duration(audio_dir: str, session: str) -> float:
     paths = sorted(glob.glob(os.path.join(audio_dir, f"{session}_U0*.CH1.wav")))
     if not paths:
         raise FileNotFoundError(f"No Kinect audio for {session} in {audio_dir}")
-    return min(sf.info(p).duration for p in paths)
+    return min(get_waveform_info(p).duration for p in paths)
 
 
 def select_cell(

@@ -35,10 +35,10 @@ import os
 import time
 
 import numpy as np
-import soundfile as sf
 import torch
 from tqdm import tqdm
 
+from kineo.io.audio_file import get_waveform_info, load_waveform
 from kineo.pipeline.stages.mfcc_temporal_calibration import estimate_time_offsets
 
 C_SOUND = 343.0
@@ -120,16 +120,14 @@ def load_window(path: str, start_s: float, duration_s: float) -> torch.Tensor | 
         The waveform, or None if the read would run past the end of the file
         or reach into the opening sync beep.
     """
-    info = sf.info(path)
-    start_frame = int(round(start_s * info.samplerate))
-    num_frames = int(round(duration_s * info.samplerate))
-    guard_frame = int(round(AUDIO_START_GUARD_S * info.samplerate))
-    if start_frame < guard_frame or start_frame + num_frames > info.frames:
+    info = get_waveform_info(path)
+    start_frame = int(round(start_s * info.sample_rate))
+    num_frames = int(round(duration_s * info.sample_rate))
+    guard_frame = int(round(AUDIO_START_GUARD_S * info.sample_rate))
+    if start_frame < guard_frame or start_frame + num_frames > info.n_frames:
         return None
-    samples, _ = sf.read(
-        path, start=start_frame, frames=num_frames, dtype="float32", always_2d=True
-    )
-    return torch.from_numpy(samples.T)
+    waveform, _ = load_waveform(path, start_frame=start_frame, n_frames=num_frames)
+    return waveform
 
 
 def evaluate_window(
