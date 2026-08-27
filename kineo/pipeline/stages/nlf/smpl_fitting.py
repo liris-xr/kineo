@@ -6,9 +6,6 @@ from kineo.datasets.keypoints_sequence_dataset import ViewInput
 from kineo.annotations import (
     Annotations,
     Keypoints3DAnnotations,
-    Keypoints2DAnnotations,
-    CameraIntrinsicsAnnotations,
-    CameraExtrinsicsAnnotations,
 )
 from kineo.annotations.smpl_params import (
     SMPLShapeAnnotationsMetadata,
@@ -37,10 +34,6 @@ from kineo.geometry.transformations import (
 
 from smplx import SMPLXLayer, build_layer
 
-from kineo.geometry.camera import (
-    transform_points_from_world_to_camera,
-    project_points_from_camera_to_image,
-)
 import roma
 
 from tqdm import tqdm
@@ -72,7 +65,6 @@ class NLFSMPLFittingRuntimeConfig:
     beta_regularizer2: float = 0.0
     num_fitting_iter: int = 30
     n_hands_fix_iters: int = 10
-    huber_delta: float = 1.0
 
 
 # TODO: in case of single view, export keypoints 3d as well
@@ -395,132 +387,3 @@ class NLFSMPLFittingStage(PipelineStage[NLFSMPLFittingRuntimeConfig]):
         ).view(n_frames, -1, 3)
 
         return left_hand_pose.detach(), right_hand_pose.detach()
-
-    def _refine_subject_model(
-        self,
-        smpl_layer: SMPLXLayer,
-        betas: torch.Tensor,
-        pose: torch.Tensor,
-        trans: torch.Tensor,
-        subject_kps_2d: Keypoints2DAnnotations,
-        camera_intrinsics_annotations: CameraIntrinsicsAnnotations,
-        camera_extrinsics_annotations: CameraExtrinsicsAnnotations,
-        n_iters: int,
-        huber_delta: float = 1.0,
-    ):
-        frame_idx = 120
-
-        views_ids = camera_intrinsics_annotations.views_ids
-        view_id_to_idx = {view_id: idx for idx, view_id in enumerate(views_ids)}
-
-        device = pose.device
-
-        n_frames = pose.shape[0]
-        n_joints = 55
-        n_vertices = 1024
-        # n_joints = body_model.num_joints
-        # n_vertices = body_model.num_vertices
-        n_views = len(views_ids)
-
-        joints_2d = torch.zeros((n_frames, n_views, n_joints, 2), device=device)
-        joints_2d_scores = torch.zeros((n_frames, n_views, n_joints), device=device)
-        vertices_2d = torch.zeros((n_frames, n_views, n_vertices, 2), device=device)
-        vertices_2d_scores = torch.zeros((n_frames, n_views, n_vertices), device=device)
-
-        import cv2
-        import numpy as np
-
-        for annot in tqdm(
-            subject_kps_2d.annotations, desc="Collecting 2D keypoints", leave=False
-        ):
-            view_idx = view_id_to_idx[annot.view_id]
-            frame_idx = annot.frame_idx
-
-            joints_2d_xy, vertices_2d_xy = torch.split(
-                annot.xy, [n_joints, n_vertices], dim=0
-            )
-            joints_2d_scores_xy, vertices_2d_scores_xy = torch.split(
-                annot.scores, [n_joints, n_vertices], dim=0
-            )
-
-            joints_2d[frame_idx, view_idx] = joints_2d_xy
-            joints_2d_scores[frame_idx, view_idx] = joints_2d_scores_xy
-            vertices_2d[frame_idx, view_idx] = vertices_2d_xy
-            vertices_2d_scores[frame_idx, view_idx] = vertices_2d_scores_xy
-
-        joints_2d = joints_2d[frame_idx]
-        joints_2d_scores = joints_2d_scores[frame_idx]
-        vertices_2d = vertices_2d[frame_idx]
-        vertices_2d_scores = vertices_2d_scores[frame_idx]
-
-        Rts = torch.zeros((n_views, 3, 4), device=device)
-        Ks = torch.zeros((n_views, 3, 3), device=device)
-        Ds = torch.zeros((n_views, 5), device=device)
-
-        for view_idx, view_id in enumerate(views_ids):
-            view_camera_extrinsics = camera_extrinsics_annotations.filter_by_view_id(
-                view_id
-            ).first_or_default()
-            view_camera_intrinsics = camera_intrinsics_annotations.filter_by_view_id(
-                view_id
-            ).first_or_default()
-            Rts[view_idx] = view_camera_extrinsics.Rt
-            Ks[view_idx] = view_camera_intrinsics.K
-            Ds[view_idx] = view_camera_intrinsics.distortion_coefficients
-
-        distortion_model = (
-            camera_intrinsics_annotations.first_or_default().distortion_model
-        )
-
-        smpl_layer = smpl_layer.to(device)
-
-        def opt_closure():
-            optimizer.zero_grad()
-
-            result = smpl_layer.forward(
-                betas=betas_opt.view(1, -1),
-                global_orient=roma.rotvec_to_rotmat(pose_opt[0]).view(1, 3, 3),
-                body_pose=roma.rotvec_to_rotmat(
-                    pose_opt[1 : smpl_layer.NUM_BODY_JOINTS + 1]
-                ).view(1, -1, 3, 3),
-                transl=trans[frame_idx].view(1, 3),
-            )
-            joints_world = result.joints[0][:n_joints]
-
-            joints_cam = transform_points_from_world_to_camera(
-                joints_world.reshape(-1, 3), Rts
-            )
-
-            # Project to cameras
-            joints_cam_proj, _ = project_points_from_camera_to_image(
-                joints_cam, Ks, Ds, distortion_model.value
-            )
-
-            joints_residuals = ((joints_cam_proj - joints_2d) ** 2).sum(dim=-1)
-            joints_reproj_loss = (joints_residuals * joints_2d_scores**2).mean()
-
-            loss = joints_reproj_loss
-            loss.backward()
-
-            return loss
-
-        betas_opt = betas.clone().detach()
-        betas_opt = betas_opt.requires_grad_(True)
-        pose_opt = pose[frame_idx].clone().detach()
-        pose_opt = pose_opt.requires_grad_(True)
-
-        optimizer = torch.optim.Adam([pose_opt], lr=1e-3)
-        pbar = tqdm(range(n_iters), desc="Optimizing SMPL model", leave=False)
-
-        for _ in pbar:
-            loss = optimizer.step(opt_closure)
-            pbar.set_postfix(loss=loss.detach().item())
-
-        pose_out = pose.clone().detach()
-        pose_out[frame_idx] = pose_opt.reshape(1, -1, 3).detach()
-
-        return {
-            "betas": betas_opt.detach(),
-            "pose": pose_out.detach(),
-            "trans": trans.reshape(n_frames, 3).detach(),
-        }
