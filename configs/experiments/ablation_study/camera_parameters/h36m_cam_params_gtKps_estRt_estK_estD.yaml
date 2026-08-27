@@ -1,9 +1,9 @@
-# Kps:    GT
+# Kps:    GT 
 # [R, t]: Est.
 # K:      Est.
 # d:      Est.
 # scale:  GT
-output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/egohumans_cam_params_estRt_estK_estD"
+output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/h36m_cam_params_gtKps_estRt_estK_estD"
 cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/moge-fp32_ab56b5d3"
 use_cache: True
 batch_size: 32
@@ -40,7 +40,7 @@ pipeline:
       order: 10
       runtime_cfg:
         _target_: kineo.pipeline.stages.global_time_resampling.GlobalTimeResamplingRuntimeConfig
-        target_fps: 20
+        target_fps: 10
         interpolation_dt_thr_s: 0.3
 
     keypoints_pairs_sampling:

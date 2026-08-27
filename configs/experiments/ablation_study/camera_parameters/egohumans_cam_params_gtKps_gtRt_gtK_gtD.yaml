@@ -3,7 +3,7 @@
 # K:      GT
 # d:      GT
 # scale:  GT
-output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/egohumans_cam_params_gtRt_gtK_gtD"
+output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/egohumans_cam_params_gtKps_gtRt_gtK_gtD"
 cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/egohumans_cam_params_gtRt_gtK_gtD"
 use_cache: True
 batch_size: 32

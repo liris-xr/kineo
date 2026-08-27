@@ -14,13 +14,13 @@ def generate_h36m_ablation_study_detectors_rows(h36m_dataset_dir: str, kineo_eva
         ablation_study_h36m_rows_template = f.read()
 
     kineo_h36m_detectors_gt_kps_annotations_path = os.path.join(
-        kineo_eval_data_dir, "h36m_benchmark_gtKps_estRt_estK_estD", "annotations"
+        kineo_eval_data_dir, "h36m_detector_gtKps", "annotations"
     )
     kineo_h36m_detectors_nlf_annotations_path = os.path.join(
         kineo_eval_data_dir, "h36m_benchmark_nlf_estRt_estK_estDk1k2", "annotations"
     )
     kineo_h36m_detectors_rtmpose_annotations_path = os.path.join(
-        kineo_eval_data_dir, "h36m_benchmark_rtmpose_estRt_estK_estD", "annotations"
+        kineo_eval_data_dir, "h36m_detector_rtmpose", "annotations"
     )
 
     kineo_h36m_results = {
@@ -71,13 +71,13 @@ def generate_egohumans_ablation_study_detectors_rows(egohumans_dataset_dir: str,
         ablation_study_egohumans_rows_template = f.read()
 
     kineo_egohumans_detectors_gt_kps_annotations_path = os.path.join(
-        kineo_eval_data_dir, "egohumans_benchmark_gtKps_estRt_estK_estD", "annotations"
+        kineo_eval_data_dir, "egohumans_detector_gtKps", "annotations"
     )
     kineo_egohumans_detectors_nlf_annotations_path = os.path.join(
         kineo_eval_data_dir, "egohumans_benchmark_nlf_estRt_estK_estDk1k2", "annotations"
     )
     kineo_egohumans_detectors_dwpose_annotations_path = os.path.join(
-        kineo_eval_data_dir, "egohumans_benchmark_dwpose_estRt_estK_estD", "annotations"
+        kineo_eval_data_dir, "egohumans_detector_dwpose", "annotations"
     )
 
     kineo_egohumans_results = {

@@ -14,20 +14,20 @@ def generate_h36m_ablation_study_camera_params_rows(h36m_dataset_dir: str, kineo
         ablation_study_h36m_rows_template = f.read()
 
     kineo_h36m_camera_params_all_gt_annotations_path = os.path.join(
-        kineo_eval_data_dir, "h36m_cam_params_gtRt_gtK_gtD", "annotations"
+        kineo_eval_data_dir, "h36m_cam_params_gtKps_gtRt_gtK_gtD", "annotations"
     )
     kineo_h36m_camera_params_extrinsics_annotations_path = os.path.join(
-        kineo_eval_data_dir, "h36m_cam_params_estRt_gtK_gtD", "annotations"
+        kineo_eval_data_dir, "h36m_cam_params_gtKps_estRt_gtK_gtD", "annotations"
     )
     kineo_h36m_camera_params_extrinsics_intrinsics_without_distortions_annotations_path = os.path.join(
         kineo_eval_data_dir,
-        "h36m_cam_params_estRt_estK_omitD",
+        "h36m_cam_params_gtKps_estRt_estK_omitD",
         "annotations",
     )
     kineo_h36m_camera_params_extrinsics_intrinsics_with_distortions_annotations_path = (
         os.path.join(
             kineo_eval_data_dir,
-            "h36m_cam_params_estRt_estK_estD",
+            "h36m_cam_params_gtKps_estRt_estK_estD",
             "annotations",
         )
     )
@@ -85,22 +85,22 @@ def generate_egohumans_ablation_study_camera_params_rows(egohumans_dataset_dir: 
         ablation_study_egohumans_rows_template = f.read()
 
     kineo_egohumans_all_gt_annotations_path = os.path.join(
-        kineo_eval_data_dir, "egohumans_cam_params_gtRt_gtK_gtD", "annotations"
+        kineo_eval_data_dir, "egohumans_cam_params_gtKps_gtRt_gtK_gtD", "annotations"
     )
     kineo_egohumans_extrinsics_annotations_path = os.path.join(
-        kineo_eval_data_dir, "egohumans_cam_params_estRt_gtK_gtD", "annotations"
+        kineo_eval_data_dir, "egohumans_cam_params_gtKps_estRt_gtK_gtD", "annotations"
     )
     kineo_egohumans_extrinsics_intrinsics_without_distortions_annotations_path = (
         os.path.join(
             kineo_eval_data_dir,
-            "egohumans_cam_params_estRt_estK_omitD",
+            "egohumans_cam_params_gtKps_estRt_estK_omitD",
             "annotations",
         )
     )
     kineo_egohumans_extrinsics_intrinsics_with_distortions_annotations_path = (
         os.path.join(
             kineo_eval_data_dir,
-            "egohumans_cam_params_estRt_estK_estD",
+            "egohumans_cam_params_gtKps_estRt_estK_estD",
             "annotations",
         )
     )

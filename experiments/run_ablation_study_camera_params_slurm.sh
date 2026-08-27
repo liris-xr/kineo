@@ -17,13 +17,13 @@ ARMS=(
 
 # Human3.6M
 for arm in "${ARMS[@]}"; do
-    sbatch --job-name="h36m_cam_params_${arm}" --output="slurm-h36m_cam_params_${arm}.out" experiments/run_h36m_eval_a100.slurm $SCRATCH/datasets/H3.6M/raw/ ${CONFIGS}/h36m_cam_params_${arm}.yaml
+    sbatch --job-name="h36m_cam_params_gtKps_${arm}" --output="slurm-h36m_cam_params_gtKps_${arm}.out" experiments/run_h36m_eval_a100.slurm $SCRATCH/datasets/H3.6M/raw/ ${CONFIGS}/h36m_cam_params_gtKps_${arm}.yaml
 done
 
 # EgoHumans
 for seq in "${!EGOHUMANS_SEQUENCES[@]}"; do
     subsequences="${EGOHUMANS_SEQUENCES[${seq}]}"
     for arm in "${ARMS[@]}"; do
-        sbatch --job-name="egohumans_cam_params_${arm}_${seq}" --output="slurm-egohumans_cam_params_${arm}_${seq}.out" experiments/run_egohumans_eval_a100.slurm $SCRATCH/datasets/EgoHumans/ ${CONFIGS}/egohumans_cam_params_${arm}.yaml "${subsequences}"
+        sbatch --job-name="egohumans_cam_params_gtKps_${arm}_${seq}" --output="slurm-egohumans_cam_params_gtKps_${arm}_${seq}.out" experiments/run_egohumans_eval_a100.slurm $SCRATCH/datasets/EgoHumans/ ${CONFIGS}/egohumans_cam_params_gtKps_${arm}.yaml "${subsequences}"
     done
 done

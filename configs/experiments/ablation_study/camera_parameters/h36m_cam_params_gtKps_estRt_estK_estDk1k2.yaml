@@ -1,9 +1,9 @@
-# Kps:    GT 
+# Kps:    GT
 # [R, t]: Est.
 # K:      Est.
-# d:      Omitted
+# d:      Est. (radial k1,k2 only, tangential p1,p2 and k3 fixed)
 # scale:  GT
-output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/egohumans_cam_params_estRt_estK_omitD"
+output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/h36m_cam_params_gtKps_estRt_estK_estDk1k2"
 cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/moge-fp32_ab56b5d3"
 use_cache: True
 batch_size: 32
@@ -40,7 +40,7 @@ pipeline:
       order: 10
       runtime_cfg:
         _target_: kineo.pipeline.stages.global_time_resampling.GlobalTimeResamplingRuntimeConfig
-        target_fps: 20
+        target_fps: 10
         interpolation_dt_thr_s: 0.3
 
     keypoints_pairs_sampling:
@@ -107,6 +107,24 @@ pipeline:
         n_iters: 300
         use_lbfgs: True
         optimize_distortion_coefficients: False
+        optimize_focal_length: True
+        optimize_principal_point: False
+        optimize_rotation: True
+        optimize_translation: True
+        shared_intrinsics: ${shared_intrinsics}
+        reproj_huber_delta_px: 1.0
+
+    bundle_adjustment_3:
+      _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentStage
+      name: "Bundle Adjustment (Third Pass)"
+      order: 52
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentRuntimeConfig
+        n_iters: 300
+        use_lbfgs: True
+        # BA uses Brown-Conrady internally, coeff order (k1,k2,p1,p2,k3).
+        # [0,1] optimizes k1,k2 (radial) and fixes p1,p2,k3 (tangential + k3).
+        optimize_distortion_coefficients: [0, 1]
         optimize_focal_length: True
         optimize_principal_point: False
         optimize_rotation: True

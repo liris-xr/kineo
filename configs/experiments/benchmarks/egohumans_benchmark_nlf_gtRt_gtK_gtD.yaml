@@ -1,0 +1,88 @@
+# Every camera parameter from ground truth: no intrinsics estimation,
+# no SfM and no bundle adjustment, so the metrics show the triangulation
+# residual alone. Keypoints still come from the detector.
+#
+output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/egohumans_benchmark_nlf_gtRt_gtK_gtD"
+cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/nlfcoco19-fp32_4965fc50"
+use_cache: True
+batch_size: 32
+use_half_precision: False
+shared_intrinsics: True
+
+pipeline:
+  seed: 19
+
+  stages:
+    transfer_gt_annotations:
+      _target_: kineo.pipeline.stages.transfer_gt_annotations.TransferGroundTruthAnnotationsStage
+      name: "Transfer GT Bboxes 2D"
+      order: 0
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.transfer_gt_annotations.TransferGroundTruthAnnotationsRuntimeConfig
+        annotations_keys: ["bboxes_2d", "cameras_intrinsics", "cameras_extrinsics"]
+
+    # Infer intrinsics before NLF to provide it to the model
+    nlf_skeleton_keypoints_detection:
+      _target_: kineo.pipeline.stages.nlf.skeleton_keypoints_detection.NLFSkeletonKeypointsDetectionStage
+      name: "NLF Keypoints Detection"
+      order: 20
+      torchscript_model_path: "./checkpoints/nlf_l_multi_0.3.2.torchscript"
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.nlf.skeleton_keypoints_detection.NLFSkeletonKeypointsDetectionRuntimeConfig
+        batch_size: ${batch_size}
+        use_half_precision: ${use_half_precision}
+        use_cache: ${use_cache}
+        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}/{view_id}.pkl"
+        skeleton_name: "coco_19"
+
+    global_time_resampling:
+      _target_: kineo.pipeline.stages.global_time_resampling.GlobalTimeResamplingStage
+      name: "Global Time Resampling"
+      order: 30
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.global_time_resampling.GlobalTimeResamplingRuntimeConfig
+        target_fps: 20
+        interpolation_dt_thr_s: 0.3
+
+    mvs_triangulation:
+      _target_: kineo.pipeline.stages.mvs_triangulation.MVSTriangulationStage
+      name: "MVS Triangulation"
+      order: 90
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.mvs_triangulation.MVSTriangulationRuntimeConfig
+        use_eigendecomposition: True
+        min_parallax_deg: 10.0
+
+    smpl_global_scale_estimation:
+      _target_: kineo.pipeline.stages.smpl_global_scale_estimation.SMPLGlobalScaleEstimationStage
+      name: "SMPL Global Scale Estimation"
+      joint_regressor_path: "./body_models/smpl/J_regressor_coco19.pt"
+      smpl_model_path: "./body_models/smpl/SMPL_NEUTRAL.pkl"
+      order: 100
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.smpl_global_scale_estimation.SMPLGlobalScaleEstimationRuntimeConfig
+        n_iters: 100
+
+    global_scale_application:
+      _target_: kineo.pipeline.stages.global_scale_application.GlobalScaleApplicationStage
+      name: "Global Scale Application"
+      order: 110
+
+    annotations_export:
+      _target_: kineo.pipeline.stages.annotations_export.AnnotationsExportStage
+      name: "Annotations Export"
+      order: 140
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.annotations_export.AnnotationsExportRuntimeConfig
+        annotations_keys: "*"
+        excluded_annotations_keys: []
+        not_found_error: True
+        output_path_template: "${output_root_dir}/annotations/{sequence_name}/{annotation_key}.pkl"
+
+    metrics_export:
+      _target_: kineo.pipeline.stages.metrics_export.MetricsExportStage
+      name: "Metrics Export"
+      order: 150
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.metrics_export.MetricsExportRuntimeConfig
+        output_path_template: "${output_root_dir}/metrics/{sequence_name}.json"

@@ -1,9 +1,9 @@
 # Kps:    GT 
 # [R, t]: Est.
 # K:      Est.
-# d:      Est.
+# d:      Omitted
 # scale:  GT
-output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/h36m_cam_params_estRt_estK_estD"
+output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/egohumans_cam_params_gtKps_estRt_estK_omitD"
 cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/moge-fp32_ab56b5d3"
 use_cache: True
 batch_size: 32
@@ -40,7 +40,7 @@ pipeline:
       order: 10
       runtime_cfg:
         _target_: kineo.pipeline.stages.global_time_resampling.GlobalTimeResamplingRuntimeConfig
-        target_fps: 10
+        target_fps: 20
         interpolation_dt_thr_s: 0.3
 
     keypoints_pairs_sampling:
@@ -107,22 +107,6 @@ pipeline:
         n_iters: 300
         use_lbfgs: True
         optimize_distortion_coefficients: False
-        optimize_focal_length: True
-        optimize_principal_point: False
-        optimize_rotation: True
-        optimize_translation: True
-        shared_intrinsics: ${shared_intrinsics}
-        reproj_huber_delta_px: 1.0
-
-    bundle_adjustment_3:
-      _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentStage
-      name: "Bundle Adjustment (Third Pass)"
-      order: 52
-      runtime_cfg:
-        _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentRuntimeConfig
-        n_iters: 300
-        use_lbfgs: True
-        optimize_distortion_coefficients: True
         optimize_focal_length: True
         optimize_principal_point: False
         optimize_rotation: True
