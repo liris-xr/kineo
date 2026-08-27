@@ -61,6 +61,9 @@ pipeline:
       runtime_cfg:
         _target_: kineo.pipeline.stages.keypoints_pairs_sampling.KeypointsPairsSamplingRuntimeConfig
         n_correspondences_per_view_pair: 3000
+        # Hand-picked for this detector: confidence scores are not
+        # calibrated across models, so the benchmark's threshold would not
+        # admit comparable correspondences here.
         min_pair_geometric_mean_score: 0.5
         keypoints_indices: ${keypoints_indices}
         sampler: "uniform"
@@ -87,6 +90,9 @@ pipeline:
       runtime_cfg:
         _target_: kineo.pipeline.stages.bundle_adjustment_sampling.BundleAdjustmentSamplingRuntimeConfig
         n_kp_samples_per_view: 50
+        # Hand-picked for this detector: confidence scores are not
+        # calibrated across models, so the benchmark's threshold would not
+        # admit comparable correspondences here.
         min_keypoint_score: 0.5
         keypoints_indices: ${keypoints_indices}
         sampler: "uniform"
