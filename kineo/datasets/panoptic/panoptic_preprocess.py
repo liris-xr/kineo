@@ -226,11 +226,15 @@ def _load_frame_bodies(
         keypoints of shape (19, 3) still in centimeters and in the dome's own
         basis, and scores of shape (19,) clamped to be non-negative. Bodies
         whose root joint scores at or below `MIN_ROOT_KEYPOINT_SCORE` are left
-        out, as the protocol does.
+        out, as the protocol does. Empty for a frame the dome did not annotate:
+        a run of annotations holds the odd hole, one frame wide.
     """
     path = os.path.join(
         sequence_dir, KEYPOINTS_3D_DIRNAME, f"body3DScene_{frame_number:08d}.json"
     )
+
+    if not os.path.exists(path):
+        return []
 
     with open(path, "rb") as f:
         bodies = orjson.loads(f.read())["bodies"]
@@ -413,12 +417,10 @@ def _selected_frames(
 
     Returns:
         The frame numbers to read, or `None` if the sequence has no annotated
-        frame every one of its videos is long enough to cover.
-
-    Raises:
-        ValueError: If the annotated frames do not form a contiguous run, which
-            would make a strided range land on frames that are not the ones
-            annotated.
+        frame every one of its videos is long enough to cover. The range spans
+        the annotated run rather than tracking it exactly: a frame the dome
+        skipped is read and left without an annotation, which is what a frame
+        nobody was detected on already looks like.
     """
     frame_numbers = _annotated_frame_numbers(sequence_dir)
 
@@ -426,12 +428,6 @@ def _selected_frames(
         return None
 
     first, last = frame_numbers[0], frame_numbers[-1]
-    if last - first + 1 != len(frame_numbers):
-        raise ValueError(
-            f"The 3D body annotations of {os.path.basename(sequence_dir)} skip "
-            f"frames between {first} and {last}, so they cannot be read as a "
-            "strided range."
-        )
 
     n_video_frames = min(
         _count_video_frames(os.path.join(dataset_dir, relpath))
