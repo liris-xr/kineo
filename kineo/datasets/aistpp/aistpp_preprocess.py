@@ -36,7 +36,7 @@ import orjson
 import torch
 from tqdm import tqdm
 
-from kineo.annotations import KeypointsFormat
+from kineo.annotations import COCO_17_KEYPOINTS_FORMAT
 from kineo.annotations.bboxes_utils import generate_bboxes2d_from_kps2d
 from kineo.annotations.camera_extrinsics import (
     CameraExtrinsicsAnnotation,
@@ -74,7 +74,7 @@ from kineo.io.ffmpeg import decode_video_to_grayscale
 # AIST++ keypoints and camera translations are expressed in centimeters.
 CENTIMETERS_TO_METERS = 0.01
 
-KEYPOINTS_FORMAT = KeypointsFormat.from_mmpose_dataset("coco")
+KEYPOINTS_FORMAT = COCO_17_KEYPOINTS_FORMAT
 
 # `keypoints2d.zip` is deliberately absent: 2D keypoints are reprojected from
 # the 3D ones so that they agree with the cameras, as the other datasets do.

@@ -23,7 +23,7 @@ import torch
 from spacepy import pycdf
 from tqdm import tqdm
 
-from kineo.annotations import KeypointsFormat
+from kineo.annotations import H36M_17_KEYPOINTS_FORMAT
 from kineo.annotations.keypoints_3d import (
     Keypoints3DAnnotation,
     Keypoints3DAnnotations,
@@ -59,7 +59,7 @@ PROTOCOL1_TRAIN_SUBJECTS = ["S1", "S5", "S6", "S7", "S8"]
 PROTOCOL1_VAL_SUBJECTS = ["S9", "S11"]
 PROTOCOL1_SELECTED_CAMERAS = ["54138969", "55011271", "58860488", "60457274"]
 
-KEYPOINTS_FORMAT = KeypointsFormat.from_mmpose_dataset("h36m")
+KEYPOINTS_FORMAT = H36M_17_KEYPOINTS_FORMAT
 # Mapping from the original H3.6M format to MMPose's documented format
 # References:
 # - https://github.com/qxcv/pose-prediction/blob/master/H36M-NOTES.md#joint-information

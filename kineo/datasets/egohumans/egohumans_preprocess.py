@@ -18,7 +18,7 @@ from typing import Any
 import torch
 import roma
 import pickle
-from kineo.annotations.keypoints_format import KeypointsFormat
+from kineo.annotations.keypoints_format import COCO_17_KEYPOINTS_FORMAT
 
 from kineo.io.frame_sequence_loader import ImagesLoader
 from kineo.datasets.keypoints_sequence_dataset import ViewInput
@@ -590,7 +590,7 @@ def _load_bboxes_annotations(
 def _load_keypoints_annotations(
     keypoints_dir: str, cfg: dict[str, Any]
 ) -> Keypoints3DAnnotations:
-    kps_format = KeypointsFormat.from_mmpose_dataset("coco")
+    kps_format = COCO_17_KEYPOINTS_FORMAT
 
     kps_files = sorted(glob(os.path.join(keypoints_dir, "*.npy")))
 

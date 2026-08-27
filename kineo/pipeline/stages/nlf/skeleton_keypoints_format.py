@@ -72,10 +72,6 @@ SMPL_22_KEYPOINTS_FORMAT = KeypointsFormat(
     ],
 )
 
-H36M_17_KEYPOINTS_FORMAT = KeypointsFormat.from_mmpose_dataset("h36m")
-
-COCO_17_KEYPOINTS_FORMAT = KeypointsFormat.from_mmpose_dataset("coco")
-
 # Reference for the mapping https://github.com/CMU-Perceptual-Computing-Lab/panoptic-toolbox/issues/16#issuecomment-3160388104
 COCO_19_KEYPOINTS_FORMAT = KeypointsFormat(
     name="coco_19",
