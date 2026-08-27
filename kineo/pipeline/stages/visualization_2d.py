@@ -22,7 +22,7 @@ from kineo.pipeline.pipeline import ViewInput
 
 @dataclass(frozen=True)
 class Visualization2DRuntimeConfig:
-    keypoints_score_threshold: float = 0.2
+    min_keypoint_score: float = 0.2
     keypoints_indices: list[int] = None
 
 
@@ -58,7 +58,7 @@ class Visualization2DStage(PipelineStage[Visualization2DRuntimeConfig]):
             views=[v for v in views if v["view_id"]],
             bboxes_2d=pred_bboxes_2d,
             keypoints_2d=pred_keypoints_2d,
-            score_threshold=runtime_cfg.keypoints_score_threshold,
+            score_threshold=runtime_cfg.min_keypoint_score,
             keypoints_indices=runtime_cfg.keypoints_indices,
             global_time_reference=global_time_reference,
         )

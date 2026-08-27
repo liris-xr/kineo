@@ -32,8 +32,8 @@ class TemporalCalibrationRuntimeConfig:
     ref_idx: int = 0
     n_mfcc: int = 13
     n_fft: int = 2048
-    hop_duration: float = 0.005
-    win_duration: float = 0.04
+    hop_duration_s: float = 0.005
+    win_duration_s: float = 0.04
     n_mels: int = 128
     mel_scale: Literal["htk", "slaney"] = "htk"
 
@@ -42,7 +42,7 @@ class MFCCTemporalCalibrationStage(PipelineStage[TemporalCalibrationRuntimeConfi
     """
     Temporal calibration stage that uses MFCC cross-correlation to estimate the time offsets between views.
 
-    Produces :class:`CameraTemporalAnnotations` with the time offsets for each view with key "camera_temporal".
+    Produces :class:`CameraTemporalAnnotations` with the time offsets for each view with key "cameras_temporal".
     """
 
     def __init__(
@@ -97,8 +97,8 @@ class MFCCTemporalCalibrationStage(PipelineStage[TemporalCalibrationRuntimeConfi
                 ref_idx=runtime_cfg.ref_idx,
                 n_mfcc=runtime_cfg.n_mfcc,
                 n_fft=runtime_cfg.n_fft,
-                hop_duration=runtime_cfg.hop_duration,
-                win_duration=runtime_cfg.win_duration,
+                hop_duration_s=runtime_cfg.hop_duration_s,
+                win_duration_s=runtime_cfg.win_duration_s,
                 n_mels=runtime_cfg.n_mels,
                 mel_scale=runtime_cfg.mel_scale,
                 shift_offsets=False,
@@ -111,7 +111,7 @@ class MFCCTemporalCalibrationStage(PipelineStage[TemporalCalibrationRuntimeConfi
             print(f"{view['view_id']}: {time_offsets[i].item()}{' (ref)' if is_ref else ''}")
         print("--------------------------------")
 
-        annotations["camera_temporal"] = CameraTemporalAnnotations(
+        annotations["cameras_temporal"] = CameraTemporalAnnotations(
             metadata=CameraTemporalAnnotationsMetadata(),
             annotations=[
                 CameraTemporalAnnotation(
@@ -130,8 +130,8 @@ def estimate_time_offsets(
     ref_idx: int = 0,
     n_mfcc: int = 13,
     n_fft: int = 2048,
-    hop_duration: float = 0.005,
-    win_duration: float = 0.04,
+    hop_duration_s: float = 0.005,
+    win_duration_s: float = 0.04,
     n_mels: int = 128,
     mel_scale: Literal["htk", "slaney"] = "htk",
     compute_device: torch.device = torch.device(
@@ -161,8 +161,8 @@ def estimate_time_offsets(
             ref_sample_rate,
             n_mfcc=n_mfcc,
             n_fft=n_fft,
-            hop_duration=hop_duration,
-            win_duration=win_duration,
+            hop_duration_s=hop_duration_s,
+            win_duration_s=win_duration_s,
             n_mels=n_mels,
             mel_scale=mel_scale,
             compute_device=compute_device,
@@ -298,8 +298,8 @@ def _estimate_pairwise_time_offset(
     ref_sample_rate: int,
     n_mfcc: int = 13,
     n_fft: int = 2048,
-    hop_duration: float = 0.005,
-    win_duration: float = 0.04,
+    hop_duration_s: float = 0.005,
+    win_duration_s: float = 0.04,
     n_mels: int = 128,
     mel_scale: Literal["htk", "slaney"] = "htk",
     compute_device: torch.device = torch.device(
@@ -320,8 +320,8 @@ def _estimate_pairwise_time_offset(
     ref_mono = _to_mono_f64(ref_waveform).to(compute_device)
     target_mono = _to_mono_f64(audio_waveform).to(compute_device)
 
-    hop_length = int(ref_sample_rate * hop_duration)
-    win_length = int(ref_sample_rate * win_duration)
+    hop_length = int(ref_sample_rate * hop_duration_s)
+    win_length = int(ref_sample_rate * win_duration_s)
 
     mfcc_fn = MFCC(
         n_mfcc=n_mfcc,

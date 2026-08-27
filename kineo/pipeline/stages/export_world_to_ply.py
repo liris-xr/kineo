@@ -22,8 +22,8 @@ import os
 class ExportWorldToPlyRuntimeConfig:
     output_path_template: str = "./outputs/ply/{sequence_name}.ply"
     max_world_points_to_show: int = -1
-    world_z_clipping_threshold: float = None
-    world_points_confidence_threshold: float = 0.2
+    world_z_clipping_m: float = None
+    min_world_point_confidence: float = 0.2
 
 
 class ExportWorldToPlyStage(PipelineStage[ExportWorldToPlyRuntimeConfig]):
@@ -64,8 +64,8 @@ class ExportWorldToPlyStage(PipelineStage[ExportWorldToPlyRuntimeConfig]):
             path=formatted_output_path,
             world_reconstruction=pred_world_reconstruction,
             max_world_points_to_show=runtime_cfg.max_world_points_to_show,
-            world_z_clipping_threshold=runtime_cfg.world_z_clipping_threshold,
-            world_points_confidence_threshold=runtime_cfg.world_points_confidence_threshold,
+            world_z_clipping_m=runtime_cfg.world_z_clipping_m,
+            min_world_point_confidence=runtime_cfg.min_world_point_confidence,
             convert_coordinates_to_opengl=True,
         )
         print(f"World reconstruction exported to {formatted_output_path}")

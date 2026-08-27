@@ -22,6 +22,9 @@ from kineo.datasets.keypoints_sequence_dataset import (
 from kineo.io.audio_loader import VideoAudioLoader
 from kineo.io.frame_sequence_loader import VideoLoader
 
+# Every AIST video, raw and refined alike, is constant frame rate at 60000/1001.
+VIDEO_FPS = 60000 / 1001
+
 
 class AISTPPSequenceDataset(KeypointsSequenceDataset):
     """AIST++ sequences read from the raw, unsynchronized AIST videos.

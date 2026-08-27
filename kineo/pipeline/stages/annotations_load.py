@@ -33,8 +33,8 @@ class AnnotationsLoadRuntimeConfig:
     annotations_keys: str | list[str] = field(
         default_factory=lambda: [
             "global_time_reference",
-            "camera_extrinsics",
-            "camera_intrinsics",
+            "cameras_extrinsics",
+            "cameras_intrinsics",
             "keypoints_3d",
             "world_reconstructed_scene",
             "keypoints_2d",
@@ -100,11 +100,11 @@ class AnnotationsLoadStage(PipelineStage[AnnotationsLoadRuntimeConfig]):
                         annotations[k] = GlobalTimeReferenceAnnotations.from_dict(
                             annotations_dict
                         )
-                    elif k == "camera_extrinsics":
+                    elif k == "cameras_extrinsics":
                         annotations[k] = CameraExtrinsicsAnnotations.from_dict(
                             annotations_dict
                         )
-                    elif k == "camera_intrinsics":
+                    elif k == "cameras_intrinsics":
                         annotations[k] = CameraIntrinsicsAnnotations.from_dict(
                             annotations_dict
                         )

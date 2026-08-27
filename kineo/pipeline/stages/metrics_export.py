@@ -63,18 +63,18 @@ class MetricsExportStage(PipelineStage[MetricsExportRuntimeConfig]):
     ):
         pred_keypoints_3d: Keypoints3DAnnotations = annotations["keypoints_3d"]
         pred_camera_extrinsics: CameraExtrinsicsAnnotations = annotations[
-            "camera_extrinsics"
+            "cameras_extrinsics"
         ]
         pred_camera_intrinsics: CameraIntrinsicsAnnotations = annotations[
-            "camera_intrinsics"
+            "cameras_intrinsics"
         ]
 
         gt_keypoints_3d: Keypoints3DAnnotations = gt_annotations.get("keypoints_3d")
         gt_camera_extrinsics: CameraExtrinsicsAnnotations = gt_annotations.get(
-            "camera_extrinsics"
+            "cameras_extrinsics"
         )
         gt_camera_intrinsics: CameraIntrinsicsAnnotations = gt_annotations.get(
-            "camera_intrinsics"
+            "cameras_intrinsics"
         )
 
         stage_timings: StageTimingsAnnotations = annotations.get("stage_timings")

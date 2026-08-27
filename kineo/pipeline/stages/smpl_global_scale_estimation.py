@@ -59,7 +59,7 @@ class SMPLGlobalScaleEstimationRuntimeConfig:
     n_iters: int = 100
     keypoints_indices: list[int] | None = None
     bones_lengths_loss_weight: float = 1.0
-    bones_lengths_huber_loss_delta: float = 0.5
+    bones_lengths_huber_delta_m: float = 0.5
     betas_prior_loss_weight: float = 1.0
     tolerance_grad: float = 1e-05
     tolerance_change: float = 1e-09
@@ -257,7 +257,7 @@ class SMPLGlobalScaleEstimationStage(
             bone_lengths_loss = torch.nn.functional.huber_loss(
                 input=valid_smpl_bone_lengths,
                 target=valid_scaled_bone_lengths,
-                delta=runtime_cfg.bones_lengths_huber_loss_delta,
+                delta=runtime_cfg.bones_lengths_huber_delta_m,
                 reduction="none",
             )
             bone_lengths_loss = weighted_mean(

@@ -35,7 +35,7 @@ def test_offset_is_negative_when_target_is_read_earlier():
         audio_waveforms=[ref, target],
         audio_sample_rates=[SAMPLE_RATE, SAMPLE_RATE],
         ref_idx=0,
-        hop_duration=HOP_DURATION,
+        hop_duration_s=HOP_DURATION,
     )
 
     assert offsets[1].item() == -offset
@@ -52,7 +52,7 @@ def test_offsets_are_recovered_across_magnitudes_and_both_signs():
             audio_waveforms=[ref, target],
             audio_sample_rates=[SAMPLE_RATE, SAMPLE_RATE],
             ref_idx=0,
-            hop_duration=HOP_DURATION,
+            hop_duration_s=HOP_DURATION,
         )
 
         # Estimates are quantized to whole hops.
@@ -100,7 +100,7 @@ def test_offset_survives_a_sample_rate_mismatch():
         audio_waveforms=[ref, resampled],
         audio_sample_rates=[SAMPLE_RATE, SAMPLE_RATE // 2],
         ref_idx=0,
-        hop_duration=HOP_DURATION,
+        hop_duration_s=HOP_DURATION,
     )
 
     assert abs(offsets[1].item() + offset) <= HOP_DURATION

@@ -237,8 +237,8 @@ def load_kineo_predictions_in_folder(
     CameraExtrinsicsAnnotations,
     Keypoints3DAnnotations,
 ]:
-    camera_intrinsics_file = os.path.join(folder_path, "camera_intrinsics.pkl")
-    camera_extrinsics_file = os.path.join(folder_path, "camera_extrinsics.pkl")
+    camera_intrinsics_file = os.path.join(folder_path, "cameras_intrinsics.pkl")
+    camera_extrinsics_file = os.path.join(folder_path, "cameras_extrinsics.pkl")
     keypoints_3d_file = os.path.join(folder_path, "keypoints_3d.pkl")
 
     if not os.path.exists(camera_intrinsics_file):
@@ -341,12 +341,12 @@ if __name__ == "__main__":
             camera_intrinsics_file = os.path.join(
                 args.hsfm_processed_eval_data_dir,
                 sequence_name,
-                "camera_intrinsics.pkl",
+                "cameras_intrinsics.pkl",
             )
             camera_extrinsics_file = os.path.join(
                 args.hsfm_processed_eval_data_dir,
                 sequence_name,
-                "camera_extrinsics.pkl",
+                "cameras_extrinsics.pkl",
             )
             keypoints_3d_file = os.path.join(
                 args.hsfm_processed_eval_data_dir, sequence_name, "keypoints_3d.pkl"

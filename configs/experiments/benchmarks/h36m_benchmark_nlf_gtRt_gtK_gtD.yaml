@@ -14,7 +14,7 @@ pipeline:
       order: 0
       runtime_cfg:
         _target_: kineo.pipeline.stages.transfer_gt_annotations.TransferGroundTruthAnnotationsRuntimeConfig
-        annotations_keys: ["bboxes_2d", "camera_intrinsics", "camera_extrinsics"]
+        annotations_keys: ["bboxes_2d", "cameras_intrinsics", "cameras_extrinsics"]
 
     nlf_skeleton_keypoints_detection:
       _target_: kineo.pipeline.stages.nlf.skeleton_keypoints_detection.NLFSkeletonKeypointsDetectionStage

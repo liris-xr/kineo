@@ -59,7 +59,7 @@ class BundleAdjustmentRuntimeConfig:
     optimize_rotation: bool = True
     optimize_translation: bool = True
     shared_intrinsics: bool = False
-    huber_delta: float = 1.0
+    reproj_huber_delta_px: float = 1.0
     n_iters: int = 10
     tolerance_grad: float = 1e-05
     tolerance_change: float = 1e-09
@@ -163,11 +163,11 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
         device = pipeline.device
 
         cameras_intrinsics: CameraIntrinsicsAnnotations = annotations[
-            "camera_intrinsics"
+            "cameras_intrinsics"
         ]
 
         cameras_extrinsics: CameraExtrinsicsAnnotations = annotations[
-            "camera_extrinsics"
+            "cameras_extrinsics"
         ]
 
         bundle_adjustment_keypoints: BundleAdjustmentKeypointsAnnotation = (
@@ -235,7 +235,7 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
             optimize_translation=runtime_cfg.optimize_translation,
             n_iters=runtime_cfg.n_iters,
             shared_intrinsics=runtime_cfg.shared_intrinsics,
-            huber_delta=runtime_cfg.huber_delta,
+            huber_delta=runtime_cfg.reproj_huber_delta_px,
             tolerance_grad=runtime_cfg.tolerance_grad,
             tolerance_change=runtime_cfg.tolerance_change,
             patience=runtime_cfg.patience,
@@ -243,7 +243,7 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
             use_lbfgs=runtime_cfg.use_lbfgs,
         )
 
-        annotations["camera_extrinsics"] = CameraExtrinsicsAnnotations(
+        annotations["cameras_extrinsics"] = CameraExtrinsicsAnnotations(
             metadata=CameraExtrinsicsAnnotationsMetadata(),
             annotations=[
                 CameraExtrinsicsAnnotation(
@@ -256,7 +256,7 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
             ],
         )
 
-        annotations["camera_intrinsics"] = CameraIntrinsicsAnnotations(
+        annotations["cameras_intrinsics"] = CameraIntrinsicsAnnotations(
             metadata=CameraIntrinsicsAnnotationsMetadata(),
             annotations=[
                 CameraIntrinsicsAnnotation(

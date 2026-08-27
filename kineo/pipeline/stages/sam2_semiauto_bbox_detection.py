@@ -44,7 +44,7 @@ matplotlib.use("TkAgg")
 
 @dataclass
 class SAM2SemiAutoBboxDetectionRuntimeConfig:
-    bbox_thr: float = 0.3
+    min_bbox_score: float = 0.3
     nms_iou_thr: float = 0.65
     nms_pre_top_k: int = 10
     det_category_id: int | None = 0
@@ -175,7 +175,7 @@ def _init_video_states(
 def _batch_infer_bboxes(
     frames_rgb: torch.Tensor,
     det_inferencer: DetInferencer,
-    bbox_thr: float = 0.3,
+    min_bbox_score: float = 0.3,
     nms_iou_thr: float = 0.65,
     use_half_precision: bool = True,
     det_category_id: int | None = None
@@ -208,7 +208,7 @@ def _batch_infer_bboxes(
             batch_size=batch_size,
             return_datasamples=True,
             cat_ids=[det_category_id] if det_category_id is not None else None,
-            bbox_thr=bbox_thr,
+            min_bbox_score=min_bbox_score,
             nms_thr=nms_iou_thr,
             show=False,
         )["predictions"]

@@ -28,7 +28,7 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class SceneReorientationRuntimeConfig:
     min_kps_quantile: float = 0.01
-    min_kps_score: float = 0.2
+    min_keypoint_score: float = 0.2
 
 
 class SceneReorientationStage(PipelineStage[SceneReorientationRuntimeConfig]):
@@ -58,7 +58,7 @@ class SceneReorientationStage(PipelineStage[SceneReorientationRuntimeConfig]):
         device = pipeline.device
 
         camera_extrinsics: CameraExtrinsicsAnnotations = annotations[
-            "camera_extrinsics"
+            "cameras_extrinsics"
         ]
         camera_extrinsics = camera_extrinsics.to(device)
 
@@ -94,7 +94,7 @@ class SceneReorientationStage(PipelineStage[SceneReorientationRuntimeConfig]):
         floor_position = _compute_floor_position(
             new_keypoints_3d,
             up_axis=up_axis,
-            min_kps_score=runtime_cfg.min_kps_score,
+            min_keypoint_score=runtime_cfg.min_keypoint_score,
             min_kps_quantile=runtime_cfg.min_kps_quantile,
         )
         t_vector = torch.zeros(3, device=device)
@@ -114,7 +114,7 @@ class SceneReorientationStage(PipelineStage[SceneReorientationRuntimeConfig]):
         )
 
         annotations["keypoints_3d"] = new_keypoints_3d.cpu()
-        annotations["camera_extrinsics"] = new_camera_extrinsics.cpu()
+        annotations["cameras_extrinsics"] = new_camera_extrinsics.cpu()
 
         ba_history: BundleAdjustmentHistoryAnnotations | None = annotations.get(
             "bundle_adjustment_history"
@@ -150,7 +150,7 @@ class SceneReorientationStage(PipelineStage[SceneReorientationRuntimeConfig]):
 def _compute_floor_position(
     keypoints_3d: Keypoints3DAnnotations,
     up_axis: int = 1,
-    min_kps_score: float = 0.2,
+    min_keypoint_score: float = 0.2,
     min_kps_quantile: float = 0.01,
 ) -> float:
     n_frames = keypoints_3d.n_frames
@@ -187,7 +187,7 @@ def _compute_floor_position(
     keypoints = keypoints.reshape(-1, 3)
     keypoints_scores = keypoints_scores.reshape(-1)
 
-    valid_kps_mask = (keypoints_scores > min_kps_score) & (torch.isfinite(keypoints).all(dim=-1))
+    valid_kps_mask = (keypoints_scores > min_keypoint_score) & (torch.isfinite(keypoints).all(dim=-1))
     keypoints = keypoints[valid_kps_mask]
     keypoints_scores = keypoints_scores[valid_kps_mask]
 

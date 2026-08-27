@@ -28,9 +28,9 @@ from kineo.datasets.keypoints_sequence_dataset import ViewInput
 from kineo.pipeline.pipeline import Pipeline, PipelineStage
 from kineo.sampling import (
     farthest_point_sampling,
+    in_frame_keypoints_mask,
     normalized_uv,
     uniform_point_sampling,
-    valid_observations_mask,
 )
 
 # Image-plane coordinates of both views plus the time axis.
@@ -42,8 +42,8 @@ def pair_sampling_features(
     resolutions_hw: torch.Tensor,
     pairs: torch.Tensor,
     ts: torch.Tensor,
-    w_uv: float,
-    w_t: float,
+    image_plane_weight: float,
+    time_weight: float,
 ) -> torch.Tensor:
     """Builds the ``[u_i, v_i, u_j, v_j, t]`` feature of every candidate pair.
 
@@ -52,7 +52,7 @@ def pair_sampling_features(
     position in the first view but not the second are near duplicates under a
     single-view feature while constraining the epipolar geometry differently.
 
-    ``w_uv`` is split across the four image axes so that the image-plane block
+    ``image_plane_weight`` is split across the four image axes so that the image-plane block
     does not outweigh the single time axis purely because it is spread over
     more dimensions.
 
@@ -61,8 +61,8 @@ def pair_sampling_features(
         resolutions_hw: Per-view (height, width) of shape (n_views, 2).
         pairs: View index pairs of shape (n_pairs, 2).
         ts: Normalized time of every candidate, shape (n_flat,).
-        w_uv: Weight of the image-plane block.
-        w_t: Weight of the time axis.
+        image_plane_weight: Weight of the image-plane block.
+        time_weight: Weight of the time axis.
 
     Returns:
         Float tensor of shape (n_pairs, n_flat, 5).
@@ -71,14 +71,14 @@ def pair_sampling_features(
 
     normalized = normalized_uv(kps_xy, resolutions_hw)
 
-    uv_weight = w_uv / 2.0
+    uv_weight = image_plane_weight / 2.0
     n_pairs, n_flat = len(pairs), kps_xy.shape[1]
 
     return torch.cat(
         [
             uv_weight * normalized[views_i],
             uv_weight * normalized[views_j],
-            (w_t * ts).expand(n_pairs, n_flat).unsqueeze(-1),
+            (time_weight * ts).expand(n_pairs, n_flat).unsqueeze(-1),
         ],
         dim=-1,
     )
@@ -150,8 +150,8 @@ class KeypointsPairsSamplingRuntimeConfig:
     # filter is on by default. Turning it off is the uniform-baseline arm, and
     # isolates the filter from the sampler in the ablation.
     filter_off_frame_keypoints: bool = True
-    w_uv: float = 1.0
-    w_t: float = 1.0
+    farthest_point_image_plane_weight: float = 1.0
+    farthest_point_time_weight: float = 1.0
     max_chunk_bytes: int = 128 * 1024 * 1024
 
 
@@ -211,7 +211,7 @@ class KeypointsPairsSamplingStage(
         kps_2d: Keypoints2DAnnotations = annotations["keypoints_2d"]
 
         cameras_intrinsics: CameraIntrinsicsAnnotations = annotations[
-            "camera_intrinsics"
+            "cameras_intrinsics"
         ]
 
         global_time_reference: GlobalTimeReferenceAnnotation = annotations[
@@ -271,7 +271,7 @@ class KeypointsPairsSamplingStage(
         )
 
         observations_mask = (
-            valid_observations_mask(kps_xy, resolutions_hw)
+            in_frame_keypoints_mask(kps_xy, resolutions_hw)
             if runtime_cfg.filter_off_frame_keypoints
             else torch.ones(n_views, n_flat, dtype=torch.bool, device=device)
         )
@@ -400,8 +400,8 @@ class KeypointsPairsSamplingStage(
                 resolutions_hw=resolutions_hw,
                 pairs=chunk_pairs,
                 ts=ts,
-                w_uv=runtime_cfg.w_uv,
-                w_t=runtime_cfg.w_t,
+                image_plane_weight=runtime_cfg.farthest_point_image_plane_weight,
+                time_weight=runtime_cfg.farthest_point_time_weight,
             )
             selected, selected_valid = farthest_point_sampling(
                 features, budget, generator, candidates_mask

@@ -58,7 +58,7 @@ def render_keypoints_and_cameras(
     camera_intrinsics: CameraIntrinsicsAnnotations,
     fps: float,
     video_path: str,
-    skeleton_radius: float = 0.01,
+    skeleton_radius_m: float = 0.01,
     score_threshold: float = 0.2,
 ):
     os.makedirs(os.path.dirname(video_path), exist_ok=True)
@@ -109,7 +109,7 @@ def render_keypoints_and_cameras(
             joint_connections=kps_3d_format.keypoints_connectivity,
             joint_visibility=visibility.cpu().numpy(),
             colors=subject_color_rgba,
-            radius=skeleton_radius,
+            radius=skeleton_radius_m,
         )
         skeleton.name = subject
         skeletons.append(skeleton)
@@ -161,7 +161,7 @@ def render_keypoints_and_cameras(
 def _create_subject_skeleton_with_confidence(
     subject_id: str,
     keypoints_3d: Keypoints3DAnnotations,
-    skeleton_radius: float = 0.01,
+    skeleton_radius_m: float = 0.01,
     colormap: str = "inferno",
     convert_coordinates_to_opengl: bool = True,
     keypoints_to_show: list[int] | None = None,
@@ -234,7 +234,7 @@ def _create_subject_skeleton_with_confidence(
         joints_confidences=joints_confidences.cpu().numpy(),
         bones_confidences=bones_confidences.cpu().numpy(),
         colormap=colormap,
-        radius=skeleton_radius,
+        radius=skeleton_radius_m,
         normalize_skeleton_confidence_per_frame=normalize_skeleton_confidence_per_frame,
     )
     skeleton.name = subject_id
@@ -244,7 +244,7 @@ def _create_subject_skeleton_with_confidence(
 def _create_subject_skeleton(
     subject_id: str,
     keypoints_3d: Keypoints3DAnnotations,
-    skeleton_radius: float = 0.01,
+    skeleton_radius_m: float = 0.01,
     score_threshold: float = 0.2,
     color: tuple[float, float, float, float] = (1, 0, 0, 1),
     convert_coordinates_to_opengl: bool = True,
@@ -310,7 +310,7 @@ def _create_subject_skeleton(
         joint_connections=joint_connections,
         joint_visibility=joint_visibility.cpu().numpy(),
         colors=color,
-        radius=skeleton_radius,
+        radius=skeleton_radius_m,
     )
     skeleton.name = subject_id
     return skeleton
@@ -517,19 +517,19 @@ def add_keypoints_3d_and_cameras(
     ),
     subjects_names: dict[str, str] | None = None,
     cameras_names: dict[str, str] | None = None,
-    skeleton_radius: float = 0.01,
-    camera_scale: float = 1,
+    skeleton_radius_m: float = 0.01,
+    camera_frustum_scale: float = 1,
     convert_coordinates_to_opengl: bool = True,
-    keypoints_score_threshold: float = 0.2,
+    min_keypoint_score: float = 0.2,
 ):
     add_keypoints_3d(
         node=node,
         keypoints_3d=keypoints_3d,
         subjects_colors=subjects_colors,
         subjects_names=subjects_names,
-        skeleton_radius=skeleton_radius,
+        skeleton_radius_m=skeleton_radius_m,
         convert_coordinates_to_opengl=convert_coordinates_to_opengl,
-        score_threshold=keypoints_score_threshold,
+        score_threshold=min_keypoint_score,
     )
     add_cameras(
         node=node,
@@ -537,7 +537,7 @@ def add_keypoints_3d_and_cameras(
         camera_intrinsics=camera_intrinsics,
         cameras_colors=cameras_colors,
         cameras_names=cameras_names,
-        camera_scale=camera_scale,
+        camera_frustum_scale=camera_frustum_scale,
         convert_coordinates_to_opengl=convert_coordinates_to_opengl,
     )
 
@@ -549,7 +549,7 @@ def add_keypoints_3d(
         dict[str, tuple[float, float, float, float]] | tuple[float, float, float, float]
     ),
     subjects_names: dict[str, str] | None = None,
-    skeleton_radius: float = 0.01,
+    skeleton_radius_m: float = 0.01,
     score_threshold: float = 0.2,
     convert_coordinates_to_opengl: bool = True,
 ) -> dict[str, SkeletonWithVisibility]:
@@ -567,7 +567,7 @@ def add_keypoints_3d(
         subject_skeleton = _create_subject_skeleton(
             subject_id=subject_id,
             keypoints_3d=keypoints_3d,
-            skeleton_radius=skeleton_radius,
+            skeleton_radius_m=skeleton_radius_m,
             score_threshold=score_threshold,
             color=subjects_colors[subject_id],
             convert_coordinates_to_opengl=convert_coordinates_to_opengl,
@@ -586,7 +586,7 @@ def add_cameras(
         dict[str, tuple[float, float, float, float]] | tuple[float, float, float, float]
     ),
     cameras_names: dict[str, str] | None = None,
-    camera_scale: float = 1,
+    camera_frustum_scale: float = 1,
     convert_coordinates_to_opengl: bool = True,
 ) -> dict[str, OpenCVCamera]:
     if isinstance(cameras_colors, tuple):
@@ -603,7 +603,7 @@ def add_cameras(
             camera_extrinsics=camera_extrinsics.filter_by_view_id(view_id),
             camera_intrinsics=camera_intrinsics.filter_by_view_id(view_id),
             color=cameras_colors[view_id],
-            scale=camera_scale,
+            scale=camera_frustum_scale,
             convert_coordinates_to_opengl=convert_coordinates_to_opengl,
         )
         camera.name = cameras_names[view_id]
@@ -615,9 +615,9 @@ def add_cameras(
 def add_world_reconstruction(
     node: Node,
     world_reconstruction: WorldReconstructedSceneAnnotations,
-    world_points_size: float = 0.7,
-    world_z_clipping_threshold: float | None = None,
-    world_points_confidence_threshold: float = 0.0,
+    world_points_screen_size_px: float = 0.7,
+    world_z_clipping_m: float | None = None,
+    min_world_point_confidence: float = 0.0,
     max_world_points_to_show: int = -1,
     convert_coordinates_to_opengl: bool = True,
     name: str = "World",
@@ -637,12 +637,12 @@ def add_world_reconstruction(
 
     world_points_conf = world_reconstruction.points_confidences
 
-    valid_mask = world_points_conf >= world_points_confidence_threshold
+    valid_mask = world_points_conf >= min_world_point_confidence
     world_points_xyz = world_points_xyz[valid_mask]
     world_points_colors = world_points_colors[valid_mask]
 
-    if world_z_clipping_threshold is not None:
-        clipping_mask = world_points_xyz[..., 2] > world_z_clipping_threshold
+    if world_z_clipping_m is not None:
+        clipping_mask = world_points_xyz[..., 2] > world_z_clipping_m
         world_points_xyz = world_points_xyz[~clipping_mask]
         world_points_colors = world_points_colors[~clipping_mask]
 
@@ -658,7 +658,7 @@ def add_world_reconstruction(
         world_pcd = PointClouds(
             points=world_points_xyz.unsqueeze(0).cpu().numpy(),
             colors=world_points_colors.unsqueeze(0).cpu().numpy(),
-            point_size=world_points_size,
+            point_size=world_points_screen_size_px,
         )
         world_pcd.name = name
         node.add(world_pcd)
@@ -671,8 +671,8 @@ def export_world_to_ply(
     path: str,
     world_reconstruction: WorldReconstructedSceneAnnotations,
     max_world_points_to_show: int = -1,
-    world_z_clipping_threshold: float = None,
-    world_points_confidence_threshold: float = 0.2,
+    world_z_clipping_m: float = None,
+    min_world_point_confidence: float = 0.2,
     convert_coordinates_to_opengl: bool = True,
 ):
     world_reconstruction: WorldReconstructedSceneAnnotation = (
@@ -688,13 +688,13 @@ def export_world_to_ply(
     )
     world_points_conf = world_reconstruction.points_confidences
 
-    valid_mask = world_points_conf >= world_points_confidence_threshold
+    valid_mask = world_points_conf >= min_world_point_confidence
     world_points_xyz = world_points_xyz[valid_mask]
     world_points_colors = world_points_colors[valid_mask]
     world_points_conf = world_points_conf[valid_mask]
 
-    if world_z_clipping_threshold is not None:
-        clipping_mask = world_points_xyz[..., 2] > world_z_clipping_threshold
+    if world_z_clipping_m is not None:
+        clipping_mask = world_points_xyz[..., 2] > world_z_clipping_m
         world_points_xyz = world_points_xyz[~clipping_mask]
         world_points_colors = world_points_colors[~clipping_mask]
 
@@ -718,9 +718,9 @@ def export_usd(
     camera_extrinsics: CameraExtrinsicsAnnotations,
     camera_intrinsics: CameraIntrinsicsAnnotations,
     fps: float,
-    joints_radius: float = 0.01,
+    joints_radius_m: float = 0.01,
     score_threshold: float = 0.2,
-    camera_scale: float = 5,
+    camera_frustum_scale: float = 5,
     camera_color: tuple[float, float, float] = (0.0, 0.0, 0.0),
     keypoints_to_show: list[int] | None = None,
     keypoints_to_hide: list[int] | None = None,
@@ -735,7 +735,7 @@ def export_usd(
             subject_id=subject,
             keypoints_3d=keypoints_3d,
             color=get_subject_color_rgba(subject),
-            sphere_radius=joints_radius,
+            sphere_radius=joints_radius_m,
             keypoints_to_show=keypoints_to_show,
             keypoints_to_hide=keypoints_to_hide,
             convert_coordinates_to_opengl=convert_coordinates_to_opengl,
@@ -750,7 +750,7 @@ def export_usd(
             camera_extrinsics=camera_extrinsics.filter_by_view_id(view_id),
             camera_intrinsics=camera_intrinsics.filter_by_view_id(view_id),
             color=camera_color + (1,),
-            scale=camera_scale,
+            scale=camera_frustum_scale,
         )
         pred_cameras.append(camera)
 
@@ -787,13 +787,13 @@ def show_keypoints_and_cameras(
     keypoints_3d: Keypoints3DAnnotations | None = None,
     camera_extrinsics: CameraExtrinsicsAnnotations | None = None,
     camera_intrinsics: CameraIntrinsicsAnnotations | None = None,
-    skeleton_radius: float = 0.01,
+    skeleton_radius_m: float = 0.01,
     score_threshold: float = 0.2,
     world_reconstruction: WorldReconstructedSceneAnnotations | None = None,
-    world_points_size: float = 0.7,
-    world_points_confidence_threshold: float = 0.2,
-    world_z_clipping_threshold: float = None,  # threshold above which the points are not shown
-    camera_scale: float = 5,
+    world_points_screen_size_px: float = 0.7,
+    min_world_point_confidence: float = 0.2,
+    world_z_clipping_m: float = None,  # threshold above which the points are not shown
+    camera_frustum_scale: float = 5,
     max_world_points_to_show: int = -1,
     gt_keypoints_3d: Keypoints3DAnnotations | None = None,
     gt_camera_extrinsics: CameraExtrinsicsAnnotations | None = None,
@@ -826,15 +826,15 @@ def show_keypoints_and_cameras(
         )
         world_points_confidences = world_reconstruction.points_confidences
 
-        if world_z_clipping_threshold is not None:
-            clipping_mask = world_points_xyz[..., 2] > world_z_clipping_threshold
+        if world_z_clipping_m is not None:
+            clipping_mask = world_points_xyz[..., 2] > world_z_clipping_m
             world_points_xyz = world_points_xyz[~clipping_mask]
             world_points_colors = world_points_colors[~clipping_mask]
             world_points_confidences = world_points_confidences[~clipping_mask]
 
         assert world_points_confidences.ndim == 1
 
-        conf_mask = (world_points_confidences >= world_points_confidence_threshold) & (
+        conf_mask = (world_points_confidences >= min_world_point_confidence) & (
             world_points_confidences > 1e-5
         )
 
@@ -884,7 +884,7 @@ def show_keypoints_and_cameras(
                 subject_skeleton = _create_subject_skeleton_with_confidence(
                     subject_id=subject,
                     keypoints_3d=keypoints_3d,
-                    skeleton_radius=skeleton_radius,
+                    skeleton_radius_m=skeleton_radius_m,
                     colormap=skeleton_confidence_colormap,
                     convert_coordinates_to_opengl=True,
                     keypoints_to_show=keypoints_to_show,
@@ -895,7 +895,7 @@ def show_keypoints_and_cameras(
                 subject_skeleton = _create_subject_skeleton(
                     subject_id=subject,
                     keypoints_3d=keypoints_3d,
-                    skeleton_radius=skeleton_radius,
+                    skeleton_radius_m=skeleton_radius_m,
                     score_threshold=score_threshold,
                     color=(
                         tuple(skeleton_color_override) + (1,)
@@ -914,7 +914,7 @@ def show_keypoints_and_cameras(
             subject_skeleton = _create_subject_skeleton(
                 subject_id=subject,
                 keypoints_3d=gt_keypoints_3d,
-                skeleton_radius=skeleton_radius,
+                skeleton_radius_m=skeleton_radius_m,
                 score_threshold=score_threshold,
                 color=(0, 0, 0, 1),
                 convert_coordinates_to_opengl=True,
@@ -931,7 +931,7 @@ def show_keypoints_and_cameras(
                 camera_extrinsics=camera_extrinsics.filter_by_view_id(view_id),
                 camera_intrinsics=camera_intrinsics.filter_by_view_id(view_id),
                 color=camera_color + (1,),
-                scale=camera_scale,
+                scale=camera_frustum_scale,
                 convert_coordinates_to_opengl=True,
             )
             pred_cameras.append(camera)
@@ -943,7 +943,7 @@ def show_keypoints_and_cameras(
                 camera_extrinsics=gt_camera_extrinsics.filter_by_view_id(view_id),
                 camera_intrinsics=gt_camera_intrinsics.filter_by_view_id(view_id),
                 color=(0.1, 0.1, 0.1, 1),
-                scale=camera_scale,
+                scale=camera_frustum_scale,
                 convert_coordinates_to_opengl=True,
             )
             gt_cameras.append(camera)
@@ -1015,7 +1015,7 @@ def show_keypoints_and_cameras(
         world_pcd = PointClouds(
             points=world_points_xyz.unsqueeze(0).cpu().numpy(),
             colors=world_points_colors.unsqueeze(0).cpu().numpy(),
-            point_size=world_points_size,
+            point_size=world_points_screen_size_px,
         )
         world_pcd.name = "World"
         pred_node.add(world_pcd)

@@ -125,11 +125,11 @@ def _synthetic_annotations():
     ]
 
     annotations = {
-        "camera_intrinsics": CameraIntrinsicsAnnotations(
+        "cameras_intrinsics": CameraIntrinsicsAnnotations(
             metadata=CameraIntrinsicsAnnotationsMetadata(),
             annotations=intrinsics,
         ),
-        "camera_extrinsics": CameraExtrinsicsAnnotations(
+        "cameras_extrinsics": CameraExtrinsicsAnnotations(
             metadata=CameraExtrinsicsAnnotationsMetadata(),
             annotations=extrinsics,
         ),
@@ -158,8 +158,8 @@ def _run_stage(
     sampler: str = "farthest_point",
     filter_negative_depth: bool = False,
     min_parallax_deg: float | None = None,
-    max_reproj_error: float | None = None,
-    w_d: float = 0.0,
+    max_reproj_error_focal_ratio: float | None = None,
+    farthest_point_depth_weight: float = 0.0,
     filter_off_frame_keypoints: bool = True,
 ):
     from kineo.pipeline.stages.bundle_adjustment_sampling import (
@@ -170,13 +170,13 @@ def _run_stage(
     views, annotations = _synthetic_annotations()
     runtime_cfg = BundleAdjustmentSamplingRuntimeConfig(
         n_kp_samples_per_view=n_kp_samples_per_view,
-        min_kp_score=MIN_KP_SCORE,
+        min_keypoint_score=MIN_KP_SCORE,
         sampler=sampler,
         filter_off_frame_keypoints=filter_off_frame_keypoints,
         filter_negative_depth=filter_negative_depth,
         min_parallax_deg=min_parallax_deg,
-        max_reproj_error=max_reproj_error,
-        w_d=w_d,
+        max_reproj_error_focal_ratio=max_reproj_error_focal_ratio,
+        farthest_point_depth_weight=farthest_point_depth_weight,
     )
     stage = BundleAdjustmentSamplingStage(
         name="Bundle Adjustment FPS Sampling", order=55, runtime_cfg=runtime_cfg
@@ -317,8 +317,10 @@ def test_cheirality_gate_drops_observations_behind_their_view():
 def test_reprojection_gate_bounds_the_residual_of_every_kept_observation():
     from kineo.geometry.metrics import compute_normalized_reprojection_residuals
 
-    max_reproj_error = 0.01
-    annotation = _run_stage(n_kp_samples_per_view=-1, max_reproj_error=max_reproj_error)
+    max_error = 0.01
+    annotation = _run_stage(
+        n_kp_samples_per_view=-1, max_reproj_error_focal_ratio=max_error
+    )
 
     height, width = RESOLUTION_HW
     Ks = torch.tensor(
@@ -337,7 +339,7 @@ def test_reprojection_gate_bounds_the_residual_of_every_kept_observation():
     assert bool(kept.any())
     # The emitted points are retriangulated from the gated weights, so this
     # rechecks the residual against the point the stage actually exports.
-    assert float(residuals[kept].max()) < 2.0 * max_reproj_error
+    assert float(residuals[kept].max()) < 2.0 * max_error
 
 
 def test_the_gate_only_ever_shrinks_the_candidate_set():
@@ -346,7 +348,7 @@ def test_the_gate_only_ever_shrinks_the_candidate_set():
         n_kp_samples_per_view=-1,
         filter_negative_depth=True,
         min_parallax_deg=1.0,
-        max_reproj_error=0.01,
+        max_reproj_error_focal_ratio=0.01,
     )
 
     assert 0 < gated.kps_3d.shape[0] < ungated.kps_3d.shape[0]
@@ -354,8 +356,8 @@ def test_the_gate_only_ever_shrinks_the_candidate_set():
 
 def test_depth_axis_changes_the_selection():
     per_view = 20
-    without = _run_stage(n_kp_samples_per_view=per_view, w_d=0.0)
-    with_depth = _run_stage(n_kp_samples_per_view=per_view, w_d=1.0)
+    without = _run_stage(n_kp_samples_per_view=per_view, farthest_point_depth_weight=0.0)
+    with_depth = _run_stage(n_kp_samples_per_view=per_view, farthest_point_depth_weight=1.0)
 
     def selection(annotation):
         return {tuple(p) for p in annotation.kps_2d_xy[0].tolist()}

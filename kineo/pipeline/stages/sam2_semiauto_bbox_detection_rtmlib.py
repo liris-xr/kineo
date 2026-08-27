@@ -48,7 +48,7 @@ BboxDetectionResult = namedtuple("BboxDetectionResult", ["bboxes", "scores"])
 
 @dataclass
 class SAM2SemiAutoBboxDetectionRtmlibRuntimeConfig:
-    bbox_thr: float = 0.3
+    min_bbox_score: float = 0.3
     nms_iou_thr: float = 0.65
     nms_pre_top_k: int = 10
     det_category_id: int | None = 0
@@ -127,7 +127,7 @@ class SAM2SemiAutoBboxDetectionRtmlibStage(
 
         states = _init_video_states(views, self.sam2_video_predictor)
         bboxes_annotations = _infer_bboxes(
-            views, states, frame_step=runtime_cfg.frame_step, det_model=self.det_model, sam2_video_predictor=self.sam2_video_predictor, show=runtime_cfg.show, bbox_thr=runtime_cfg.bbox_thr, nms_iou_thr=runtime_cfg.nms_iou_thr
+            views, states, frame_step=runtime_cfg.frame_step, det_model=self.det_model, sam2_video_predictor=self.sam2_video_predictor, show=runtime_cfg.show, min_bbox_score=runtime_cfg.min_bbox_score, nms_iou_thr=runtime_cfg.nms_iou_thr
         )
 
         if runtime_cfg.use_cache:
@@ -172,7 +172,7 @@ def _init_video_states(
 def _batch_infer_bboxes(
     frames_rgb: torch.Tensor,
     det_model: YOLOX,
-    bbox_thr: float = 0.3,
+    min_bbox_score: float = 0.3,
     nms_iou_thr: float = 0.65
 ) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
     assert (
@@ -193,7 +193,7 @@ def _batch_infer_bboxes(
     det_data_samples: list[BboxDetectionResult] = []
 
     det_model.nms_thr = nms_iou_thr
-    det_model.score_thr = bbox_thr
+    det_model.score_thr = min_bbox_score
 
     for frame_bgr in frames_bgr:
         bboxes, scores = det_model(frame_bgr.cpu().numpy())
@@ -220,7 +220,7 @@ def _infer_bboxes(
     sam2_video_predictor: SAM2GenericVideoPredictor,
     frame_step: int = 1,
     show: bool = False,
-    bbox_thr: float = 0.3,
+    min_bbox_score: float = 0.3,
     nms_iou_thr: float = 0.65,
     default_subject_id="subject_0"
 ) -> BBox2DAnnotations:
@@ -275,7 +275,7 @@ def _infer_bboxes(
                 mask = (obj_results.best_mask_logits > 0).squeeze()
 
                 batch_bboxes, batch_scores = _batch_infer_bboxes(
-                    frame_rgb, det_model, bbox_thr=bbox_thr, nms_iou_thr=nms_iou_thr
+                    frame_rgb, det_model, min_bbox_score=min_bbox_score, nms_iou_thr=nms_iou_thr
                 )
 
                 bboxes = batch_bboxes[0]

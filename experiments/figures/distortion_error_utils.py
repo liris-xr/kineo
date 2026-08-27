@@ -41,7 +41,7 @@ def load_pred_camera_intrinsics(
     pred_annotations_dir: str, sequence: dict
 ) -> CameraIntrinsicsAnnotations:
     f = os.path.join(
-        pred_annotations_dir, sequence["sequence_name"], "camera_intrinsics.pkl"
+        pred_annotations_dir, sequence["sequence_name"], "cameras_intrinsics.pkl"
     )
     with open(f, "rb") as fh:
         return CameraIntrinsicsAnnotations.from_dict(pickle.load(fh))

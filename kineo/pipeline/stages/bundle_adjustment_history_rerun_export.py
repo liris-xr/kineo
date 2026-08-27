@@ -22,7 +22,7 @@ from kineo.geometry.camera import transform_points_from_world_to_camera, project
 @dataclass(frozen=True)
 class BundleAdjustmentHistoryRerunExportRuntimeConfig:
     output_path_template: str = "./outputs/rerun/{sequence_name}_ba_history.rrd"
-    image_plane_distance: float = 0.2
+    image_plane_distance_m: float = 0.2
 
 
 class BundleAdjustmentHistoryRerunExportStage(
@@ -68,7 +68,7 @@ class BundleAdjustmentHistoryRerunExportStage(
 
         ba_kps = ba_kps_annots.first_or_default()
         device = pipeline.device
-        cameras_intrinsics: CameraIntrinsicsAnnotations = annotations["camera_intrinsics"]
+        cameras_intrinsics: CameraIntrinsicsAnnotations = annotations["cameras_intrinsics"]
         distortion_model = cameras_intrinsics.first_or_default().distortion_model.value
 
         # Build resolution lookup
@@ -117,7 +117,7 @@ class BundleAdjustmentHistoryRerunExportStage(
                 ba_kps_2d_undistorted=ba_kps_2d_undistorted,
                 ba_kps_scores=ba_kps_scores,
                 distortion_model=distortion_model,
-                image_plane_distance=runtime_cfg.image_plane_distance,
+                image_plane_distance_m=runtime_cfg.image_plane_distance_m,
             )
 
         print(f"Exported bundle adjustment history to {formatted_output_path}")
@@ -130,7 +130,7 @@ def _log_history_entry(
         ba_kps_2d_undistorted: torch.Tensor,
         ba_kps_scores: torch.Tensor,
         distortion_model: str,
-        image_plane_distance: float = 0.2,
+        image_plane_distance_m: float = 0.2,
 ):
     rr.set_time("iteration", sequence=normalized_iteration)
     n_views = entry.Ks.shape[0]
@@ -152,7 +152,7 @@ def _log_history_entry(
 
         rr.log(f"ba/cameras/{view_id}", rr.Pinhole(
             image_from_camera=K_view, width=width, height=height,
-            image_plane_distance=image_plane_distance
+            image_plane_distance_m=image_plane_distance_m
         ))
         rr.log(f"ba/cameras/{view_id}", rr.Transform3D(translation=translation, mat3x3=rotation))
 

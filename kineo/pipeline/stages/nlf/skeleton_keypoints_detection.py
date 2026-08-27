@@ -101,7 +101,7 @@ class NLFSkeletonKeypointsDetectionStage(
         bboxes_annotations: BBox2DAnnotations = annotations.get("bboxes_2d")
 
         intrinsics_annotations: CameraIntrinsicsAnnotations = annotations.get(
-            "camera_intrinsics"
+            "cameras_intrinsics"
         )
 
         if bboxes_annotations is None:

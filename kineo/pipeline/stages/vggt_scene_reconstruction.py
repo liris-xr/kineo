@@ -97,10 +97,10 @@ class VGGTSceneReconstructionStage(PipelineStage[VGGTSceneReconstructionRuntimeC
         self.vggt_model = self.vggt_model.to(device)
 
         camera_intrinsics: CameraIntrinsicsAnnotations = annotations[
-            "camera_intrinsics"
+            "cameras_intrinsics"
         ]
         camera_extrinsics: CameraExtrinsicsAnnotations = annotations[
-            "camera_extrinsics"
+            "cameras_extrinsics"
         ]
 
         views_ids = [v["view_id"] for v in views]

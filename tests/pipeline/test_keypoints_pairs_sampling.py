@@ -37,8 +37,8 @@ def test_features_normalize_each_view_by_its_own_resolution():
         resolutions_hw=resolutions_hw,
         pairs=_pairs(2),
         ts=ts,
-        w_uv=1.0,
-        w_t=1.0,
+        image_plane_weight=1.0,
+        time_weight=1.0,
     )
 
     assert features.shape == (1, 2, 5)
@@ -64,8 +64,8 @@ def test_features_carry_the_second_view_independently():
         resolutions_hw=resolutions_hw,
         pairs=_pairs(2),
         ts=torch.zeros(2),
-        w_uv=1.0,
-        w_t=1.0,
+        image_plane_weight=1.0,
+        time_weight=1.0,
     )
 
     assert torch.allclose(features[0, 0, :2], features[0, 1, :2])
@@ -73,7 +73,7 @@ def test_features_carry_the_second_view_independently():
 
 
 def test_image_block_and_time_axis_carry_their_own_weight():
-    """The four image axes together must weigh ``w_uv``, not ``2 * w_uv``.
+    """The four image axes together weigh ``image_plane_weight``, not twice it.
 
     Distance is Euclidean, so spreading the image-plane block over four axes
     would otherwise make it dominate the single time axis for free.
@@ -88,8 +88,8 @@ def test_image_block_and_time_axis_carry_their_own_weight():
         resolutions_hw=resolutions_hw,
         pairs=_pairs(2),
         ts=torch.tensor([1.0]),
-        w_uv=2.0,
-        w_t=4.0,
+        image_plane_weight=2.0,
+        time_weight=4.0,
     )
 
     assert torch.allclose(
@@ -107,8 +107,8 @@ def test_time_axis_drops_out_when_its_weight_is_zero():
         resolutions_hw=resolutions_hw,
         pairs=_pairs(2),
         ts=torch.tensor([0.0, 0.5, 1.0]),
-        w_uv=1.0,
-        w_t=0.0,
+        image_plane_weight=1.0,
+        time_weight=0.0,
     )
 
     assert torch.allclose(features[..., 4], torch.zeros(1, 3))
@@ -200,8 +200,8 @@ def test_fps_over_the_joint_space_separates_correspondences_view_i_cannot():
         resolutions_hw=resolutions_hw,
         pairs=_pairs(2),
         ts=torch.zeros(view_j.shape[0]),
-        w_uv=1.0,
-        w_t=1.0,
+        image_plane_weight=1.0,
+        time_weight=1.0,
     )
 
     selected, keep = farthest_point_sampling(features, 4, _generator(3))

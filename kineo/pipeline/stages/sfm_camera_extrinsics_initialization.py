@@ -53,7 +53,7 @@ from kineo.optimization.utils import huber_weights, optimizer_should_stop
 @dataclass(frozen=True)
 class SfMCameraExtrinsicsInitializationRuntimeConfig:
     ransac_confidence: float = 0.99
-    ransac_reproj_threshold: float = 3.0
+    ransac_reproj_threshold_px: float = 3.0
     n_refinement_iters: int = 0
     tolerance_grad: float = 1e-05
     tolerance_change: float = 1e-09
@@ -61,7 +61,7 @@ class SfMCameraExtrinsicsInitializationRuntimeConfig:
     n_relative_scale_factors_iters: int = 10
     scale_triplet_weighting: str = "irls"
     n_scale_irls_iters: int = 5
-    refinement_huber_delta: float = 1.0
+    sampson_huber_delta_px: float = 1.0
     rotation_outlier_thresh_deg: float = 7.0
     n_rotation_averaging_iters: int = 100
     # Chain translations along a tree ranked by full-pose loop closure rather
@@ -122,7 +122,7 @@ class SfMCameraExtrinsicsInitializationStage(
             raise ValueError("No calibration points annotations found.")
 
         cameras_intrinsics: CameraIntrinsicsAnnotations = annotations[
-            "camera_intrinsics"
+            "cameras_intrinsics"
         ]
 
         n_views = len(views)
@@ -180,7 +180,7 @@ class SfMCameraExtrinsicsInitializationStage(
             dist_coeffs_init=dist_coeffs_init,
             distortion_models=distortion_models,
             ransac_confidence=runtime_cfg.ransac_confidence,
-            ransac_reproj_threshold=runtime_cfg.ransac_reproj_threshold,
+            ransac_reproj_threshold_px=runtime_cfg.ransac_reproj_threshold_px,
             n_refinement_iters=runtime_cfg.n_refinement_iters,
             use_lbfgs=runtime_cfg.use_lbfgs,
             tolerance_grad=runtime_cfg.tolerance_grad,
@@ -188,7 +188,7 @@ class SfMCameraExtrinsicsInitializationStage(
             n_relative_scale_factors_iters=runtime_cfg.n_relative_scale_factors_iters,
         scale_triplet_weighting=runtime_cfg.scale_triplet_weighting,
         n_scale_irls_iters=runtime_cfg.n_scale_irls_iters,
-            refinement_huber_delta=runtime_cfg.refinement_huber_delta,
+            sampson_huber_delta_px=runtime_cfg.sampson_huber_delta_px,
             rotation_outlier_thresh_deg=runtime_cfg.rotation_outlier_thresh_deg,
             n_rotation_averaging_iters=runtime_cfg.n_rotation_averaging_iters,
             use_pose_closure_tree=runtime_cfg.use_pose_closure_tree,
@@ -209,7 +209,7 @@ class SfMCameraExtrinsicsInitializationStage(
                 )
             )
 
-        annotations["camera_extrinsics"] = CameraExtrinsicsAnnotations(
+        annotations["cameras_extrinsics"] = CameraExtrinsicsAnnotations(
             metadata=CameraExtrinsicsAnnotationsMetadata(),
             annotations=camera_extrinsics_annotations,
         ).cpu()
@@ -223,7 +223,7 @@ def _estimate_camera_extrinsics(
     dist_coeffs_init: torch.Tensor,
     distortion_models: str,
     ransac_confidence: float = 0.999,
-    ransac_reproj_threshold: float = 3.0,
+    ransac_reproj_threshold_px: float = 3.0,
     n_refinement_iters: int = 100,
     use_lbfgs: bool = True,
     tolerance_grad: float = 1e-05,
@@ -231,7 +231,7 @@ def _estimate_camera_extrinsics(
     n_relative_scale_factors_iters: int = 10,
     scale_triplet_weighting: str = "irls",
     n_scale_irls_iters: int = 5,
-    refinement_huber_delta: float = 1.0,
+    sampson_huber_delta_px: float = 1.0,
     rotation_outlier_thresh_deg: float = 7.0,
     n_rotation_averaging_iters: int = 100,
     use_pose_closure_tree: bool = True,
@@ -267,7 +267,7 @@ def _estimate_camera_extrinsics(
             Threshold for the correspondence score
         confidence: float
             Confidence level for the RANSAC-based pose estimation
-        ransac_reproj_threshold: float
+        ransac_reproj_threshold_px: float
             Reprojection threshold for the RANSAC-based pose estimation
     Returns:
         tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -286,7 +286,7 @@ def _estimate_camera_extrinsics(
         points1=points1,
         points2=points2,
         ransac_confidence=ransac_confidence,
-        ransac_reproj_threshold=ransac_reproj_threshold,
+        ransac_reproj_threshold_px=ransac_reproj_threshold_px,
     )
 
     graph = _average_rotations(
@@ -315,7 +315,7 @@ def _estimate_camera_extrinsics(
         use_lbfgs=use_lbfgs,
         tolerance_grad=tolerance_grad,
         tolerance_change=tolerance_change,
-        refinement_huber_delta=refinement_huber_delta,
+        sampson_huber_delta_px=sampson_huber_delta_px,
     )
 
     graph = _enforce_cheirality(graph)
@@ -463,7 +463,7 @@ def _refine_camera_extrinsics(
     tolerance_grad: float = 1e-05,
     tolerance_change: float = 1e-09,
     use_lbfgs: bool = True,
-    refinement_huber_delta: float = 1.0,
+    sampson_huber_delta_px: float = 1.0,
 ) -> nx.DiGraph:
     device = graph.nodes[0]["K"].device
     n_views = len(graph.nodes())
@@ -557,7 +557,7 @@ def _refine_camera_extrinsics(
             points1=points1_padded,
             points2=points2_padded,
             valid=points_valid,
-            huber_delta=refinement_huber_delta,
+            huber_delta=sampson_huber_delta_px,
         )
         # A non-finite step mid-optimization (e.g. degenerate pose, |t|->0) gets a
         # large finite loss so LBFGS line-search backtracks. But a non-finite very
@@ -678,7 +678,7 @@ def _initialize_graph(
     points1: list[torch.Tensor],
     points2: list[torch.Tensor],
     ransac_confidence: float = 0.99,
-    ransac_reproj_threshold: float = 3.0,
+    ransac_reproj_threshold_px: float = 3.0,
 ) -> nx.DiGraph:
     """
     Compute the relative camera transformations between all pairs of views using 2D keypoint correspondences.
@@ -702,7 +702,7 @@ def _initialize_graph(
             List of tuples containing the keypoints and their correspondence scores for each view pair
         ransac_confidence: float, default=0.99
             Confidence level for RANSAC inlier selection (0-1)
-        ransac_reproj_threshold: float, default=1.0
+        ransac_reproj_threshold_px: float, default=1.0
             Maximum reprojection error in pixels for RANSAC inlier selection
         max_points_pairs: int, default=2000
             Maximum number of point pairs to use for pose estimation
@@ -788,7 +788,7 @@ def _initialize_graph(
                 cameraMatrix2=Ks[view_j].cpu().numpy(),
                 distCoeffs2=np.zeros(5),
                 prob=ransac_confidence,
-                threshold=ransac_reproj_threshold,
+                threshold=ransac_reproj_threshold_px,
                 method=cv2.FM_RANSAC,
             )
 

@@ -53,7 +53,7 @@ pipeline:
         pair_avg_conf_score_thr: 0.4
         keypoints_indices: null
         sampler: "uniform"
-        filter_off_frame_keypoints: false
+        filter_off_frame_keypoints: False
 
     sfm_camera_extrinsics_initialization:
       _target_: kineo.pipeline.stages.sfm_camera_extrinsics_initialization.SfMCameraExtrinsicsInitializationStage
@@ -62,7 +62,7 @@ pipeline:
       runtime_cfg:
         _target_: kineo.pipeline.stages.sfm_camera_extrinsics_initialization.SfMCameraExtrinsicsInitializationRuntimeConfig
         ransac_confidence: 0.99
-        ransac_reproj_threshold: 3.0
+        ransac_reproj_threshold_px: 3.0
         n_refinement_iters: 200
         scale_triplet_weighting: "irls"
         n_scale_irls_iters: 5
@@ -76,9 +76,11 @@ pipeline:
       runtime_cfg:
         _target_: kineo.pipeline.stages.bundle_adjustment_sampling.BundleAdjustmentSamplingRuntimeConfig
         n_kp_samples_per_view: 50
-        min_kp_score: 0.4
+        min_keypoint_score: 0.4
         sampler: "uniform"
-        filter_off_frame_keypoints: false
+        filter_off_frame_keypoints: False
+        min_parallax_deg: 10.0
+        filter_negative_depth: True
 
     bundle_adjustment_1: # Optimize camera extrinsics + focal length
       _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentStage
@@ -94,7 +96,7 @@ pipeline:
         optimize_rotation: True
         optimize_translation: True
         shared_intrinsics: ${shared_intrinsics}
-        huber_delta: 1.0
+        reproj_huber_delta_px: 1.0
         dist_coeffs_regularization_weight: 10.0
 
     bundle_adjustment_2: # Add distortion coefficients
@@ -111,7 +113,7 @@ pipeline:
         optimize_rotation: True
         optimize_translation: True
         shared_intrinsics: ${shared_intrinsics}
-        huber_delta: 1.0
+        reproj_huber_delta_px: 1.0
         dist_coeffs_regularization_weight: 10.0
 
     mvs_triangulation:

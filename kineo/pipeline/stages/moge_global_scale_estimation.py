@@ -40,7 +40,7 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class MoGeGlobalScaleEstimationRuntimeConfig:
     show: bool = False
-    kps_score_threshold: float = 0.3
+    min_keypoint_score: float = 0.3
     # Used when selecting the best frame for each view
     keypoints_indices: list[int] | None = None
     use_half_precision: bool = False
@@ -209,10 +209,10 @@ class MoGeGlobalScaleEstimationStage(
         self.model = self.model.to(device)
 
         camera_intrinsics: CameraIntrinsicsAnnotations = annotations[
-            "camera_intrinsics"
+            "cameras_intrinsics"
         ]
         camera_extrinsics: CameraExtrinsicsAnnotations = annotations[
-            "camera_extrinsics"
+            "cameras_extrinsics"
         ]
 
         keypoints_3d: Keypoints3DAnnotations = annotations["keypoints_3d"]
@@ -291,7 +291,7 @@ class MoGeGlobalScaleEstimationStage(
             # Some keypoints might be outside the image, so we need to mask them
             # to prevent out of bounds errors.
             valid_kps_mask = (kps_img_inside_frame) & (
-                kps_2d_scores > runtime_cfg.kps_score_threshold
+                kps_2d_scores > runtime_cfg.min_keypoint_score
             )
 
             frame_depth_x = frame_depth_x[valid_kps_mask]

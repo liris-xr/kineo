@@ -54,7 +54,7 @@ KeypointsDetectionResult = namedtuple("KeypointsDetectionResult", ["keypoints", 
 
 @dataclass
 class RtmlibBboxKeypointsDetectionRuntimeConfig:
-    bbox_thr: float = 0.3
+    min_bbox_score: float = 0.3
     nms_iou_thr: float = 0.65
     best_bbox_only: bool = False
     det_category_id: int | None = 0
@@ -205,7 +205,7 @@ class RtmlibBboxKeypointsDetectionStage(
             keypoints_model=self.keypoints_model,
             det_category_id=runtime_cfg.det_category_id,
             best_bbox_only=runtime_cfg.best_bbox_only,
-            bbox_thr=runtime_cfg.bbox_thr,
+            min_bbox_score=runtime_cfg.min_bbox_score,
             nms_iou_thr=runtime_cfg.nms_iou_thr,
             default_subject_id=runtime_cfg.default_subject_id,
             frame_step=runtime_cfg.frame_step,
@@ -232,7 +232,7 @@ class RtmlibBboxKeypointsDetectionStage(
         det_model: YOLOX,
         keypoints_model: RTMPose,
         det_category_id: int | None = None,
-        bbox_thr: float = 0.3,
+        min_bbox_score: float = 0.3,
         nms_iou_thr: float = 0.65,
         best_bbox_only: bool = True,
         default_subject_id: str = "subject_0",
@@ -284,7 +284,7 @@ class RtmlibBboxKeypointsDetectionStage(
                     frames_bgr=frames_bgr,
                     batch_frames=batch_frames,
                     det_model=det_model,
-                    bbox_thr=bbox_thr,
+                    min_bbox_score=min_bbox_score,
                     nms_iou_thr=nms_iou_thr,
                     det_category_id=det_category_id,
                     best_bbox_only=best_bbox_only,
@@ -447,7 +447,7 @@ def detect_bboxes(
     frames_bgr: torch.Tensor,
     batch_frames: list[int],
     det_model: YOLOX,
-    bbox_thr: float = 0.3,
+    min_bbox_score: float = 0.3,
     nms_iou_thr: float = 0.65,
     det_category_id: int | None = None,
     best_bbox_only: bool = True,

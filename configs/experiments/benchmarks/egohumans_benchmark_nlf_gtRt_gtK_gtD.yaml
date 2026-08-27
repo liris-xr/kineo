@@ -14,7 +14,7 @@ pipeline:
       order: 0
       runtime_cfg:
         _target_: kineo.pipeline.stages.transfer_gt_annotations.TransferGroundTruthAnnotationsRuntimeConfig
-        annotations_keys: ["bboxes_2d", "camera_intrinsics", "camera_extrinsics"]
+        annotations_keys: ["bboxes_2d", "cameras_intrinsics", "cameras_extrinsics"]
 
     nlf_skeleton_keypoints_detection:
       _target_: kineo.pipeline.stages.nlf.skeleton_keypoints_detection.NLFSkeletonKeypointsDetectionStage
@@ -45,9 +45,11 @@ pipeline:
       runtime_cfg:
         _target_: kineo.pipeline.stages.bundle_adjustment_sampling.BundleAdjustmentSamplingRuntimeConfig
         n_kp_samples_per_view: 50
-        min_kp_score: 0.6
+        min_keypoint_score: 0.6
         sampler: "uniform"
-        filter_off_frame_keypoints: false
+        filter_off_frame_keypoints: False
+        min_parallax_deg: 10.0
+        filter_negative_depth: True
 
     mvs_triangulation:
       _target_: kineo.pipeline.stages.mvs_triangulation.MVSTriangulationStage

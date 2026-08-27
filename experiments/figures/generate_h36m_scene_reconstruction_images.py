@@ -73,10 +73,10 @@ def load_predicted_annotations(
         predictions_dir, seq_name, "keypoints_3d.pkl"
     )
     pred_camera_intrinsics_file = os.path.join(
-        predictions_dir, seq_name, "camera_intrinsics.pkl"
+        predictions_dir, seq_name, "cameras_intrinsics.pkl"
     )
     pred_camera_extrinsics_file = os.path.join(
-        predictions_dir, seq_name, "camera_extrinsics.pkl"
+        predictions_dir, seq_name, "cameras_extrinsics.pkl"
     )
     pred_world_reconstructed_scene_file = os.path.join(
         predictions_dir, seq_name, "world_reconstructed_scene.pkl"

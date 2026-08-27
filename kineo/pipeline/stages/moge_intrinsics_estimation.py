@@ -146,7 +146,7 @@ class MoGeIntrinsicsEstimationStage(PipelineStage):
 
         if runtime_cfg.use_cache:
             intrinsics_cache_filepath = runtime_cfg.cache_output_path_template.format(
-                sequence_name=sequence_name, annotation_key="camera_intrinsics"
+                sequence_name=sequence_name, annotation_key="cameras_intrinsics"
             )
 
             if os.path.exists(intrinsics_cache_filepath):
@@ -161,7 +161,7 @@ class MoGeIntrinsicsEstimationStage(PipelineStage):
                         intrinsics_annotations = share_focal_lengths(
                             intrinsics_annotations
                         )
-                    annotations["camera_intrinsics"] = intrinsics_annotations
+                    annotations["cameras_intrinsics"] = intrinsics_annotations
                     return
 
         intrinsics_annotations: list[CameraIntrinsicsAnnotation] = []
@@ -198,7 +198,7 @@ class MoGeIntrinsicsEstimationStage(PipelineStage):
             annotations=intrinsics_annotations,
         ).cpu()
 
-        annotations["camera_intrinsics"] = camera_intrinsics_annotations
+        annotations["cameras_intrinsics"] = camera_intrinsics_annotations
 
         self.moge_model = self.moge_model.cpu()
 
@@ -214,6 +214,6 @@ class MoGeIntrinsicsEstimationStage(PipelineStage):
                 )
 
         if runtime_cfg.shared_focal_init:
-            annotations["camera_intrinsics"] = share_focal_lengths(
+            annotations["cameras_intrinsics"] = share_focal_lengths(
                 camera_intrinsics_annotations
             )

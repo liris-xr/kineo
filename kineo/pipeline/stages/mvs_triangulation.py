@@ -78,10 +78,10 @@ class MVSTriangulationStage(PipelineStage[MVSTriangulationRuntimeConfig]):
         n_views = len(views)
 
         camera_intrinsics: CameraIntrinsicsAnnotations = annotations[
-            "camera_intrinsics"
+            "cameras_intrinsics"
         ]
         camera_extrinsics: CameraExtrinsicsAnnotations = annotations[
-            "camera_extrinsics"
+            "cameras_extrinsics"
         ]
 
         kps_2d: Keypoints2DAnnotations = annotations["keypoints_2d"]

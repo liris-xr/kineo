@@ -119,7 +119,7 @@ pipeline:
         max_points_pairs: 3000
         pair_avg_conf_score_thr: 0.6
         sampler: "uniform"
-        filter_off_frame_keypoints: false
+        filter_off_frame_keypoints: False
 
     sfm_camera_extrinsics_initialization:
       _target_: kineo.pipeline.stages.sfm_camera_extrinsics_initialization.SfMCameraExtrinsicsInitializationStage
@@ -128,7 +128,7 @@ pipeline:
       runtime_cfg:
         _target_: kineo.pipeline.stages.sfm_camera_extrinsics_initialization.SfMCameraExtrinsicsInitializationRuntimeConfig
         ransac_confidence: 0.999
-        ransac_reproj_threshold: 3.0
+        ransac_reproj_threshold_px: 3.0
         n_refinement_iters: 200
         scale_triplet_weighting: "irls"
         n_scale_irls_iters: 5
@@ -142,9 +142,11 @@ pipeline:
       runtime_cfg:
         _target_: kineo.pipeline.stages.bundle_adjustment_sampling.BundleAdjustmentSamplingRuntimeConfig
         n_kp_samples_per_view: 50
-        min_kp_score: 0.6
+        min_keypoint_score: 0.6
         sampler: "uniform"
-        filter_off_frame_keypoints: false
+        filter_off_frame_keypoints: False
+        min_parallax_deg: 10.0
+        filter_negative_depth: True
 
     bundle_adjustment_1: # Only optimize camera extrinsics
       _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentStage
@@ -160,7 +162,7 @@ pipeline:
         optimize_rotation: True
         optimize_translation: True
         shared_intrinsics: ${shared_intrinsics}
-        huber_delta: 1.0
+        reproj_huber_delta_px: 1.0
 
     bundle_adjustment_2:
       _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentStage
@@ -176,7 +178,7 @@ pipeline:
         optimize_rotation: True
         optimize_translation: True
         shared_intrinsics: ${shared_intrinsics}
-        huber_delta: 1.0
+        reproj_huber_delta_px: 1.0
 
     bundle_adjustment_3:
       _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentStage
@@ -192,7 +194,7 @@ pipeline:
         optimize_rotation: True
         optimize_translation: True
         shared_intrinsics: ${shared_intrinsics}
-        huber_delta: 1.0
+        reproj_huber_delta_px: 1.0
 
     mvs_triangulation:
       _target_: kineo.pipeline.stages.mvs_triangulation.MVSTriangulationStage
@@ -263,19 +265,19 @@ pipeline:
         output_path_template: "${output_root_dir}/rerun/{sequence_name}_smpl.rrd"
         log_world_reconstruction: True
         max_world_points_to_show: 1000000
-        world_points_confidence_threshold: 0.5
-        world_z_clipping_threshold: 2.0
+        min_world_point_confidence: 0.5
+        world_z_clipping_m: 2.0
         remove_world_points_outside_scene_radius: True
 
-        skeleton_joint_radius_3d: 0.020
-        skeleton_joint_radius_2d: 14.0
-        skeleton_bones_thickness_3d: 0.012
-        skeleton_bones_thickness_2d: 9.0
-        min_kps_score_3d: 0.2
-        min_kps_score_2d: 0.2
+        skeleton_joint_radius_m: 0.020
+        skeleton_joint_radius_px: 14.0
+        skeleton_bones_thickness_m: 0.012
+        skeleton_bones_thickness_px: 9.0
+        min_keypoint_score_3d: 0.2
+        min_keypoint_score_2d: 0.2
 
         video_quality: 25
-        image_plane_distance: 0.2
+        image_plane_distance_m: 0.2
 
         log_videos: True
         log_pred_cameras: True

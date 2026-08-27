@@ -30,7 +30,7 @@ import numpy as np
 @dataclass(frozen=True)
 class BackgroundSubtractionRuntimeConfig:
     batch_size: int = 4
-    bbox_padding: int = 5
+    bbox_padding_px: int = 5
     n_frames_to_accumulate: int = 100
     run_skyseg: bool = True
 
@@ -186,10 +186,10 @@ class BackgroundSubtractionStage(PipelineStage[BackgroundSubtractionRuntimeConfi
                 for frame_idx, frame_bboxes_xyxy in enumerate(frames_bboxes_xyxy):
                     for bbox_xyxy in frame_bboxes_xyxy:
                         x1, y1, x2, y2 = bbox_xyxy
-                        x1 = torch.floor(x1).int() - runtime_cfg.bbox_padding
-                        y1 = torch.floor(y1).int() - runtime_cfg.bbox_padding
-                        x2 = torch.ceil(x2).int() + runtime_cfg.bbox_padding
-                        y2 = torch.ceil(y2).int() + runtime_cfg.bbox_padding
+                        x1 = torch.floor(x1).int() - runtime_cfg.bbox_padding_px
+                        y1 = torch.floor(y1).int() - runtime_cfg.bbox_padding_px
+                        x2 = torch.ceil(x2).int() + runtime_cfg.bbox_padding_px
+                        y2 = torch.ceil(y2).int() + runtime_cfg.bbox_padding_px
                         x1 = torch.clamp(x1, 0, resolution_hw[1] - 1)
                         y1 = torch.clamp(y1, 0, resolution_hw[0] - 1)
                         x2 = torch.clamp(x2, 0, resolution_hw[1] - 1)

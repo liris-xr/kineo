@@ -65,7 +65,7 @@ def load_from_local(filename, map_location):
 
 @dataclass
 class MMLabBboxKeypointsDetectionRuntimeConfig:
-    bbox_thr: float = 0.3
+    min_bbox_score: float = 0.3
     nms_iou_thr: float = 0.65
     nms_pre_top_k: int = 10
     best_bbox_only: bool = False
@@ -190,7 +190,7 @@ class MMLabBboxKeypointsDetectionStage(
             use_half_precision=runtime_cfg.use_half_precision,
             det_category_id=runtime_cfg.det_category_id,
             best_bbox_only=runtime_cfg.best_bbox_only,
-            bbox_thr=runtime_cfg.bbox_thr,
+            min_bbox_score=runtime_cfg.min_bbox_score,
             nms_iou_thr=runtime_cfg.nms_iou_thr,
             default_subject_id=runtime_cfg.default_subject_id,
             frame_step=runtime_cfg.frame_step,
@@ -222,7 +222,7 @@ class MMLabBboxKeypointsDetectionStage(
         batch_size: int = 16,
         use_half_precision: bool = True,
         det_category_id: int | None = None,
-        bbox_thr: float = 0.3,
+        min_bbox_score: float = 0.3,
         nms_iou_thr: float = 0.65,
         best_bbox_only: bool = True,
         default_subject_id: str = "subject_0",
@@ -283,7 +283,7 @@ class MMLabBboxKeypointsDetectionStage(
                     batch_frames=batch_frames,
                     det_inferencer=det_inferencer,
                     use_half_precision=use_half_precision,
-                    bbox_thr=bbox_thr,
+                    min_bbox_score=min_bbox_score,
                     nms_iou_thr=nms_iou_thr,
                     det_category_id=det_category_id,
                     best_bbox_only=best_bbox_only,
@@ -489,7 +489,7 @@ def detect_bboxes(
     batch_frames: list[int],
     det_inferencer: DetInferencer,
     use_half_precision: bool = True,
-    bbox_thr: float = 0.3,
+    min_bbox_score: float = 0.3,
     nms_iou_thr: float = 0.65,
     det_category_id: int | None = None,
     best_bbox_only: bool = True,
@@ -519,7 +519,7 @@ def detect_bboxes(
             batch_size=batch_size,
             return_datasamples=True,
             cat_ids=[det_category_id] if det_category_id is not None else None,
-            bbox_thr=bbox_thr,
+            min_bbox_score=min_bbox_score,
             nms_thr=nms_iou_thr,
             show=False,
         )["predictions"]

@@ -163,7 +163,7 @@ def normalized_uv(
     )
 
 
-def valid_observations_mask(
+def in_frame_keypoints_mask(
     kps_xy: torch.Tensor,
     resolutions_hw: torch.Tensor,
 ) -> torch.Tensor:

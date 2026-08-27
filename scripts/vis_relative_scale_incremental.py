@@ -61,12 +61,12 @@ with open(os.path.join(data_dir, "keypoints_3d.pkl"), "rb") as f:
     data = pickle.load(f)
     kps3d = np.asarray(data["annotations"][0]["xyz"])  # (N, 3) world coordinates
 
-with open(os.path.join(data_dir, "camera_intrinsics.pkl"), "rb") as f:
+with open(os.path.join(data_dir, "cameras_intrinsics.pkl"), "rb") as f:
     data = pickle.load(f)["annotations"]
     K = np.asarray([data[i]["K"] for i in range(n_cams)])
     res_hw = [data[i]["resolution_hw"] for i in range(n_cams)]
 
-with open(os.path.join(data_dir, "camera_extrinsics.pkl"), "rb") as f:
+with open(os.path.join(data_dir, "cameras_extrinsics.pkl"), "rb") as f:
     data = pickle.load(f)["annotations"]
     R = np.asarray([data[i]["R"] for i in range(n_cams)])   # (n_cams,3,3) world→cam
     t = np.asarray([data[i]["t"] for i in range(n_cams)])   # (n_cams,3)

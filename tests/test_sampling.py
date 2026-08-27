@@ -2,9 +2,9 @@ import torch
 
 from kineo.sampling import (
     farthest_point_sampling,
+    in_frame_keypoints_mask,
     normalized_uv,
     uniform_point_sampling,
-    valid_observations_mask,
 )
 
 
@@ -128,7 +128,7 @@ def test_batched_fps_flags_rows_that_run_out_of_points():
     assert len(set(selected[1][keep[1]].tolist())) == 5
 
 
-def test_valid_observations_mask_rejects_off_frame_and_non_finite():
+def test_in_frame_keypoints_mask_rejects_off_frame_and_non_finite():
     resolutions_hw = torch.tensor([[100.0, 200.0]])
     kps_xy = torch.tensor(
         [
@@ -146,7 +146,7 @@ def test_valid_observations_mask_rejects_off_frame_and_non_finite():
         ]
     )
 
-    mask = valid_observations_mask(kps_xy, resolutions_hw)
+    mask = in_frame_keypoints_mask(kps_xy, resolutions_hw)
 
     expected = torch.tensor(
         [[True, True, True, False, False, False, False, False, False]]
@@ -155,12 +155,12 @@ def test_valid_observations_mask_rejects_off_frame_and_non_finite():
     assert torch.equal(mask, expected)
 
 
-def test_valid_observations_mask_uses_per_view_resolutions():
+def test_in_frame_keypoints_mask_uses_per_view_resolutions():
     # Same observation, valid in the large view, off-frame in the small one.
     resolutions_hw = torch.tensor([[1000.0, 1000.0], [100.0, 100.0]])
     kps_xy = torch.tensor([[[500.0, 500.0]], [[500.0, 500.0]]])
 
-    mask = valid_observations_mask(kps_xy, resolutions_hw)
+    mask = in_frame_keypoints_mask(kps_xy, resolutions_hw)
 
     assert torch.equal(mask, torch.tensor([[True], [False]]))
 

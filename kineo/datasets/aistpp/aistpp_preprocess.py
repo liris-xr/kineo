@@ -67,11 +67,9 @@ from kineo.annotations.keypoints_utils import (
     generate_kps2d_from_kps3d_and_cameras,
 )
 from kineo.datasets import annotations_io
+from kineo.datasets.aistpp.aistpp_dataset import VIDEO_FPS
 from kineo.datasets.aistpp.aistpp_download import AISTPP_SPLITS
 from kineo.io.ffmpeg import decode_video_to_grayscale
-
-# Every AIST video, raw and refined alike, is constant frame rate at 60000/1001.
-VIDEO_FPS = 60000 / 1001
 
 # AIST++ keypoints and camera translations are expressed in centimeters.
 CENTIMETERS_TO_METERS = 0.01

@@ -107,7 +107,7 @@ def test_quality_mask_keeps_a_well_conditioned_point():
         Ks,
         Rts,
         min_parallax_deg=5.0,
-        max_reproj_error=0.005,
+        max_reproj_error_focal_ratio=0.005,
         reject_negative_depth=True,
     )
 
@@ -130,7 +130,9 @@ def test_quality_mask_rejects_an_observation_that_does_not_reproject():
     points_2d = _project(points_3d, Ks, Rts)
     points_2d[1] += 100.0
 
-    mask = _quality_mask(points_3d, points_2d, Ks, Rts, max_reproj_error=0.005)
+    mask = _quality_mask(
+        points_3d, points_2d, Ks, Rts, max_reproj_error_focal_ratio=0.005
+    )
 
     assert torch.equal(mask, torch.tensor([[True], [False], [True]]))
 
@@ -165,7 +167,7 @@ def test_parallax_is_measured_over_the_views_that_survive_the_other_gates():
         Ks,
         Rts,
         min_parallax_deg=5.0,
-        max_reproj_error=0.005,
+        max_reproj_error_focal_ratio=0.005,
     )
     assert not bool(dropped.any())
 

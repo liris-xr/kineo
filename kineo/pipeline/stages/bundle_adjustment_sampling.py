@@ -27,9 +27,9 @@ from kineo.annotations.camera_extrinsics import CameraExtrinsicsAnnotations
 from kineo.geometry.camera import transform_points_from_world_to_camera
 from kineo.sampling import (
     farthest_point_sampling,
+    in_frame_keypoints_mask,
     normalized_uv,
     uniform_point_sampling,
-    valid_observations_mask,
 )
 from kineo.geometry.triangulation import (
     triangulate_points,
@@ -84,18 +84,21 @@ class BundleAdjustmentSamplingRuntimeConfig:
     # coverage, and a shared budget would thin it as views are added. -1 keeps
     # every candidate.
     n_kp_samples_per_view: int = 50
-    min_kp_score: float = 0.4
+    min_keypoint_score: float = 0.4
     sampler: str = "farthest_point"
     # Off-frame and non-finite keypoints are the extremes FPS chases, so the
     # filter is on by default. Turning it off is the uniform-baseline arm, and
     # isolates the filter from the sampler in the ablation.
     filter_off_frame_keypoints: bool = True
-    w_uv: float = 1.0
-    w_t: float = 1.0
-    w_d: float = 0.0
-    filter_negative_depth: bool = False
-    min_parallax_deg: float | None = None
-    max_reproj_error: float | None = None
+    farthest_point_image_plane_weight: float = 1.0
+    farthest_point_time_weight: float = 1.0
+    farthest_point_depth_weight: float = 0.0
+    filter_negative_depth: bool = True
+    # Same bar as the MVS triangulation stage, so a point too poorly
+    # conditioned to be worth reconstructing is also too poorly conditioned to
+    # constrain the cameras. ``None`` disables the test.
+    min_parallax_deg: float | None = 10.0
+    max_reproj_error_focal_ratio: float | None = None
     triangulation_chunk_bytes: int = 128 * 1024 * 1024
 
 
@@ -147,11 +150,11 @@ class BundleAdjustmentSamplingStage(
         device = pipeline.device
 
         cameras_intrinsics: CameraIntrinsicsAnnotations = annotations[
-            "camera_intrinsics"
+            "cameras_intrinsics"
         ]
 
         cameras_extrinsics: CameraExtrinsicsAnnotations = annotations[
-            "camera_extrinsics"
+            "cameras_extrinsics"
         ]
 
         # Assuming kps2d are on a common time reference (same number of keypoints for each view)
@@ -237,8 +240,7 @@ class BundleAdjustmentSamplingStage(
         kps_xy = kps_xy.permute(1, 0, 2, 3, 4).reshape(n_views, -1, 2).to(device)
         kps_scores = kps_scores.permute(1, 0, 2, 3).reshape(n_views, -1).to(device)
 
-        # Candidates are the keypoints with at least two views with score > min_kp_score
-        confident_mask = kps_scores > runtime_cfg.min_kp_score
+        confident_mask = kps_scores > runtime_cfg.min_keypoint_score
         n_confident_candidates = int((confident_mask.sum(dim=0) >= 2).sum())
 
         resolutions_hw = torch.as_tensor(
@@ -247,7 +249,7 @@ class BundleAdjustmentSamplingStage(
         observations_mask = confident_mask
 
         if runtime_cfg.filter_off_frame_keypoints:
-            observations_mask = observations_mask & valid_observations_mask(
+            observations_mask = observations_mask & in_frame_keypoints_mask(
                 kps_xy, resolutions_hw
             )
 
@@ -263,11 +265,10 @@ class BundleAdjustmentSamplingStage(
         needs_candidates_geometry = (
             runtime_cfg.filter_negative_depth
             or runtime_cfg.min_parallax_deg is not None
-            or runtime_cfg.max_reproj_error is not None
-            or runtime_cfg.w_d > 0.0
+            or runtime_cfg.max_reproj_error_focal_ratio is not None
+            or runtime_cfg.farthest_point_depth_weight > 0.0
         )
 
-        # Drives candidate selection and the sampling features.
         sampling_mask = observations_mask
         # Drives the weights handed to the bundle adjustment. It starts fully
         # permissive so that an entry the gate never judged, because it was not
@@ -297,7 +298,9 @@ class BundleAdjustmentSamplingStage(
                 distortion_model=distortion_model.value,
                 observations_mask=candidates_observations_mask,
                 min_parallax_deg=runtime_cfg.min_parallax_deg,
-                max_reproj_error=runtime_cfg.max_reproj_error,
+                max_reproj_error_focal_ratio=(
+                    runtime_cfg.max_reproj_error_focal_ratio
+                ),
                 reject_negative_depth=runtime_cfg.filter_negative_depth,
             )
 
@@ -310,7 +313,7 @@ class BundleAdjustmentSamplingStage(
             surviving = torch.where(gated_mask.sum(dim=0) >= 2)[0]
             candidates_indices = candidates_indices[surviving]
 
-            if runtime_cfg.w_d > 0.0:
+            if runtime_cfg.farthest_point_depth_weight > 0.0:
                 candidates_depths = normalized_depths(candidates_kps_3d, Rts)[
                     :, surviving
                 ]
@@ -344,7 +347,6 @@ class BundleAdjustmentSamplingStage(
             f"gate -> {n_samples} sampled."
         )
 
-        # Shape is (n_views, n_kps, 2)
         sampled_frame_kps_xy = kps_xy[:, picked_indices]
         # Shape is (n_views, n_kps). A gate-rejected observation is zeroed here
         # rather than dropped: the bundle adjustment weights by this score, so a
@@ -484,16 +486,17 @@ class BundleAdjustmentSamplingStage(
             ts = frame_indices.to(kps_xy.dtype) / max(n_frames - 1, 1)
 
             axes = [
-                runtime_cfg.w_uv * uvs[..., 0],
-                runtime_cfg.w_uv * uvs[..., 1],
-                runtime_cfg.w_t * ts.unsqueeze(0).expand(n_views, -1),
+                runtime_cfg.farthest_point_image_plane_weight * uvs[..., 0],
+                runtime_cfg.farthest_point_image_plane_weight * uvs[..., 1],
+                runtime_cfg.farthest_point_time_weight
+                * ts.unsqueeze(0).expand(n_views, -1),
             ]
 
             if candidates_depths is not None:
                 # Two points on the same ray share a (u, v) and are near
                 # duplicates without this axis, while constraining the geometry
                 # very differently.
-                axes.append(runtime_cfg.w_d * candidates_depths)
+                axes.append(runtime_cfg.farthest_point_depth_weight * candidates_depths)
 
             selected, selected_valid = farthest_point_sampling(
                 torch.stack(axes, dim=-1),

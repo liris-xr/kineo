@@ -30,11 +30,11 @@ class CalibrationPointsVideoExportRuntimeConfig:
     view1_id: str = "view_0"
     view2_id: str = "view_1"
     output_path_template: str = "./outputs/{sequence_name}_calib_points_{view1_id}_{view2_id}.mp4"
-    point_radius: int = 5
-    line_thickness: int = 1
+    point_radius_px: int = 5
+    line_thickness_px: int = 1
     fps: float | None = None
-    skeleton_bone_width: int = 2
-    skeleton_keypoint_radius: int = 2
+    skeleton_bone_width_px: int = 2
+    skeleton_keypoint_radius_px: int = 2
     skeleton_color_bgr: tuple[int, int, int] = (200, 200, 200)
     keypoints_indices: tuple[int, ...] | None = None
     show: bool = False
@@ -192,8 +192,8 @@ class CalibrationPointsVideoExportStage(
                         colors_bgr=runtime_cfg.skeleton_color_bgr,
                         connectivity=skeleton_connectivity,
                         connectivity_colors_bgr=runtime_cfg.skeleton_color_bgr,
-                        keypoints_radius=runtime_cfg.skeleton_keypoint_radius,
-                        bone_width=runtime_cfg.skeleton_bone_width,
+                        keypoints_radius=runtime_cfg.skeleton_keypoint_radius_px,
+                        bone_width=runtime_cfg.skeleton_bone_width_px,
                     )
                 for annot in kps_2d_lookup.get((view2_id, local_idx2), []):
                     xy = annot.xy.cpu().numpy()
@@ -206,8 +206,8 @@ class CalibrationPointsVideoExportStage(
                         colors_bgr=runtime_cfg.skeleton_color_bgr,
                         connectivity=skeleton_connectivity,
                         connectivity_colors_bgr=runtime_cfg.skeleton_color_bgr,
-                        keypoints_radius=runtime_cfg.skeleton_keypoint_radius,
-                        bone_width=runtime_cfg.skeleton_bone_width,
+                        keypoints_radius=runtime_cfg.skeleton_keypoint_radius_px,
+                        bone_width=runtime_cfg.skeleton_bone_width_px,
                     )
 
             # Advance accumulation index to include all points up to current frame
@@ -228,9 +228,9 @@ class CalibrationPointsVideoExportStage(
                 pt1 = (int(points1[i, 0]), int(points1[i, 1]))
                 pt2 = (int(points2[i, 0]) + w1, int(points2[i, 1]))
 
-                cv2.circle(combined, pt1, runtime_cfg.point_radius, color, -1, cv2.LINE_AA)
-                cv2.circle(combined, pt2, runtime_cfg.point_radius, color, -1, cv2.LINE_AA)
-                cv2.line(combined, pt1, pt2, color, runtime_cfg.line_thickness, cv2.LINE_AA)
+                cv2.circle(combined, pt1, runtime_cfg.point_radius_px, color, -1, cv2.LINE_AA)
+                cv2.circle(combined, pt2, runtime_cfg.point_radius_px, color, -1, cv2.LINE_AA)
+                cv2.line(combined, pt1, pt2, color, runtime_cfg.line_thickness_px, cv2.LINE_AA)
 
             if runtime_cfg.show:
                 cv2.imshow("combined", combined)

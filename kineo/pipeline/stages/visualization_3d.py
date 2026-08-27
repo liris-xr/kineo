@@ -26,16 +26,16 @@ import warnings
 
 @dataclass(frozen=True)
 class Visualization3DRuntimeConfig:
-    keypoints_score_threshold: float = 0.2
+    min_keypoint_score: float = 0.2
     show_world_reconstruction: bool = True
-    world_points_size: float = 0.7
+    world_points_screen_size_px: float = 0.7
     max_world_points_to_show: int = -1
-    world_z_clipping_threshold: float = None
-    camera_scale: float = 1
+    world_z_clipping_m: float = None
+    camera_frustum_scale: float = 1
     camera_color: tuple[float, float, float] = (1.0, 0.0, 0.0)
-    world_points_confidence_threshold: float = 0.2
+    min_world_point_confidence: float = 0.2
     estimate_scale: bool = True
-    skeleton_radius: float = 0.01
+    skeleton_radius_m: float = 0.01
     skeleton_color_override: tuple[float, float, float] = None
     skeleton_confidence_colormap: str = "viridis"
     show_skeleton_confidence: bool = False
@@ -75,10 +75,10 @@ class Visualization3DStage(PipelineStage[Visualization3DRuntimeConfig]):
 
         pred_keypoints_3d: Keypoints3DAnnotations = annotations.get("keypoints_3d")
         pred_camera_extrinsics: CameraExtrinsicsAnnotations = annotations.get(
-            "camera_extrinsics"
+            "cameras_extrinsics"
         )
         pred_camera_intrinsics: CameraIntrinsicsAnnotations = annotations.get(
-            "camera_intrinsics"
+            "cameras_intrinsics"
         )
         pred_world_reconstruction: WorldReconstructedSceneAnnotations = annotations.get(
             "world_reconstructed_scene"
@@ -89,10 +89,10 @@ class Visualization3DStage(PipelineStage[Visualization3DRuntimeConfig]):
 
         gt_keypoints_3d: Keypoints3DAnnotations = gt_annotations.get("keypoints_3d")
         gt_camera_extrinsics: CameraExtrinsicsAnnotations = gt_annotations.get(
-            "camera_extrinsics"
+            "cameras_extrinsics"
         )
         gt_camera_intrinsics: CameraIntrinsicsAnnotations = gt_annotations.get(
-            "camera_intrinsics"
+            "cameras_intrinsics"
         )
 
         if global_time_reference is not None:
@@ -117,24 +117,24 @@ class Visualization3DStage(PipelineStage[Visualization3DRuntimeConfig]):
             keypoints_3d=pred_keypoints_3d,
             camera_extrinsics=pred_camera_extrinsics,
             camera_intrinsics=pred_camera_intrinsics,
-            score_threshold=runtime_cfg.keypoints_score_threshold,
+            score_threshold=runtime_cfg.min_keypoint_score,
             fps=target_fps,
             world_reconstruction=(
                 pred_world_reconstruction
                 if runtime_cfg.show_world_reconstruction
                 else None
             ),
-            world_points_size=runtime_cfg.world_points_size,
-            world_z_clipping_threshold=runtime_cfg.world_z_clipping_threshold,
+            world_points_screen_size_px=runtime_cfg.world_points_screen_size_px,
+            world_z_clipping_m=runtime_cfg.world_z_clipping_m,
             max_world_points_to_show=runtime_cfg.max_world_points_to_show,
-            world_points_confidence_threshold=runtime_cfg.world_points_confidence_threshold,
-            camera_scale=runtime_cfg.camera_scale,
+            min_world_point_confidence=runtime_cfg.min_world_point_confidence,
+            camera_frustum_scale=runtime_cfg.camera_frustum_scale,
             gt_keypoints_3d=gt_keypoints_3d,
             gt_camera_extrinsics=gt_camera_extrinsics,
             gt_camera_intrinsics=gt_camera_intrinsics,
             estimate_scale=runtime_cfg.estimate_scale,
             camera_color=runtime_cfg.camera_color,
-            skeleton_radius=runtime_cfg.skeleton_radius,
+            skeleton_radius_m=runtime_cfg.skeleton_radius_m,
             skeleton_color_override=runtime_cfg.skeleton_color_override,
             skeleton_confidence_colormap=runtime_cfg.skeleton_confidence_colormap,
             show_skeleton_confidence=runtime_cfg.show_skeleton_confidence,

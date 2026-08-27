@@ -233,7 +233,7 @@ def triangulation_quality_mask(
     distortion_model: str,
     observations_mask: torch.Tensor,
     min_parallax_deg: float | None = None,
-    max_reproj_error: float | None = None,
+    max_reproj_error_focal_ratio: float | None = None,
     reject_negative_depth: bool = False,
     min_depth: float = MIN_PROJECTION_DEPTH,
 ) -> torch.Tensor:
@@ -261,11 +261,11 @@ def triangulation_quality_mask(
             the entries that are real observations to begin with.
         min_parallax_deg: Reject a point whose widest ray pair subtends less
             than this angle. ``None`` disables the test.
-        max_reproj_error: Reject an observation whose reprojection lands
-            further than this from its measurement, as a fraction of the view's
-            focal length. Pixels are not comparable across a rig whose views
-            differ in focal length, and dividing by it leaves an angular error.
-            ``None`` disables the test.
+        max_reproj_error_focal_ratio: Reject an observation whose reprojection
+            lands further than this from its measurement, as a fraction of the
+            view's focal length. Pixels are not comparable across a rig whose
+            views differ in focal length, and dividing by it leaves an angular
+            error. ``None`` disables the test.
         reject_negative_depth: Whether to reject observations whose point sits
             behind the camera.
         min_depth: Depth bound used by the cheirality test.
@@ -284,7 +284,7 @@ def triangulation_quality_mask(
     if reject_negative_depth:
         mask = mask & positive_depth_mask(points_3d, Rts, min_depth)
 
-    if max_reproj_error is not None:
+    if max_reproj_error_focal_ratio is not None:
         residuals, _ = compute_normalized_reprojection_residuals(
             kps_3d=points_3d,
             kps_2d=points_2d,
@@ -294,7 +294,7 @@ def triangulation_quality_mask(
             distortion_model=distortion_model,
         )
         # A non-finite residual fails the comparison, which is the intent.
-        mask = mask & (residuals <= max_reproj_error)
+        mask = mask & (residuals <= max_reproj_error_focal_ratio)
 
     if min_parallax_deg is not None:
         angles = triangulation_parallax_angles(

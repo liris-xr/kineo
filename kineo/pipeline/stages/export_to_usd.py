@@ -27,10 +27,10 @@ import os
 class ExportToUsdRuntimeConfig:
     output_path_template: str = "./outputs/usd/{sequence_name}.usd"
     export_as_directory: bool = False
-    keypoints_score_threshold: float = 0.2
-    camera_scale: float = 1
+    min_keypoint_score: float = 0.2
+    camera_frustum_scale: float = 1
     camera_color: tuple[float, float, float] = (1.0, 0.0, 0.0)
-    joints_radius: float = 0.01
+    joints_radius_m: float = 0.01
     skeleton_color_override: tuple[float, float, float] = None
     keypoints_to_show: list[int] | None = None
     keypoints_to_hide: list[int] | None = None
@@ -68,10 +68,10 @@ class ExportToUsdStage(PipelineStage[ExportToUsdRuntimeConfig]):
 
         pred_keypoints_3d: Keypoints3DAnnotations = annotations["keypoints_3d"]
         pred_camera_extrinsics: CameraExtrinsicsAnnotations = annotations[
-            "camera_extrinsics"
+            "cameras_extrinsics"
         ]
         pred_camera_intrinsics: CameraIntrinsicsAnnotations = annotations[
-            "camera_intrinsics"
+            "cameras_intrinsics"
         ]
 
         if global_time_reference is not None:
@@ -112,11 +112,11 @@ class ExportToUsdStage(PipelineStage[ExportToUsdRuntimeConfig]):
             keypoints_3d=pred_keypoints_3d,
             camera_extrinsics=pred_camera_extrinsics,
             camera_intrinsics=pred_camera_intrinsics,
-            score_threshold=runtime_cfg.keypoints_score_threshold,
+            score_threshold=runtime_cfg.min_keypoint_score,
             fps=target_fps,
-            camera_scale=runtime_cfg.camera_scale,
+            camera_frustum_scale=runtime_cfg.camera_frustum_scale,
             camera_color=runtime_cfg.camera_color,
-            joints_radius=runtime_cfg.joints_radius,
+            joints_radius_m=runtime_cfg.joints_radius_m,
             keypoints_to_show=runtime_cfg.keypoints_to_show,
             keypoints_to_hide=runtime_cfg.keypoints_to_hide,
             export_as_directory=runtime_cfg.export_as_directory,
