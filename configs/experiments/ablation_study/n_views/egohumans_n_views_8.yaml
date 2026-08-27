@@ -152,7 +152,7 @@ camera_selection:
   volleyball_010: [cam01, cam03, cam05, cam07, cam09, cam11, cam13, cam15]
   volleyball_011: [cam01, cam03, cam05, cam07, cam09, cam11, cam13, cam15]
 
-output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/egohumans_benchmark_nlf_estRt_estK_estDk1k2_8views"
+output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/egohumans_n_views_8"
 cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/moge-nlfcoco19-fp32_4fbd05ac"
 use_cache: False
 batch_size: 32

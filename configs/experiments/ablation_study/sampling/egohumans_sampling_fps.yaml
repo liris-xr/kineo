@@ -1,10 +1,4 @@
-# EgoHumans all-view benchmark, pre-IRLS scale weighting.
-#
-# The scale solve weights each triplet once by its edges' mean Sampson
-# cost instead of iteratively reweighting on the closure residual.
-output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/egohumans_benchmark_nlf_estRt_estK_estDk1k2_edgeCost"
-# Shares the base config's cache: the cached stages do not read the
-# flag this arm varies.
+output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/egohumans_sampling_fps"
 cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/moge-nlfcoco19-fp32_4fbd05ac"
 use_cache: False
 batch_size: 32
@@ -78,21 +72,20 @@ pipeline:
         ransac_confidence: 0.999
         ransac_reproj_threshold_px: 3.0
         n_refinement_iters: 200
-        scale_triplet_weighting: "edge_cost"
+        scale_triplet_weighting: "irls"
         n_scale_irls_iters: 5
         tolerance_grad: 1e-05
         tolerance_change: 1e-09
 
     bundle_adjustment_sampling:
       _target_: kineo.pipeline.stages.bundle_adjustment_sampling.BundleAdjustmentSamplingStage
-      name: "Bundle Adjustment Sampling"
+      name: "Bundle Adjustment FPS Sampling"
       order: 55
       runtime_cfg:
         _target_: kineo.pipeline.stages.bundle_adjustment_sampling.BundleAdjustmentSamplingRuntimeConfig
         n_kp_samples_per_view: 50
         min_keypoint_score: 0.6
-        sampler: "uniform"
-        filter_off_frame_keypoints: False
+        sampler: "farthest_point"
         min_parallax_deg: 10.0
         filter_negative_depth: True
 

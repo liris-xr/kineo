@@ -30,7 +30,13 @@ from omegaconf import OmegaConf
 from tqdm import tqdm
 
 from kineo.annotations.camera_temporal import CameraTemporalAnnotations
+from kineo.annotations.global_time_reference import (
+    GlobalTimeReferenceAnnotation,
+    GlobalTimeReferenceAnnotations,
+    GlobalTimeReferenceAnnotationsMetadata,
+)
 from kineo.datasets.aistpp.aistpp_dataset import VIDEO_FPS, AISTPPSequenceDataset
+from kineo.datasets.aistpp.aistpp_download import VIDEO_VARIANTS
 from kineo.eval.dataset_metrics import (
     aggregate_sequence_metrics_files,
     export_metrics_statistics,
@@ -43,6 +49,12 @@ torch.backends.cuda.matmul.allow_tf32 = False
 torch.backends.cudnn.allow_tf32 = False
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
+
+# The ground truth is the frame AIST cut its refined videos at, so it is exact
+# on the frame grid and says nothing finer. Half a frame is therefore the
+# tightest tolerance it can support: an estimate inside it selects the frame
+# the annotation sits on, and a perfect estimate cannot fall outside it.
+GT_TOLERANCE_S = 0.5 / VIDEO_FPS
 
 GT_ANNOTATION_KEYS = (
     "keypoints_2d",
@@ -81,8 +93,9 @@ def compute_time_offset_errors(
         pred: Time offsets recovered by the pipeline.
 
     Returns:
-        Maps each view scored to its absolute offset error, in seconds. Views
-        missing from either side are left out.
+        Maps each view scored to its signed offset error, in seconds, positive
+        when the estimate runs late. Views missing from either side are left
+        out.
 
     Raises:
         ValueError: If the two share no view to score.
@@ -100,10 +113,8 @@ def compute_time_offset_errors(
     reference_view = shared_views[0]
 
     return {
-        view_id: abs(
-            (gt_offsets[view_id] - gt_offsets[reference_view])
-            - (pred_offsets[view_id] - pred_offsets[reference_view])
-        )
+        view_id: (pred_offsets[view_id] - pred_offsets[reference_view])
+        - (gt_offsets[view_id] - gt_offsets[reference_view])
         for view_id in shared_views
     }
 
@@ -111,29 +122,53 @@ def compute_time_offset_errors(
 def summarize_time_offset_errors(
     errors_by_sequence: dict[str, dict[str, float]],
 ) -> dict[str, float]:
-    """Aggregates per-view offset errors over every scored sequence."""
-    errors = [
+    """Aggregates per-view offset errors over every scored sequence.
+
+    Reported in frames as well as milliseconds: the ground truth is quantized
+    to a frame boundary, so a frame is the finest distinction it can support,
+    and picking the same frame as the annotation is what actually matters
+    downstream. Milliseconds are kept because they survive that quantization,
+    carry the sub-frame bias frames round away, and compare across datasets
+    running at other rates.
+
+    Per view, no difference below the tolerance is meaningful. Over a whole
+    split the quantization averages out, so `mean_signed_error_ms` separates
+    two methods well below a frame where `mean_error_ms`, inflated by that same
+    noise, cannot.
+    """
+    signed = [
         error
         for view_errors in errors_by_sequence.values()
         for error in view_errors.values()
     ]
 
-    if not errors:
+    if not signed:
         return {}
 
-    errors.sort()
-    frame_duration = 1.0 / VIDEO_FPS
+    errors = sorted(abs(error) for error in signed)
+    signed_frames = [error * VIDEO_FPS for error in signed]
+    frames = sorted(abs(error) for error in signed_frames)
+    n = len(errors)
 
     return {
         "n_sequences": len(errors_by_sequence),
-        "n_views": len(errors),
+        "n_views": n,
         "mean_error_ms": statistics.fmean(errors) * 1e3,
         "median_error_ms": statistics.median(errors) * 1e3,
-        "p95_error_ms": errors[int(0.95 * (len(errors) - 1))] * 1e3,
+        "p95_error_ms": errors[int(0.95 * (n - 1))] * 1e3,
         "max_error_ms": errors[-1] * 1e3,
-        "ratio_within_1_frame": sum(e <= frame_duration for e in errors) / len(errors),
-        "ratio_within_5_frames": sum(e <= 5 * frame_duration for e in errors)
-        / len(errors),
+        # Signed, so a systematic lead or lag shows up instead of averaging
+        # away against itself.
+        "mean_signed_error_ms": statistics.fmean(signed) * 1e3,
+        "mean_error_frames": statistics.fmean(frames),
+        "median_error_frames": statistics.median(frames),
+        "max_error_frames": frames[-1],
+        "mean_signed_error_frames": statistics.fmean(signed_frames),
+        # Within half a frame is both the tolerance the ground truth supports
+        # and the condition for resampling to pick the frame AIST picked.
+        "ratio_within_tolerance": sum(e <= GT_TOLERANCE_S for e in errors) / n,
+        "ratio_within_1_frame": sum(f <= 1.0 for f in frames) / n,
+        "ratio_within_2_frames": sum(f <= 2.0 for f in frames) / n,
     }
 
 
@@ -150,21 +185,57 @@ def print_time_offset_statistics(statistics_summary: dict[str, float]):
         f"  sequences scored     {statistics_summary['n_sequences']} "
         f"({statistics_summary['n_views']} views)"
     )
-    print(f"  mean error           {statistics_summary['mean_error_ms']:.2f} ms")
-    print(f"  median error         {statistics_summary['median_error_ms']:.2f} ms")
-    print(f"  p95 error            {statistics_summary['p95_error_ms']:.2f} ms")
-    print(f"  max error            {statistics_summary['max_error_ms']:.2f} ms")
     print(
-        f"  within 1 frame       {statistics_summary['ratio_within_1_frame']:.1%} "
-        f"({1e3 / VIDEO_FPS:.2f} ms)"
+        f"  within tolerance     "
+        f"{statistics_summary['ratio_within_tolerance']:.1%} "
+        f"(+/-{GT_TOLERANCE_S * 1e3:.2f} ms, half a frame)"
     )
-    print(f"  within 5 frames      {statistics_summary['ratio_within_5_frames']:.1%}")
+    print(f"  within 1 frame       {statistics_summary['ratio_within_1_frame']:.1%}")
+    print(f"  within 2 frames      {statistics_summary['ratio_within_2_frames']:.1%}")
+    print(
+        f"  error (frames)       mean {statistics_summary['mean_error_frames']:.3f}"
+        f"  median {statistics_summary['median_error_frames']:.3f}"
+        f"  max {statistics_summary['max_error_frames']:.3f}"
+    )
+    print(
+        f"  error (ms)           mean {statistics_summary['mean_error_ms']:.2f}"
+        f"  median {statistics_summary['median_error_ms']:.2f}"
+        f"  p95 {statistics_summary['p95_error_ms']:.2f}"
+        f"  max {statistics_summary['max_error_ms']:.2f}"
+    )
+    print(
+        f"  signed bias          "
+        f"{statistics_summary['mean_signed_error_frames']:+.3f} frames "
+        f"({statistics_summary['mean_signed_error_ms']:+.2f} ms)"
+    )
+
+
+def build_gt_time_reference(
+    n_frames: int, fps: float
+) -> GlobalTimeReferenceAnnotations:
+    """Timeline the ground-truth frame indices sit on.
+
+    Lets the metrics align a prediction resampled onto its own grid with the
+    annotation by timestamp instead of by frame index. Only the timestamps are
+    read, so the per-view frame mapping is left empty rather than restated
+    here, where the offsets that define it are not known.
+    """
+    return GlobalTimeReferenceAnnotations(
+        metadata=GlobalTimeReferenceAnnotationsMetadata(),
+        annotations=[
+            GlobalTimeReferenceAnnotation(
+                timestamps=torch.arange(n_frames, dtype=torch.float64) / fps,
+                closest_local_frame_idx={},
+            )
+        ],
+    )
 
 
 def main(
     dataset_dir: str,
     config_file: str,
     split: str = "pose_test",
+    variant: str = "raw",
     sequences_filter: list[str] = [],
     use_cache: bool = False,
 ):
@@ -176,7 +247,9 @@ def main(
         cfg.use_cache = True
     pipeline = Pipeline.build_pipeline_from_config(cfg, device)
 
-    sequences_file = os.path.join(dataset_dir, f"aistpp_{split}_sequences.json")
+    sequences_file = os.path.join(
+        dataset_dir, f"aistpp_{split}_{variant}_sequences.json"
+    )
     dataset = AISTPPSequenceDataset(sequences_file, device)
 
     indices = range(len(dataset))
@@ -207,6 +280,10 @@ def main(
             for key in GT_ANNOTATION_KEYS
             if key in sequence["annotations"]
         }
+        sequence_data = dataset.sequences_data[index]
+        gt_annotations["global_time_reference"] = build_gt_time_reference(
+            sequence_data["n_frames"], sequence_data["fps"]
+        )
 
         try:
             predictions = pipeline.run(
@@ -242,7 +319,9 @@ def main(
     print_time_offset_statistics(time_offset_statistics)
 
     os.makedirs(cfg.output_root_dir, exist_ok=True)
-    time_offsets_path = os.path.join(cfg.output_root_dir, "time_offsets_summary.json")
+    time_offsets_path = os.path.join(
+        cfg.output_root_dir, f"time_offsets_summary_{variant}.json"
+    )
     with open(time_offsets_path, "wb") as f:
         f.write(
             orjson.dumps(
@@ -298,6 +377,14 @@ if __name__ == "__main__":
         help="AIST++ split to evaluate, as preprocessed",
     )
     parser.add_argument(
+        "--variant",
+        type=str,
+        choices=VIDEO_VARIANTS,
+        default="raw",
+        help="Video variant to evaluate. 'raw' videos are unsynchronized and "
+        "carry ground-truth time offsets; 'refined' ones are already aligned.",
+    )
+    parser.add_argument(
         "--sequences-filter",
         nargs="+",
         default=[],
@@ -313,6 +400,7 @@ if __name__ == "__main__":
         args.dataset_dir,
         args.config_file,
         args.split,
+        args.variant,
         args.sequences_filter,
         args.use_cache,
     )

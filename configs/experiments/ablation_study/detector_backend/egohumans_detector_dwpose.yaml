@@ -1,7 +1,10 @@
-output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/egohumans_benchmark_nlf_estRt_estK_estD"
-cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/moge-nlfsmpl24-fp32_a99d7a75"
+output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/egohumans_detector_dwpose"
+cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/mmpose-moge-fp32_78b807cd"
 use_cache: False
 batch_size: 32
+# Don't use faces and hands in the pipeline (body only), except when triangulating the final result.
+# This is because hands and faces are often noisy, yet their score is anormaly high giving false positives.
+keypoints_indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
 use_half_precision: False
 shared_intrinsics: True
 
@@ -17,12 +20,33 @@ pipeline:
         _target_: kineo.pipeline.stages.transfer_gt_annotations.TransferGroundTruthAnnotationsRuntimeConfig
         annotations_keys: ["bboxes_2d"]
 
-    # Infer intrinsics before NLF to provide it to the model
+    mmpose_keypoints_detection:
+      _target_: kineo.pipeline.stages.mmpose_keypoints_detection.MMPoseKeypointsDetectionStage
+      name: "MMpose Keypoints Detection"
+      order: 10
+      keypoints_model: "./configs/dwpose-ll_8xb32-384e_coco-ubody-wholebody-384x288.py"
+      keypoints_model_weights: "./checkpoints/dw-ll_ucoco_384.pth"
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.mmpose_keypoints_detection.MMPoseKeypointsDetectionRuntimeConfig
+        use_half_precision: ${use_half_precision}
+        batch_size: ${batch_size}
+        use_cache: ${use_cache}
+        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}/{view_id}.pkl"
+
+    global_time_resampling:
+      _target_: kineo.pipeline.stages.global_time_resampling.GlobalTimeResamplingStage
+      name: "Global Time Resampling"
+      order: 20
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.global_time_resampling.GlobalTimeResamplingRuntimeConfig
+        target_fps: 20
+        interpolation_dt_thr_s: 0.3
+
     moge_intrinsics_estimation:
       _target_: kineo.pipeline.stages.moge_intrinsics_estimation.MoGeIntrinsicsEstimationStage
       name: "MoGe Intrinsics Estimation"
       model_name_or_path: "./checkpoints/moge-2-vitl-normal.pt"
-      order: 10
+      order: 30
       runtime_cfg:
         _target_: kineo.pipeline.stages.moge_intrinsics_estimation.MoGeIntrinsicsEstimationRuntimeConfig
         shared_focal_init: False
@@ -30,36 +54,15 @@ pipeline:
         use_half_precision: ${use_half_precision}
         cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}/{view_id}.pkl"
 
-    nlf_skeleton_keypoints_detection:
-      _target_: kineo.pipeline.stages.nlf.skeleton_keypoints_detection.NLFSkeletonKeypointsDetectionStage
-      name: "NLF Keypoints Detection"
-      order: 20
-      torchscript_model_path: "./checkpoints/nlf_l_multi_0.3.2.torchscript"
-      runtime_cfg:
-        _target_: kineo.pipeline.stages.nlf.skeleton_keypoints_detection.NLFSkeletonKeypointsDetectionRuntimeConfig
-        batch_size: ${batch_size}
-        use_half_precision: ${use_half_precision}
-        use_cache: ${use_cache}
-        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}/{view_id}.pkl"
-        skeleton_name: "smpl_24"
-
-    global_time_resampling:
-      _target_: kineo.pipeline.stages.global_time_resampling.GlobalTimeResamplingStage
-      name: "Global Time Resampling"
-      order: 30
-      runtime_cfg:
-        _target_: kineo.pipeline.stages.global_time_resampling.GlobalTimeResamplingRuntimeConfig
-        target_fps: 20
-        interpolation_dt_thr_s: 0.3
-
     keypoints_pairs_sampling:
       _target_: kineo.pipeline.stages.keypoints_pairs_sampling.KeypointsPairsSamplingStage
       name: "Keypoints Pairs Sampling"
       order: 40
       runtime_cfg:
         _target_: kineo.pipeline.stages.keypoints_pairs_sampling.KeypointsPairsSamplingRuntimeConfig
-        n_correspondences_per_view_pair: 3000
-        min_pair_geometric_mean_score: 0.6
+        n_correspondences_per_view_pair: 4000
+        min_pair_geometric_mean_score: 0.5
+        keypoints_indices: ${keypoints_indices}
         sampler: "uniform"
         filter_off_frame_keypoints: False
 
@@ -69,14 +72,14 @@ pipeline:
       order: 50
       runtime_cfg:
         _target_: kineo.pipeline.stages.sfm_camera_extrinsics_initialization.SfMCameraExtrinsicsInitializationRuntimeConfig
-        ransac_confidence: 0.999
+        ransac_confidence: 0.99
         ransac_reproj_threshold_px: 3.0
         n_refinement_iters: 200
         scale_triplet_weighting: "irls"
         n_scale_irls_iters: 5
         tolerance_grad: 1e-05
         tolerance_change: 1e-09
-
+    
     bundle_adjustment_sampling:
       _target_: kineo.pipeline.stages.bundle_adjustment_sampling.BundleAdjustmentSamplingStage
       name: "Bundle Adjustment Sampling"
@@ -84,7 +87,8 @@ pipeline:
       runtime_cfg:
         _target_: kineo.pipeline.stages.bundle_adjustment_sampling.BundleAdjustmentSamplingRuntimeConfig
         n_kp_samples_per_view: 50
-        min_keypoint_score: 0.6
+        min_keypoint_score: 0.5
+        keypoints_indices: ${keypoints_indices}
         sampler: "uniform"
         filter_off_frame_keypoints: False
         min_parallax_deg: 10.0
@@ -150,12 +154,13 @@ pipeline:
     smpl_global_scale_estimation:
       _target_: kineo.pipeline.stages.smpl_global_scale_estimation.SMPLGlobalScaleEstimationStage
       name: "SMPL Global Scale Estimation"
-      joint_regressor_path: "./body_models/smpl/J_regressor_24.pt"
-      smpl_model_path: "./body_models/smpl/SMPL_NEUTRAL.pkl"
+      joint_regressor_path: "./body_models/smpl/J_regressor_coco.npy"
+      smpl_model_path: "./body_models/smpl/"
       order: 100
       runtime_cfg:
         _target_: kineo.pipeline.stages.smpl_global_scale_estimation.SMPLGlobalScaleEstimationRuntimeConfig
         n_iters: 100
+        keypoints_indices: ${keypoints_indices}
 
     global_scale_application:
       _target_: kineo.pipeline.stages.global_scale_application.GlobalScaleApplicationStage
