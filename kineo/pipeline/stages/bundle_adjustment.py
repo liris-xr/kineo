@@ -124,6 +124,45 @@ def _warn_if_robust_loss_saturated(
     )
 
 
+def _warn_if_observations_were_ejected(
+    n_valid_first: int, n_valid_last: int, drop_ratio_thr: float = 0.05
+) -> None:
+    """Warn when the solve ends on materially fewer observations than it began.
+
+    The reprojection loss is a weighted mean over the surviving observations,
+    so ejecting one moves the mean by ``w_j(mu - rho_j) / (W_V - w_j)``, which
+    pays off whenever that observation is worse than average. The incentive is
+    self-limiting, but nothing else records it: ``n_valid`` is otherwise
+    consulted only for total collapse.
+
+    ``n_valid_last`` is the last closure *evaluation*, which under a strong
+    Wolfe line search may be a rejected trial point rather than the accepted
+    iterate. That is accurate enough for a threshold, not for a per-iteration
+    curve.
+
+    Args:
+        n_valid_first: Observations the first evaluation admitted.
+        n_valid_last: Observations the last evaluation admitted.
+        drop_ratio_thr: Fraction of the initial count that may be lost before
+            this warns.
+    """
+    if n_valid_first == 0:
+        return
+
+    dropped = n_valid_first - n_valid_last
+    if dropped <= drop_ratio_thr * n_valid_first:
+        return
+
+    warnings.warn(
+        f"Bundle adjustment ended on {n_valid_last} valid observations against "
+        f"{n_valid_first} at the first evaluation ({dropped} lost, "
+        f"{100 * dropped / n_valid_first:.1f}%). The reprojection loss divides "
+        f"by the surviving weights, so check whether the solve improved the fit "
+        f"or discarded the observations that disagreed with it.",
+        stacklevel=2,
+    )
+
+
 class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
     """
     Graph-based stage for refining the camera extrinsics parameters.
@@ -401,9 +440,11 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
             ), "Only brown_conrady distortion model is supported for now"
 
         had_finite_loss = False
+        n_valid_first: int | None = None
+        n_valid_last = 0
 
         def opt_closure():
-            nonlocal had_finite_loss
+            nonlocal had_finite_loss, n_valid_first, n_valid_last
             optimizer.zero_grad()
 
             if shared_intrinsics:
@@ -443,6 +484,11 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
                 depth.squeeze(-1) > MIN_PROJECTION_DEPTH
             )
             n_valid = int(valid_mask.sum())
+
+            if n_valid_first is None:
+                n_valid_first = n_valid
+            n_valid_last = n_valid
+
             residuals_huber = residuals_huber[valid_mask]
             weights = weights[valid_mask]
             reprojection_loss = weighted_mean(residuals_huber, weights)
@@ -555,6 +601,7 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
             prev_losses.append(loss.detach())
 
         pbar.close()
+        _warn_if_observations_were_ejected(n_valid_first or 0, n_valid_last)
 
         Ks_opt = camera_intrinsics.K.detach().expand(n_views, -1, -1).clone()
         dist_coeffs_opt = (
