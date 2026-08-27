@@ -1,4 +1,4 @@
-output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/egohumans_sampling_fps"
+output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/egohumans_sampling_uniform"
 cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/moge-nlfcoco19-fp32_4fbd05ac"
 use_cache: False
 batch_size: 32
@@ -60,7 +60,7 @@ pipeline:
         _target_: kineo.pipeline.stages.keypoints_pairs_sampling.KeypointsPairsSamplingRuntimeConfig
         n_correspondences_per_view_pair: 3000
         min_pair_geometric_mean_score: 0.6
-        sampler: "farthest_point"
+        sampler: "uniform"
         filter_off_frame_keypoints: False
 
     sfm_camera_extrinsics_initialization:
@@ -85,7 +85,7 @@ pipeline:
         _target_: kineo.pipeline.stages.bundle_adjustment_sampling.BundleAdjustmentSamplingRuntimeConfig
         n_kp_samples_per_view: 50
         min_keypoint_score: 0.6
-        sampler: "farthest_point"
+        sampler: "uniform"
         filter_off_frame_keypoints: False
         min_parallax_deg: 10.0
         filter_negative_depth: True
