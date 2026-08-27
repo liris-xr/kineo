@@ -59,7 +59,7 @@ pipeline:
       order: 40
       runtime_cfg:
         _target_: kineo.pipeline.stages.keypoints_pairs_sampling.KeypointsPairsSamplingRuntimeConfig
-        n_correspondences_per_view_pair: 4000
+        n_correspondences_per_view_pair: 3000
         min_pair_geometric_mean_score: 0.5
         keypoints_indices: null
         sampler: "uniform"
@@ -107,9 +107,6 @@ pipeline:
         optimize_translation: True
         shared_intrinsics: ${shared_intrinsics}
         reproj_huber_delta_px: 1.0
-        tolerance_grad: 1e-05
-        tolerance_change: 1e-09
-        dist_coeffs_regularization_weight: 0.0
 
     bundle_adjustment_2:
       _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentStage
@@ -126,9 +123,6 @@ pipeline:
         optimize_translation: True
         shared_intrinsics: ${shared_intrinsics}
         reproj_huber_delta_px: 1.0
-        tolerance_grad: 1e-05
-        tolerance_change: 1e-09
-        dist_coeffs_regularization_weight: 0.0
 
     bundle_adjustment_3:
       _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentStage
@@ -137,14 +131,13 @@ pipeline:
       runtime_cfg:
         _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentRuntimeConfig
         n_iters: 300
-        optimize_distortion_coefficients: True
+        optimize_distortion_coefficients: [0, 1]
         optimize_focal_length: True
         optimize_principal_point: False
         optimize_rotation: True
         optimize_translation: True
         shared_intrinsics: ${shared_intrinsics}
         reproj_huber_delta_px: 1.0
-        dist_coeffs_regularization_weight: 1.0
         use_lbfgs: True
 
     mvs_triangulation:

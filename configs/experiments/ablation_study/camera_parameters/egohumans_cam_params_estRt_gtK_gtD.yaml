@@ -37,7 +37,7 @@ pipeline:
       order: 20
       runtime_cfg:
         _target_: kineo.pipeline.stages.keypoints_pairs_sampling.KeypointsPairsSamplingRuntimeConfig
-        n_correspondences_per_view_pair: 4000
+        n_correspondences_per_view_pair: 3000
         min_pair_geometric_mean_score: 0.4
         keypoints_indices: null
         sampler: "uniform"
@@ -49,7 +49,7 @@ pipeline:
       order: 30
       runtime_cfg:
         _target_: kineo.pipeline.stages.sfm_camera_extrinsics_initialization.SfMCameraExtrinsicsInitializationRuntimeConfig
-        ransac_confidence: 0.99
+        ransac_confidence: 0.999
         ransac_reproj_threshold_px: 3.0
         n_refinement_iters: 200
         scale_triplet_weighting: "irls"
@@ -76,7 +76,7 @@ pipeline:
       order: 50
       runtime_cfg:
         _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentRuntimeConfig
-        n_iters: 200
+        n_iters: 300
         use_lbfgs: True
         optimize_distortion_coefficients: False
         optimize_focal_length: False
