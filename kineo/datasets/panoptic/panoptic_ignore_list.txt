@@ -1,0 +1,10 @@
+# Sequences excluded from the CMU Panoptic TEMPO protocol.
+#
+# TEMPO (Choudhury et al., ICCV 2023, Sec. 4.1) drops 160906_band3 "due to
+# data corruption". Earlier work sharing the same five-camera split does keep
+# it: it is the tenth entry of VoxelPose's TRAIN_LIST, and VTP inherits that
+# list. Pass --keep-ignored to reproduce those instead.
+#
+# Kept in the repository rather than read from the download so preprocessing
+# is reproducible without re-fetching anything.
+160906_band3

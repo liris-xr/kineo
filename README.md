@@ -91,7 +91,18 @@ pixi run h36m-benchmark <path-to-h36m-dataset> [path-to-config.yaml]
 pixi run egohumans-download <path-to-egohumans-dataset>
 pixi run egohumans-preprocess <path-to-egohumans-dataset>
 pixi run egohumans-benchmark <path-to-egohumans-dataset> [path-to-config.yaml]
+
+# For CMU Panoptic Studio
+pixi run panoptic-download <path-to-panoptic-dataset>
+pixi run panoptic-preprocess <path-to-panoptic-dataset>
+pixi run panoptic-benchmark <path-to-panoptic-dataset> [path-to-config.yaml]
 ```
+
+The CMU Panoptic benchmark follows the TEMPO protocol: HD cameras 3, 6, 12, 13
+and 23, whole sequences read at every third frame (9.99Hz), and `160906_band3`
+dropped as corrupted. `panoptic-download` fetches the four test sequences only,
+about 16GB; pass `--split train` or `--split all` to the script directly for the
+other nine, about 40GB more.
 
 If no `path-to-config.yaml` is not given, uses `configs/experiments/benchmarks/*_benchmark_nlf_estRt_estK_estD.yaml` by default.
 All configurations used in the paper are available in the `configs` directory.
