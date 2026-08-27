@@ -9,8 +9,6 @@
 # -----------------------------------------------------------------------------
 
 import torch
-import os
-import pickle
 from dataclasses import dataclass
 
 from kineo.pipeline.pipeline import PipelineStage
@@ -23,6 +21,7 @@ from kineo.annotations import (
     CameraDistortionModel,
 )
 from kineo.pipeline.pipeline import Pipeline
+from kineo.pipeline import per_view_cache
 
 
 from moge.model.v2 import MoGeModel
@@ -31,7 +30,9 @@ from moge.model.v2 import MoGeModel
 @dataclass(frozen=True)
 class MoGeIntrinsicsEstimationRuntimeConfig:
     use_cache: bool = True
-    cache_output_path_template: str = "cache/{sequence_name}/{annotation_key}.pkl"
+    cache_output_path_template: str = (
+        "cache/{sequence_name}/{annotation_key}/{view_id}.pkl"
+    )
     use_half_precision: bool = True
     shared_focal_init: bool = False
 
@@ -141,29 +142,49 @@ class MoGeIntrinsicsEstimationStage(PipelineStage):
     ):
         device = pipeline.device
 
-        device = pipeline.device
-        self.moge_model = self.moge_model.to(device)
+        def infer_missing(missing_views: list[ViewInput]) -> dict[str, Annotations]:
+            self.moge_model = self.moge_model.to(device)
+            try:
+                return {
+                    "cameras_intrinsics": self._estimate_views_intrinsics(
+                        missing_views, device, runtime_cfg.use_half_precision
+                    )
+                }
+            finally:
+                self.moge_model = self.moge_model.cpu()
 
-        if runtime_cfg.use_cache:
-            intrinsics_cache_filepath = runtime_cfg.cache_output_path_template.format(
-                sequence_name=sequence_name, annotation_key="cameras_intrinsics"
+        # Cache what the model estimated, so the cache stays valid whatever the
+        # sharing setting; sharing is applied on read as well.
+        cached = per_view_cache.load_or_infer_per_view(
+            views=views,
+            specs={
+                "cameras_intrinsics": per_view_cache.PerViewCacheSpec(
+                    annotations_cls=CameraIntrinsicsAnnotations,
+                    metadata=CameraIntrinsicsAnnotationsMetadata(),
+                )
+            },
+            infer_missing=infer_missing,
+            sequence_name=sequence_name,
+            cache_output_path_template=runtime_cfg.cache_output_path_template,
+            use_cache=runtime_cfg.use_cache,
+        )
+
+        camera_intrinsics_annotations = cached["cameras_intrinsics"]
+
+        if runtime_cfg.shared_focal_init:
+            camera_intrinsics_annotations = share_focal_lengths(
+                camera_intrinsics_annotations
             )
 
-            if os.path.exists(intrinsics_cache_filepath):
-                with open(intrinsics_cache_filepath, "rb") as f:
-                    intrinsics_annotations = CameraIntrinsicsAnnotations.from_dict(
-                        pickle.load(f)
-                    )
-                    print(
-                        f"Loaded camera intrinsics annotations from cache: {intrinsics_cache_filepath}"
-                    )
-                    if runtime_cfg.shared_focal_init:
-                        intrinsics_annotations = share_focal_lengths(
-                            intrinsics_annotations
-                        )
-                    annotations["cameras_intrinsics"] = intrinsics_annotations
-                    return
+        annotations["cameras_intrinsics"] = camera_intrinsics_annotations
 
+    def _estimate_views_intrinsics(
+        self,
+        views: list[ViewInput],
+        device: torch.device,
+        use_half_precision: bool,
+    ) -> CameraIntrinsicsAnnotations:
+        """Estimates intrinsics from the first frame of each view."""
         intrinsics_annotations: list[CameraIntrinsicsAnnotation] = []
 
         for view in views:
@@ -178,7 +199,7 @@ class MoGeIntrinsicsEstimationStage(PipelineStage):
             img_h, img_w = frame_rgb.shape[-2:]
 
             K = self._estimate_intrinsics(
-                frame_rgb, (img_h, img_w), runtime_cfg.use_half_precision
+                frame_rgb, (img_h, img_w), use_half_precision
             )
             distortion_coefficients = torch.zeros(5, device=device)
             distortion_model = CameraDistortionModel.BROWN_CONRADY
@@ -193,27 +214,7 @@ class MoGeIntrinsicsEstimationStage(PipelineStage):
             )
             intrinsics_annotations.append(view_annotation)
 
-        camera_intrinsics_annotations = CameraIntrinsicsAnnotations(
+        return CameraIntrinsicsAnnotations(
             metadata=CameraIntrinsicsAnnotationsMetadata(),
             annotations=intrinsics_annotations,
         ).cpu()
-
-        annotations["cameras_intrinsics"] = camera_intrinsics_annotations
-
-        self.moge_model = self.moge_model.cpu()
-
-        # Cache what the model estimated, so the cache stays valid whatever the
-        # sharing setting; sharing is applied on read as well.
-        if runtime_cfg.use_cache:
-            os.makedirs(os.path.dirname(intrinsics_cache_filepath), exist_ok=True)
-
-            with open(intrinsics_cache_filepath, "wb") as f:
-                pickle.dump(camera_intrinsics_annotations.to_dict(), f)
-                print(
-                    f"Saved camera intrinsics annotations to cache: {intrinsics_cache_filepath}"
-                )
-
-        if runtime_cfg.shared_focal_init:
-            annotations["cameras_intrinsics"] = share_focal_lengths(
-                camera_intrinsics_annotations
-            )

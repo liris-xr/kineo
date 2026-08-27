@@ -1,5 +1,5 @@
 output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/h36m_kps_format_viz_nlf_h36m"
-cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/h36m_kps_format_viz_nlf_h36m"
+cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/mmdet-moge-nlfh36m17-fp16_e32a9eb3"
 use_cache: True
 batch_size: 32
 use_half_precision: True
@@ -21,7 +21,7 @@ pipeline:
         use_half_precision: ${use_half_precision}
         batch_size: ${batch_size}
         use_cache: ${use_cache}
-        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
+        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}/{view_id}.pkl"
         frame_step: ${frame_step}
         best_bbox_only: True
         det_category_id: 0
@@ -38,7 +38,7 @@ pipeline:
         shared_focal_init: False
         use_cache: ${use_cache}
         use_half_precision: ${use_half_precision}
-        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
+        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}/{view_id}.pkl"
 
     nlf_h36m_keypoints_detection:
       _target_: kineo.pipeline.stages.nlf.skeleton_keypoints_detection.NLFSkeletonKeypointsDetectionStage
@@ -50,7 +50,7 @@ pipeline:
         batch_size: ${batch_size}
         use_half_precision: ${use_half_precision}
         use_cache: ${use_cache}
-        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
+        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}/{view_id}.pkl"
         skeleton_name: "h36m_17"
 
     global_time_resampling:

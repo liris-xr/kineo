@@ -9,10 +9,8 @@
 # -----------------------------------------------------------------------------
 
 import torch
-import os
 import os.path as osp
 from tqdm import tqdm
-import pickle
 import warnings
 
 from kineo.pipeline.pipeline import PipelineStage
@@ -28,6 +26,7 @@ from kineo.annotations import (
     Keypoints2DAnnotationsMetadata,
 )
 from kineo.pipeline.pipeline import Pipeline
+from kineo.pipeline import per_view_cache
 
 from mmdet.apis import DetInferencer
 from mmdet.structures import DetDataSample
@@ -73,7 +72,9 @@ class MMLabBboxKeypointsDetectionRuntimeConfig:
     batch_size: int = 16
     use_half_precision: bool = True
     use_cache: bool = True
-    cache_output_path_template: str = "cache/{sequence_name}/{annotation_key}.pkl"
+    cache_output_path_template: str = (
+        "cache/{sequence_name}/{annotation_key}/{view_id}.pkl"
+    )
     default_subject_id: str = "subject_0"
     frame_step: int = 1
     force_zero_scores_outside_bbox: bool = True
@@ -147,72 +148,57 @@ class MMLabBboxKeypointsDetectionStage(
     ):
         device = pipeline.device
 
-        bboxes_annotations: BBox2DAnnotations | None = None
-        keypoints_annotations: Keypoints2DAnnotations | None = None
-
-        if runtime_cfg.use_cache:
-            bboxes_cache_filepath = runtime_cfg.cache_output_path_template.format(
-                sequence_name=sequence_name, annotation_key="bboxes_2d"
-            )
-
-            kps2d_cache_filepath = runtime_cfg.cache_output_path_template.format(
-                sequence_name=sequence_name, annotation_key="keypoints_2d"
-            )
-
-            if os.path.exists(bboxes_cache_filepath) and os.path.exists(
-                kps2d_cache_filepath
-            ):
-                with open(bboxes_cache_filepath, "rb") as f:
-                    bboxes_annotations = BBox2DAnnotations.from_dict(pickle.load(f))
-                print(f"Loaded bboxes annotations from cache: {bboxes_cache_filepath}")
-
-                with open(kps2d_cache_filepath, "rb") as f:
-                    keypoints_annotations = Keypoints2DAnnotations.from_dict(
-                        pickle.load(f)
-                    )
-                print(
-                    f"Loaded keypoints annotations from cache: {kps2d_cache_filepath}"
-                )
-
-                annotations["bboxes_2d"] = bboxes_annotations.cpu()
-                annotations["keypoints_2d"] = keypoints_annotations.cpu()
-
-        self.det_inferencer.model = self.det_inferencer.model.to(device)
-        self.det_inferencer.model.test_cfg["nms_pre"] = runtime_cfg.nms_pre_top_k
-
-        self.keypoints_inferencer.model = self.keypoints_inferencer.model.to(device)
-
-        bboxes_annotations, keypoints_annotations = self._infer_bboxes_and_keypoints(
-            views=views,
-            det_inferencer=self.det_inferencer,
-            keypoints_inferencer=self.keypoints_inferencer,
-            batch_size=runtime_cfg.batch_size,
-            use_half_precision=runtime_cfg.use_half_precision,
-            det_category_id=runtime_cfg.det_category_id,
-            best_bbox_only=runtime_cfg.best_bbox_only,
-            min_bbox_score=runtime_cfg.min_bbox_score,
-            nms_iou_thr=runtime_cfg.nms_iou_thr,
-            default_subject_id=runtime_cfg.default_subject_id,
-            frame_step=runtime_cfg.frame_step,
-            force_zero_scores_outside_bbox=runtime_cfg.force_zero_scores_outside_bbox,
-            use_flip_test=runtime_cfg.use_flip_test,
+        keypoints_format = KeypointsFormat.from_mmpose_dataset(
+            self.keypoints_inferencer.model.dataset_meta["dataset_name"]
         )
 
-        if runtime_cfg.use_cache:
-            os.makedirs(os.path.dirname(bboxes_cache_filepath), exist_ok=True)
+        def infer_missing(missing_views: list[ViewInput]) -> dict[str, Annotations]:
+            self.det_inferencer.model = self.det_inferencer.model.to(device)
+            self.det_inferencer.model.test_cfg["nms_pre"] = runtime_cfg.nms_pre_top_k
+            self.keypoints_inferencer.model = self.keypoints_inferencer.model.to(device)
 
-            with open(bboxes_cache_filepath, "wb") as f:
-                print(f"Saving bboxes annotations to cache: {bboxes_cache_filepath}")
-                pickle.dump(bboxes_annotations.to_dict(), f)
+            try:
+                bboxes, keypoints = self._infer_bboxes_and_keypoints(
+                    views=missing_views,
+                    det_inferencer=self.det_inferencer,
+                    keypoints_inferencer=self.keypoints_inferencer,
+                    batch_size=runtime_cfg.batch_size,
+                    use_half_precision=runtime_cfg.use_half_precision,
+                    det_category_id=runtime_cfg.det_category_id,
+                    best_bbox_only=runtime_cfg.best_bbox_only,
+                    min_bbox_score=runtime_cfg.min_bbox_score,
+                    nms_iou_thr=runtime_cfg.nms_iou_thr,
+                    default_subject_id=runtime_cfg.default_subject_id,
+                    frame_step=runtime_cfg.frame_step,
+                    force_zero_scores_outside_bbox=runtime_cfg.force_zero_scores_outside_bbox,
+                    use_flip_test=runtime_cfg.use_flip_test,
+                )
+            finally:
+                self.det_inferencer.model = self.det_inferencer.model.cpu()
+                self.keypoints_inferencer.model = self.keypoints_inferencer.model.cpu()
 
-            with open(kps2d_cache_filepath, "wb") as f:
-                print(f"Saving keypoints annotations to cache: {kps2d_cache_filepath}")
-                pickle.dump(keypoints_annotations.to_dict(), f)
+            return {"bboxes_2d": bboxes, "keypoints_2d": keypoints}
 
-        self.det_inferencer.model = self.det_inferencer.model.cpu()
-        self.keypoints_inferencer.model = self.keypoints_inferencer.model.cpu()
-        annotations["bboxes_2d"] = bboxes_annotations.cpu()
-        annotations["keypoints_2d"] = keypoints_annotations.cpu()
+        cached = per_view_cache.load_or_infer_per_view(
+            views=views,
+            specs={
+                "bboxes_2d": per_view_cache.PerViewCacheSpec(
+                    annotations_cls=BBox2DAnnotations,
+                    metadata=BBox2DAnnotationsMetadata(),
+                ),
+                "keypoints_2d": per_view_cache.PerViewCacheSpec(
+                    annotations_cls=Keypoints2DAnnotations,
+                    metadata=Keypoints2DAnnotationsMetadata(formats=[keypoints_format]),
+                ),
+            },
+            infer_missing=infer_missing,
+            sequence_name=sequence_name,
+            cache_output_path_template=runtime_cfg.cache_output_path_template,
+            use_cache=runtime_cfg.use_cache,
+        )
+
+        annotations["bboxes_2d"] = cached["bboxes_2d"].cpu()
+        annotations["keypoints_2d"] = cached["keypoints_2d"].cpu()
 
     def _infer_bboxes_and_keypoints(
         self,

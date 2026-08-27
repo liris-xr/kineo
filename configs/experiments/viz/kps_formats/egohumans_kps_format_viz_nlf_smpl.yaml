@@ -1,5 +1,5 @@
 output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/egohumans_kps_format_viz_nlf_smpl"
-cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/egohumans_kps_format_viz_nlf_smpl"
+cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/moge-nlfsmplx-fp16_3a04f6b6"
 use_cache: True
 batch_size: 32
 use_half_precision: True
@@ -86,7 +86,7 @@ pipeline:
         shared_focal_init: False
         use_cache: ${use_cache}
         use_half_precision: ${use_half_precision}
-        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
+        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}/{view_id}.pkl"
 
     nlf_smpl_keypoints_detection:
       _target_: kineo.pipeline.stages.nlf.smpl_keypoints_detection.NLFSMPLKeypointsDetectionStage
@@ -98,7 +98,7 @@ pipeline:
         batch_size: ${batch_size}
         use_half_precision: ${use_half_precision}
         use_cache: ${use_cache}
-        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
+        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}/{view_id}.pkl"
         model_name: "smplx"
 
     global_time_resampling:

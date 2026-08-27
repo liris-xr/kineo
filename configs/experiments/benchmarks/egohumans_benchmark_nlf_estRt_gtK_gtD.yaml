@@ -1,5 +1,5 @@
 output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/egohumans_benchmark_nlf_estRt_gtK_gtD"
-cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/egohumans_benchmark_nlf_estRt_gtK_gtD"
+cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/nlfcoco19-fp32_4965fc50"
 use_cache: False
 batch_size: 32
 use_half_precision: False
@@ -26,7 +26,7 @@ pipeline:
         batch_size: ${batch_size}
         use_half_precision: ${use_half_precision}
         use_cache: ${use_cache}
-        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
+        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}/{view_id}.pkl"
         skeleton_name: "coco_19"
 
     global_time_resampling:

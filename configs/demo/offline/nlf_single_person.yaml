@@ -1,5 +1,5 @@
 output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/infer_nlf_single_person"
-cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/infer_nlf_single_person"
+cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/moge-nlfsmplx-rtmdet-fp16_4ea587ef"
 use_cache: False
 batch_size: 32
 use_half_precision: True
@@ -79,7 +79,7 @@ pipeline:
       runtime_cfg:
         _target_: kineo.pipeline.stages.rtmlib.rtmlib_bbox_detection.RtmlibBboxDetectionRuntimeConfig
         use_cache: ${use_cache}
-        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
+        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}/{view_id}.pkl"
         show: True
         frame_step: ${rtmlib_bbox_detection_frame_step}
 
@@ -94,7 +94,7 @@ pipeline:
         shared_focal_init: False
         use_cache: ${use_cache}
         use_half_precision: ${use_half_precision}
-        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
+        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}/{view_id}.pkl"
 
     nlf_smpl_keypoints_detection:
       _target_: kineo.pipeline.stages.nlf.smpl_keypoints_detection.NLFSMPLKeypointsDetectionStage
@@ -106,7 +106,7 @@ pipeline:
         batch_size: ${batch_size}
         use_half_precision: ${use_half_precision}
         use_cache: ${use_cache}
-        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
+        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}/{view_id}.pkl"
         model_name: "smplx"
         show: True
 

@@ -1,5 +1,5 @@
 output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/infer_dwpose_single_person_sam2"
-cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/infer_dwpose_single_person_sam2"
+cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/moge-rtmpose-sam2rtm-fp16_da8ceb93"
 use_cache: False
 batch_size: 32
 use_half_precision: True
@@ -41,7 +41,7 @@ pipeline:
         shared_focal_init: False
         use_cache: ${use_cache}
         use_half_precision: ${use_half_precision}
-        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
+        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}/{view_id}.pkl"
 
     rtmlib_keypoints_detection:
       _target_: kineo.pipeline.stages.rtmlib.rtmlib_keypoints_detection.RtmlibKeypointsDetectionStage
@@ -52,7 +52,7 @@ pipeline:
       runtime_cfg:
         _target_: kineo.pipeline.stages.rtmlib.rtmlib_keypoints_detection.RtmlibKeypointsDetectionRuntimeConfig
         use_cache: ${use_cache}
-        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
+        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}/{view_id}.pkl"
         show: False
         frame_step: ${rtmlib_keypoints_detection_frame_step}
 

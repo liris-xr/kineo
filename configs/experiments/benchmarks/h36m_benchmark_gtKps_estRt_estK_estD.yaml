@@ -1,5 +1,5 @@
 output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/h36m_benchmark_gtKps_estRt_estK_estD"
-cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/h36m_benchmark_gtKps_estRt_estK_estD"
+cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/moge-fp32_ab56b5d3"
 use_cache: False
 batch_size: 32
 use_half_precision: False
@@ -36,7 +36,7 @@ pipeline:
         shared_focal_init: False
         use_cache: ${use_cache}
         use_half_precision: ${use_half_precision}
-        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
+        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}/{view_id}.pkl"
     
     keypoints_pairs_sampling:
       _target_: kineo.pipeline.stages.keypoints_pairs_sampling.KeypointsPairsSamplingStage

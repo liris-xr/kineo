@@ -9,9 +9,7 @@
 # -----------------------------------------------------------------------------
 
 import torch
-import os
 from tqdm import tqdm
-import pickle
 import warnings
 
 import cv2
@@ -25,6 +23,7 @@ from kineo.annotations import (
     BBox2DAnnotation,
 )
 from kineo.pipeline.pipeline import Pipeline
+from kineo.pipeline import per_view_cache
 
 from dataclasses import dataclass
 
@@ -46,7 +45,9 @@ class RtmlibBboxDetectionRuntimeConfig:
     best_bbox_only: bool = False
     det_category_id: int | None = 0
     use_cache: bool = True
-    cache_output_path_template: str = "cache/{sequence_name}/{annotation_key}.pkl"
+    cache_output_path_template: str = (
+        "cache/{sequence_name}/{annotation_key}/{view_id}.pkl"
+    )
     default_subject_id: str = "subject_0"
     frame_step: int = 1
     show: bool = False
@@ -93,41 +94,36 @@ class RtmlibBboxDetectionStage(
         gt_annotations: dict[str, Annotations],
         runtime_cfg: RtmlibBboxDetectionRuntimeConfig,
     ):
-        bboxes_annotations: BBox2DAnnotations | None = None
+        def infer_missing(missing_views: list[ViewInput]) -> dict[str, Annotations]:
+            return {
+                "bboxes_2d": self._infer_bboxes(
+                    views=missing_views,
+                    det_model=self.det_model,
+                    det_category_id=runtime_cfg.det_category_id,
+                    best_bbox_only=runtime_cfg.best_bbox_only,
+                    min_bbox_score=runtime_cfg.min_bbox_score,
+                    nms_iou_thr=runtime_cfg.nms_iou_thr,
+                    default_subject_id=runtime_cfg.default_subject_id,
+                    frame_step=runtime_cfg.frame_step,
+                    show=runtime_cfg.show,
+                )
+            }
 
-        if runtime_cfg.use_cache:
-            bboxes_cache_filepath = runtime_cfg.cache_output_path_template.format(
-                sequence_name=sequence_name, annotation_key="bboxes_2d"
-            )
-
-            if os.path.exists(bboxes_cache_filepath):
-                with open(bboxes_cache_filepath, "rb") as f:
-                    bboxes_annotations = BBox2DAnnotations.from_dict(pickle.load(f))
-                print(f"Loaded bboxes annotations from cache: {bboxes_cache_filepath}")
-
-                annotations["bboxes_2d"] = bboxes_annotations.cpu()
-                return
-
-        bboxes_annotations = self._infer_bboxes(
+        cached = per_view_cache.load_or_infer_per_view(
             views=views,
-            det_model=self.det_model,
-            det_category_id=runtime_cfg.det_category_id,
-            best_bbox_only=runtime_cfg.best_bbox_only,
-            min_bbox_score=runtime_cfg.min_bbox_score,
-            nms_iou_thr=runtime_cfg.nms_iou_thr,
-            default_subject_id=runtime_cfg.default_subject_id,
-            frame_step=runtime_cfg.frame_step,
-            show=runtime_cfg.show,
+            specs={
+                "bboxes_2d": per_view_cache.PerViewCacheSpec(
+                    annotations_cls=BBox2DAnnotations,
+                    metadata=BBox2DAnnotationsMetadata(),
+                )
+            },
+            infer_missing=infer_missing,
+            sequence_name=sequence_name,
+            cache_output_path_template=runtime_cfg.cache_output_path_template,
+            use_cache=runtime_cfg.use_cache,
         )
 
-        if runtime_cfg.use_cache:
-            os.makedirs(os.path.dirname(bboxes_cache_filepath), exist_ok=True)
-
-            with open(bboxes_cache_filepath, "wb") as f:
-                print(f"Saving bboxes annotations to cache: {bboxes_cache_filepath}")
-                pickle.dump(bboxes_annotations.to_dict(), f)
-
-        annotations["bboxes_2d"] = bboxes_annotations.cpu()
+        annotations["bboxes_2d"] = cached["bboxes_2d"].cpu()
 
     def _infer_bboxes(
         self,

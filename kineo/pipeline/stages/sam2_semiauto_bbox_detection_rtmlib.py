@@ -9,9 +9,7 @@
 # -----------------------------------------------------------------------------
 
 import torch
-import os
 from tqdm import tqdm
-import pickle
 from math import sqrt
 
 from kineo.pipeline.pipeline import PipelineStage
@@ -23,6 +21,7 @@ from kineo.annotations import (
     BBox2DAnnotation,
 )
 from kineo.pipeline.pipeline import Pipeline
+from kineo.pipeline import per_view_cache
 from kineo.visualization.sam_prompt_widget import SAMVideoWidget
 from sam2.sam2_generic_video_predictor import (
     SAM2GenericVideoPredictorState,
@@ -55,7 +54,9 @@ class SAM2SemiAutoBboxDetectionRtmlibRuntimeConfig:
     batch_size: int = 16
     use_half_precision: bool = True
     use_cache: bool = True
-    cache_output_path_template: str = "cache/{sequence_name}/{annotation_key}.pkl"
+    cache_output_path_template: str = (
+        "cache/{sequence_name}/{annotation_key}/{view_id}.pkl"
+    )
     show: bool = False
     frame_step: int = 1
 
@@ -111,37 +112,40 @@ class SAM2SemiAutoBboxDetectionRtmlibStage(
     ):
         device = pipeline.device
 
-        if runtime_cfg.use_cache:
-            bboxes_cache_filepath = runtime_cfg.cache_output_path_template.format(
-                sequence_name=sequence_name, annotation_key="bboxes_2d"
-            )
+        def infer_missing(missing_views: list[ViewInput]) -> dict[str, Annotations]:
+            self.sam2_video_predictor = self.sam2_video_predictor.to(device)
+            try:
+                states = _init_video_states(missing_views, self.sam2_video_predictor)
+                return {
+                    "bboxes_2d": _infer_bboxes(
+                        missing_views,
+                        states,
+                        frame_step=runtime_cfg.frame_step,
+                        det_model=self.det_model,
+                        sam2_video_predictor=self.sam2_video_predictor,
+                        show=runtime_cfg.show,
+                        min_bbox_score=runtime_cfg.min_bbox_score,
+                        nms_iou_thr=runtime_cfg.nms_iou_thr,
+                    )
+                }
+            finally:
+                self.sam2_video_predictor = self.sam2_video_predictor.cpu()
 
-            if os.path.exists(bboxes_cache_filepath):
-                with open(bboxes_cache_filepath, "rb") as f:
-                    bboxes_annotations = BBox2DAnnotations.from_dict(pickle.load(f))
-                print(f"Loaded bboxes annotations from cache: {bboxes_cache_filepath}")
-                annotations["bboxes_2d"] = bboxes_annotations.cpu()
-                return
-
-        self.sam2_video_predictor = self.sam2_video_predictor.to(device)
-
-        states = _init_video_states(views, self.sam2_video_predictor)
-        bboxes_annotations = _infer_bboxes(
-            views, states, frame_step=runtime_cfg.frame_step, det_model=self.det_model, sam2_video_predictor=self.sam2_video_predictor, show=runtime_cfg.show, min_bbox_score=runtime_cfg.min_bbox_score, nms_iou_thr=runtime_cfg.nms_iou_thr
+        cached = per_view_cache.load_or_infer_per_view(
+            views=views,
+            specs={
+                "bboxes_2d": per_view_cache.PerViewCacheSpec(
+                    annotations_cls=BBox2DAnnotations,
+                    metadata=BBox2DAnnotationsMetadata(),
+                )
+            },
+            infer_missing=infer_missing,
+            sequence_name=sequence_name,
+            cache_output_path_template=runtime_cfg.cache_output_path_template,
+            use_cache=runtime_cfg.use_cache,
         )
 
-        if runtime_cfg.use_cache:
-            os.makedirs(os.path.dirname(bboxes_cache_filepath), exist_ok=True)
-
-            if not os.path.exists(bboxes_cache_filepath):
-                with open(bboxes_cache_filepath, "wb") as f:
-                    print(
-                        f"Saving bboxes annotations to cache: {bboxes_cache_filepath}"
-                    )
-                    pickle.dump(bboxes_annotations.to_dict(), f)
-
-        self.sam2_video_predictor = self.sam2_video_predictor.cpu()
-        annotations["bboxes_2d"] = bboxes_annotations.cpu()
+        annotations["bboxes_2d"] = cached["bboxes_2d"].cpu()
 
 
 def _init_video_states(

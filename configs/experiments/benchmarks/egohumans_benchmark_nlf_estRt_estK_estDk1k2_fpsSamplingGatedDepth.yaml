@@ -1,5 +1,5 @@
 output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/egohumans_benchmark_nlf_estRt_estK_estDk1k2_fpsSamplingGatedDepth"
-cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/egohumans_benchmark_nlf_estRt_estK_estDk1k2"
+cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/moge-nlfcoco19-fp32_4fbd05ac"
 use_cache: False
 batch_size: 32
 use_half_precision: False
@@ -28,7 +28,7 @@ pipeline:
         shared_focal_init: False
         use_cache: ${use_cache}
         use_half_precision: ${use_half_precision}
-        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
+        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}/{view_id}.pkl"
 
     nlf_skeleton_keypoints_detection:
       _target_: kineo.pipeline.stages.nlf.skeleton_keypoints_detection.NLFSkeletonKeypointsDetectionStage
@@ -40,7 +40,7 @@ pipeline:
         batch_size: ${batch_size}
         use_half_precision: ${use_half_precision}
         use_cache: ${use_cache}
-        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
+        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}/{view_id}.pkl"
         skeleton_name: "coco_19"
 
     global_time_resampling:
