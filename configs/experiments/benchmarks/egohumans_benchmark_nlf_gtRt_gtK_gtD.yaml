@@ -47,7 +47,7 @@ pipeline:
         n_kp_samples_per_view: 50
         min_kp_score: 0.6
         sampler: "uniform"
-        reject_invalid_observations: false
+        filter_off_frame_keypoints: false
 
     mvs_triangulation:
       _target_: kineo.pipeline.stages.mvs_triangulation.MVSTriangulationStage

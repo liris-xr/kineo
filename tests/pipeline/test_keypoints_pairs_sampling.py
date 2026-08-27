@@ -301,7 +301,7 @@ def test_an_unsupported_sampler_is_rejected():
         raise AssertionError("expected a ValueError")
 
 
-def _emits_an_off_frame_point(reject_invalid_observations: bool) -> bool:
+def _emits_an_off_frame_point(filter_off_frame_keypoints: bool) -> bool:
     """Runs the full stage over the bundle adjustment fixture.
 
     That fixture builds every annotation this stage reads, and plants a
@@ -318,7 +318,7 @@ def _emits_an_off_frame_point(reject_invalid_observations: bool) -> bool:
         max_points_pairs=-1,
         pair_avg_conf_score_thr=0.0,
         sampler="uniform",
-        reject_invalid_observations=reject_invalid_observations,
+        filter_off_frame_keypoints=filter_off_frame_keypoints,
     )
     KeypointsPairsSamplingStage(name="t", order=40, runtime_cfg=cfg).forward(
         sequence_name="synthetic",
@@ -340,5 +340,5 @@ def _emits_an_off_frame_point(reject_invalid_observations: bool) -> bool:
 def test_the_filter_gates_off_frame_correspondences():
     # The uniform-baseline arm emits the planted off-frame keypoint; the
     # filtered arm drops it. 73 migrated configs ride on this flag.
-    assert not _emits_an_off_frame_point(reject_invalid_observations=True)
-    assert _emits_an_off_frame_point(reject_invalid_observations=False)
+    assert not _emits_an_off_frame_point(filter_off_frame_keypoints=True)
+    assert _emits_an_off_frame_point(filter_off_frame_keypoints=False)

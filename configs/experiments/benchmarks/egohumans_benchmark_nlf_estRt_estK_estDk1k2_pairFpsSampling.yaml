@@ -85,7 +85,7 @@ pipeline:
         n_kp_samples_per_view: 50
         min_kp_score: 0.6
         sampler: "uniform"
-        reject_invalid_observations: false
+        filter_off_frame_keypoints: false
 
     bundle_adjustment_1: # Only optimize camera extrinsics
       _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentStage

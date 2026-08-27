@@ -1,5 +1,6 @@
 import torch
 
+from kineo.geometry.camera import MIN_PROJECTION_DEPTH
 from kineo.geometry.metrics import compute_reprojection_residuals
 
 
@@ -32,7 +33,9 @@ def _masked_loss_backward(kps_3d, kps_2d, Ks, Rts, Ds):
     residuals_huber = torch.nn.functional.huber_loss(
         input=residuals, target=torch.zeros_like(residuals), reduction="none", delta=1.0
     )
-    valid = residuals_huber.isfinite() & (depth.squeeze(-1).abs() > 1e-6)
+    valid = residuals_huber.isfinite() & (
+        depth.squeeze(-1) > MIN_PROJECTION_DEPTH
+    )
     loss = residuals_huber[valid].mean()
     loss.backward()
     return loss, valid
@@ -50,6 +53,19 @@ def test_point_on_the_camera_plane_does_not_poison_the_gradient():
     assert torch.isfinite(loss)
     assert not valid[:, -1].any(), "the depth-0 point must be excluded"
     assert torch.isfinite(Rts.grad).all(), "depth-0 point poisoned the gradient"
+
+
+def test_point_behind_the_camera_is_excluded():
+    # A point behind the camera projects to a mirrored image position with a
+    # finite, plausibly small residual, so the finiteness mask alone lets it
+    # through and a cheirality-violating pose can score well. Only the sign of
+    # the depth separates it, which is what the gate tests.
+    kps_3d, kps_2d, Ks, Rts, Ds = _scene([5.0, 6.0, 7.0, -5.0])
+
+    _, valid = _masked_loss_backward(kps_3d, kps_2d, Ks, Rts, Ds)
+
+    assert not valid[:, -1].any(), "the behind-camera point must be excluded"
+    assert valid[:, :-1].all(), "the points in front must be kept"
 
 
 def test_healthy_points_keep_their_gradient_when_a_bad_point_is_present():

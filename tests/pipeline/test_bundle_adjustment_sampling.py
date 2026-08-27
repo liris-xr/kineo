@@ -160,7 +160,7 @@ def _run_stage(
     min_parallax_deg: float | None = None,
     max_reproj_error: float | None = None,
     w_d: float = 0.0,
-    reject_invalid_observations: bool = True,
+    filter_off_frame_keypoints: bool = True,
 ):
     from kineo.pipeline.stages.bundle_adjustment_sampling import (
         BundleAdjustmentSamplingRuntimeConfig,
@@ -172,7 +172,7 @@ def _run_stage(
         n_kp_samples_per_view=n_kp_samples_per_view,
         min_kp_score=MIN_KP_SCORE,
         sampler=sampler,
-        reject_invalid_observations=reject_invalid_observations,
+        filter_off_frame_keypoints=filter_off_frame_keypoints,
         filter_negative_depth=filter_negative_depth,
         min_parallax_deg=min_parallax_deg,
         max_reproj_error=max_reproj_error,
@@ -210,7 +210,7 @@ def test_disabling_the_filter_keeps_an_off_frame_observation():
     # reaches the bundle adjustment. Only the single-view slot is still dropped,
     # since two views above threshold is a candidacy rule, not a filter.
     annotation = _run_stage(
-        n_kp_samples_per_view=-1, reject_invalid_observations=False
+        n_kp_samples_per_view=-1, filter_off_frame_keypoints=False
     )
 
     assert _contains_point(annotation.kps_2d_xy[1], OFF_FRAME_SENTINEL)

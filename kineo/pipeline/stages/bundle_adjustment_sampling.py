@@ -87,9 +87,9 @@ class BundleAdjustmentSamplingRuntimeConfig:
     min_kp_score: float = 0.4
     sampler: str = "farthest_point"
     # Off-frame and non-finite keypoints are the extremes FPS chases, so the
-    # rejection is on by default. Turning it off is the uniform-baseline arm,
-    # and isolates the filter from the sampler in the ablation.
-    reject_invalid_observations: bool = True
+    # filter is on by default. Turning it off is the uniform-baseline arm, and
+    # isolates the filter from the sampler in the ablation.
+    filter_off_frame_keypoints: bool = True
     w_uv: float = 1.0
     w_t: float = 1.0
     w_d: float = 0.0
@@ -110,7 +110,7 @@ class BundleAdjustmentSamplingStage(
     ``sampler="uniform"`` draws uniformly over the same candidates instead,
     which is the baseline the coverage sampler is measured against.
 
-    ``reject_invalid_observations`` gates off-frame and non-finite keypoints
+    ``filter_off_frame_keypoints`` gates off-frame and non-finite keypoints
     ahead of either sampler, so the filter and the sampler vary independently.
     """
 
@@ -246,7 +246,7 @@ class BundleAdjustmentSamplingStage(
         )
         observations_mask = confident_mask
 
-        if runtime_cfg.reject_invalid_observations:
+        if runtime_cfg.filter_off_frame_keypoints:
             observations_mask = observations_mask & valid_observations_mask(
                 kps_xy, resolutions_hw
             )

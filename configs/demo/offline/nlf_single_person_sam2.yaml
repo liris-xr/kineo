@@ -131,7 +131,7 @@ pipeline:
         pair_avg_conf_score_thr: 0.5
         keypoints_indices: null
         sampler: "uniform"
-        reject_invalid_observations: false
+        filter_off_frame_keypoints: false
 
     sfm_camera_extrinsics_initialization:
       _target_: kineo.pipeline.stages.sfm_camera_extrinsics_initialization.SfMCameraExtrinsicsInitializationStage
@@ -156,7 +156,7 @@ pipeline:
         n_kp_samples_per_view: 50
         min_kp_score: 0.5
         sampler: "uniform"
-        reject_invalid_observations: false
+        filter_off_frame_keypoints: false
 
     bundle_adjustment_1: # Only optimize camera extrinsics
       _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentStage
