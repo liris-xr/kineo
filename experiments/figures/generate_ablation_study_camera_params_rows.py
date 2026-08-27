@@ -31,6 +31,13 @@ def generate_h36m_ablation_study_camera_params_rows(h36m_dataset_dir: str, kineo
             "annotations",
         )
     )
+    kineo_h36m_camera_params_extrinsics_intrinsics_with_radial_distortions_annotations_path = (
+        os.path.join(
+            kineo_eval_data_dir,
+            "h36m_cam_params_gtKps_estRt_estK_estDk1k2",
+            "annotations",
+        )
+    )
 
     kineo_h36m_results = {
         "GtRt_GtK_GtD": compute_h36m_stats(
@@ -46,6 +53,10 @@ def generate_h36m_ablation_study_camera_params_rows(h36m_dataset_dir: str, kineo
         "EstRt_EstK_EstD": compute_h36m_stats(
             h36m_dataset_dir,
             kineo_h36m_camera_params_extrinsics_intrinsics_with_distortions_annotations_path,
+        ),
+        "EstRt_EstK_EstDk1k2": compute_h36m_stats(
+            h36m_dataset_dir,
+            kineo_h36m_camera_params_extrinsics_intrinsics_with_radial_distortions_annotations_path,
         ),
     }
 
@@ -104,6 +115,13 @@ def generate_egohumans_ablation_study_camera_params_rows(egohumans_dataset_dir: 
             "annotations",
         )
     )
+    kineo_egohumans_extrinsics_intrinsics_with_radial_distortions_annotations_path = (
+        os.path.join(
+            kineo_eval_data_dir,
+            "egohumans_cam_params_gtKps_estRt_estK_estDk1k2",
+            "annotations",
+        )
+    )
 
     kineo_egohumans_results = {
         "GtRt_GtK_GtD": compute_egohumans_stats(
@@ -119,6 +137,10 @@ def generate_egohumans_ablation_study_camera_params_rows(egohumans_dataset_dir: 
         "EstRt_EstK_EstD": compute_egohumans_stats(
             egohumans_dataset_dir,
             kineo_egohumans_extrinsics_intrinsics_with_distortions_annotations_path,
+        ),
+        "EstRt_EstK_EstDk1k2": compute_egohumans_stats(
+            egohumans_dataset_dir,
+            kineo_egohumans_extrinsics_intrinsics_with_radial_distortions_annotations_path,
         ),
     }
 
