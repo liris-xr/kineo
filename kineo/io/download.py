@@ -26,8 +26,15 @@ from kineo.io.file import compute_md5_checksum
 
 GDRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 
+# Connect and read timeouts. Without a read timeout a transfer that stalls
+# mid-stream never raises, so the download blocks for as long as the peer keeps
+# the socket open and the retry adapter never gets a failure to act on.
+HTTP_TIMEOUT_S = (10, 60)
+
+
 def sanitize_windows_path_part(part: str) -> str:
-    return re.sub(r'[<>:"/\\|?*]', '_', part)
+    return re.sub(r'[<>:"/\\|?*]', "_", part)
+
 
 def sanitize_windows_path(path: Path) -> Path:
     path = path.absolute()
@@ -149,7 +156,7 @@ def download_gdrive_file_or_folder(
 
 
 def get_file_size(session: requests.Session, file_url: str) -> int:
-    head = session.head(file_url, allow_redirects=True)
+    head = session.head(file_url, allow_redirects=True, timeout=HTTP_TIMEOUT_S)
 
     if head.status_code != 200:
         raise Exception(
@@ -223,9 +230,15 @@ def download_file(
             headers={"Range": f"bytes={local_file_size}-"},
             stream=True,
             allow_redirects=True,
+            timeout=HTTP_TIMEOUT_S,
         )
     else:
-        download_response = session.get(file_url, stream=True, allow_redirects=True)
+        download_response = session.get(
+            file_url,
+            stream=True,
+            allow_redirects=True,
+            timeout=HTTP_TIMEOUT_S,
+        )
     if download_response.status_code != 200 and download_response.status_code != 206:
         raise Exception(
             f"Failed to download {file_url}: {download_response.status_code} {download_response.reason}"
