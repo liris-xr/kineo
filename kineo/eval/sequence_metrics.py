@@ -9,6 +9,7 @@
 # -----------------------------------------------------------------------------
 
 import numpy as np
+import torch
 from kineo.eval.camera_metrics import compute_camera_metrics, flatten_camera_metrics
 from kineo.eval.human_metrics import compute_human_metrics, flatten_human_metrics
 from kineo.annotations.camera_intrinsics import CameraIntrinsicsAnnotations
@@ -21,12 +22,16 @@ def compute_human_metrics_over_sequence(
     gt_cam_extrinsics_annotations: CameraExtrinsicsAnnotations,
     pred_keypoints_3d_annotations: Keypoints3DAnnotations,
     pred_cam_extrinsics_annotations: CameraExtrinsicsAnnotations,
+    gt_frame_timestamps: torch.Tensor | None = None,
+    pred_frame_timestamps: torch.Tensor | None = None,
 ) -> dict[str, dict[str, float]]:
     human_metrics = compute_human_metrics(
         gt_keypoints_3d_annotations=gt_keypoints_3d_annotations,
         gt_cam_extrinsics_annotations=gt_cam_extrinsics_annotations,
         pred_keypoints_3d_annotations=pred_keypoints_3d_annotations,
         pred_cam_extrinsics_annotations=pred_cam_extrinsics_annotations,
+        gt_frame_timestamps=gt_frame_timestamps,
+        pred_frame_timestamps=pred_frame_timestamps,
     )
     flattened_human_metrics = flatten_human_metrics(human_metrics)
     return {

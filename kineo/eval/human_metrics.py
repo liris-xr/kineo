@@ -22,6 +22,7 @@ from typing import Any
 from kineo.annotations.camera_extrinsics import CameraExtrinsicsAnnotations
 from kineo.annotations.keypoints_3d import Keypoints3DAnnotations
 from kineo.annotations.keypoints_format import KeypointsFormat
+from kineo.eval.time_alignment import build_slots_by_prediction_frame
 
 # Joint distance thresholds, in millimetres, at which PCK is reported.
 PCK_THRESHOLDS_MM = (50, 100, 150)
@@ -149,7 +150,25 @@ def compute_human_metrics(
     gt_cam_extrinsics_annotations: CameraExtrinsicsAnnotations,
     pred_keypoints_3d_annotations: Keypoints3DAnnotations,
     pred_cam_extrinsics_annotations: CameraExtrinsicsAnnotations,
+    gt_frame_timestamps: torch.Tensor | None = None,
+    pred_frame_timestamps: torch.Tensor | None = None,
 ):
+    """Metrics of a prediction against the ground truth, over the GT frames.
+
+    Args:
+        gt_keypoints_3d_annotations: Ground-truth 3D keypoints, whose frames
+            are the ones scored.
+        gt_cam_extrinsics_annotations: Ground-truth camera poses.
+        pred_keypoints_3d_annotations: Predicted 3D keypoints.
+        pred_cam_extrinsics_annotations: Predicted camera poses.
+        gt_frame_timestamps: Timestamps of the ground-truth timeline, indexed
+            by ground-truth frame index. Given together with
+            `pred_frame_timestamps`, predictions are aligned by timestamp
+            rather than by frame index, which is what a prediction resampled
+            onto its own grid needs.
+        pred_frame_timestamps: Timestamps of the prediction timeline, indexed
+            by predicted frame index.
+    """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     frames = gt_keypoints_3d_annotations.frames
@@ -186,6 +205,11 @@ def compute_human_metrics(
     view_id_to_idx = {view_id: i for i, view_id in enumerate(views_ids)}
     subject_id_to_idx = {subject_id: i for i, subject_id in enumerate(gt_subjects_ids)}
     frame_to_idx = {frame_idx: i for i, frame_idx in enumerate(frames)}
+    # Ground-truth slots each predicted frame answers for. Falls back to
+    # matching by frame index when no timeline is supplied.
+    slots_by_pred_frame = build_slots_by_prediction_frame(
+        frames, gt_frame_timestamps, pred_frame_timestamps
+    )
 
     if set(pred_subjects_ids) != set(gt_subjects_ids):
         if len(pred_subjects_ids) == len(gt_subjects_ids) == 1:
@@ -213,13 +237,10 @@ def compute_human_metrics(
 
     for ann in pred_keypoints_3d_annotations.annotations:
         subject_idx = subject_id_to_idx[ann.subject_id]
-        frame_idx = frame_to_idx.get(ann.frame_idx, -1)
-        if frame_idx == -1:
-            continue
-        pred_kps3d[frame_idx, subject_idx] = ann.xyz
-        pred_valid[frame_idx, subject_idx] = (
-            torch.as_tensor(ann.scores, device=device) > 0
-        )
+        scores = torch.as_tensor(ann.scores, device=device) > 0
+        for slot in slots_by_pred_frame.get(ann.frame_idx, ()):
+            pred_kps3d[slot, subject_idx] = ann.xyz
+            pred_valid[slot, subject_idx] = scores
 
     if len(pred_cam_extrinsics_annotations.annotations) == n_views:
         pred_world2cam = torch.empty((n_views, 3, 4), device=device)
@@ -234,10 +255,8 @@ def compute_human_metrics(
 
         for ann in pred_cam_extrinsics_annotations.annotations:
             view_idx = view_id_to_idx[ann.view_id]
-            frame_idx = frame_to_idx.get(ann.frame_idx, -1)
-            if frame_idx == -1:
-                continue
-            pred_world2cam[frame_idx, view_idx] = ann.Rt
+            for slot in slots_by_pred_frame.get(ann.frame_idx, ()):
+                pred_world2cam[slot, view_idx] = ann.Rt
 
     gt_cam2world = inverse_Rt(gt_world2cam)
     pred_cam2world = inverse_Rt(pred_world2cam)

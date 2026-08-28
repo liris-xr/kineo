@@ -22,6 +22,7 @@ import numpy as np
 import orjson
 from dataclasses import dataclass
 import os
+import torch
 
 
 def default(obj):
@@ -35,6 +36,14 @@ def default(obj):
 @dataclass(frozen=True)
 class MetricsExportRuntimeConfig:
     output_path_template: str = "./outputs/metrics/{sequence_name}.json"
+
+
+def _frame_timestamps(time_reference) -> torch.Tensor | None:
+    """Frame timestamps of a global time reference, if there is one."""
+    if time_reference is None:
+        return None
+    annotation = time_reference.first_or_default()
+    return None if annotation is None else annotation.timestamps
 
 
 class MetricsExportStage(PipelineStage[MetricsExportRuntimeConfig]):
@@ -105,11 +114,19 @@ class MetricsExportStage(PipelineStage[MetricsExportRuntimeConfig]):
             pred_cam_intrinsics_annotations=pred_camera_intrinsics,
             pred_cam_extrinsics_annotations=pred_camera_extrinsics,
         )
+        # A prediction resampled onto its own uniform grid no longer numbers
+        # frames the way the annotation does, so the two are matched by
+        # timestamp whenever both timelines are known.
+        gt_time_reference = gt_annotations.get("global_time_reference")
+        pred_time_reference = annotations.get("global_time_reference")
+
         human_metrics = compute_human_metrics_over_sequence(
             gt_keypoints_3d_annotations=gt_keypoints_3d,
             gt_cam_extrinsics_annotations=gt_camera_extrinsics,
             pred_keypoints_3d_annotations=pred_keypoints_3d,
             pred_cam_extrinsics_annotations=pred_camera_extrinsics,
+            gt_frame_timestamps=_frame_timestamps(gt_time_reference),
+            pred_frame_timestamps=_frame_timestamps(pred_time_reference),
         )
 
         non_static_views = [
