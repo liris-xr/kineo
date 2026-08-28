@@ -1,0 +1,65 @@
+# Sequences excluded from the Kineo AIST++ benchmarks.
+#
+# The first block is AIST++'s own ignore_list.txt, shipped with its v1.0
+# release, which its authors describe as "those sequences with poorly
+# reconstructed 3D keypoints and human motion annotations" and recommend
+# excluding. It is copied here rather than read from the downloaded dataset so
+# that a preprocessing run is reproducible from this repository alone.
+#
+# The second block is what Kineo excludes on top of it. Blank lines and lines
+# starting with '#' are ignored.
+
+# --- AIST++ v1.0 ignore_list.txt ---------------------------------------------
+gBR_sBM_cAll_d04_mBR0_ch07
+gBR_sBM_cAll_d04_mBR0_ch08
+gBR_sBM_cAll_d04_mBR0_ch10
+gBR_sBM_cAll_d05_mBR0_ch07
+gBR_sFM_cAll_d04_mBR4_ch07
+gBR_sFM_cAll_d05_mBR4_ch13
+gBR_sFM_cAll_d05_mBR5_ch14
+gBR_sFM_cAll_d06_mBR5_ch19
+gHO_sFM_cAll_d20_mHO5_ch13
+gJB_sBM_cAll_d07_mJB2_ch06
+gJB_sBM_cAll_d07_mJB3_ch01
+gJB_sBM_cAll_d07_mJB3_ch05
+gJB_sBM_cAll_d08_mJB0_ch07
+gJB_sBM_cAll_d08_mJB0_ch09
+gJB_sBM_cAll_d08_mJB1_ch09
+gJB_sBM_cAll_d08_mJB5_ch07
+gJB_sBM_cAll_d09_mJB2_ch07
+gJB_sBM_cAll_d09_mJB3_ch07
+gJB_sBM_cAll_d09_mJB4_ch06
+gJB_sBM_cAll_d09_mJB4_ch07
+gJB_sBM_cAll_d09_mJB4_ch09
+gJB_sBM_cAll_d09_mJB5_ch09
+gJB_sFM_cAll_d08_mJB3_ch11
+gJS_sBM_cAll_d03_mJS3_ch10
+gJS_sFM_cAll_d01_mJS0_ch01
+gJS_sFM_cAll_d01_mJS1_ch02
+gJS_sFM_cAll_d02_mJS0_ch08
+gJS_sFM_cAll_d03_mJS0_ch01
+gKR_sBM_cAll_d30_mKR5_ch01
+gKR_sBM_cAll_d30_mKR5_ch02
+gWA_sBM_cAll_d25_mWA1_ch04
+gWA_sBM_cAll_d25_mWA2_ch03
+gWA_sBM_cAll_d25_mWA2_ch04
+gWA_sBM_cAll_d25_mWA3_ch04
+gWA_sBM_cAll_d26_mWA0_ch09
+gWA_sBM_cAll_d26_mWA1_ch01
+gWA_sBM_cAll_d27_mWA2_ch01
+gWA_sBM_cAll_d27_mWA2_ch08
+gWA_sBM_cAll_d27_mWA3_ch01
+gWA_sBM_cAll_d27_mWA4_ch02
+gWA_sBM_cAll_d27_mWA4_ch08
+gWA_sBM_cAll_d27_mWA5_ch01
+gWA_sBM_cAll_d27_mWA5_ch08
+gWA_sFM_cAll_d26_mWA2_ch10
+gWA_sFM_cAll_d27_mWA1_ch16
+
+# --- Kineo additions ---------------------------------------------------------
+# AIST++ NaNs out camera c05 of this sequence in run_estimate_camera.py and
+# run_estimate_keypoints.py with the comment "not synced view", so its refined
+# views are not mutually synchronized and the time offset derived for c05 is
+# wrong by an unknown amount. That exclusion lives only in their processing
+# scripts, so nothing in the released annotations signals it.
+gBR_sBM_cAll_d04_mBR0_ch01

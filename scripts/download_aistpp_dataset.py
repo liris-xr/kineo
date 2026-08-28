@@ -64,7 +64,9 @@ if __name__ == "__main__":
         type=str,
         choices=VIDEO_BITRATES,
         default="10M",
-        help="Video bitrate. The 'raw' videos weigh 514GB at 10M, 82GB at 2M.",
+        help="Video bitrate. 10M is the highest AIST publishes and the "
+        "native quality; both tiers are 1920x1080. The default pose_test "
+        "split weighs 128GB of raw video at 10M, 20GB at 2M.",
     )
     parser.add_argument(
         "--split",

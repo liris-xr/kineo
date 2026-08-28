@@ -16,9 +16,10 @@ import os
 import re
 import requests
 import threading
+import time
 import zipfile
 
-from kineo.io.download import download_file
+from kineo.io.download import HTTP_TIMEOUT_S, download_file
 
 # The AIST Dance Video Database publishes, for each video variant and bitrate,
 # a headerless CSV holding one video URL per line.
@@ -57,6 +58,17 @@ VIDEO_BITRATES = ("10M", "2M")
 # "sFM" are covered by the AIST++ annotations.
 VIDEO_GENRES = ("sBM", "sBT", "sCY", "sFM", "sGR", "sMM", "sSH")
 
+# A stalled transfer now raises rather than hanging, and a whole split is too
+# long a download for one flaky file to end. Each attempt resumes where the
+# last stopped.
+DOWNLOAD_ATTEMPTS = 4
+
+# Sequences Kineo excludes, AIST++'s own ignore list plus its additions. Kept
+# in the repository rather than read from the download so that preprocessing is
+# reproducible without it, and so an exclusion AIST++ only encodes in its
+# processing scripts can be recorded.
+IGNORE_LIST_PATH = os.path.join(os.path.dirname(__file__), "aistpp_ignore_list.txt")
+
 # AIST++ ships two unrelated split families: "pose_*" partitions the annotated
 # sequences for 3D pose estimation, "crossmodal_*" splits them for music-to-
 # dance generation and covers only 1020 of the 1408 sequences.
@@ -81,6 +93,16 @@ def _make_session() -> requests.Session:
     session.mount("http://", adapter)
     session.mount("https://", adapter)
     return session
+
+
+def load_ignored_sequences() -> set[str]:
+    """Reads the sequence names Kineo excludes from the AIST++ benchmarks.
+
+    Returns:
+        Sequence names carrying "cAll", as the AIST++ splits spell them.
+    """
+    with open(IGNORE_LIST_PATH) as f:
+        return {line.strip() for line in f if line.strip() and not line.startswith("#")}
 
 
 def _sequence_name(video_name: str) -> str:
@@ -109,30 +131,28 @@ def _load_split_sequences(
 ) -> set[str]:
     """Reads the sequence names of a split, dropping the ignored ones.
 
-    Downloads the two small annotation files the split is read from if they are
-    not already there, so a split can be selected without pulling the multi-
-    gigabyte keypoint archives.
+    Downloads the small archive the splits are read from if it is not already
+    there, so a split can be selected without pulling the multi-gigabyte
+    keypoint archives.
 
     Args:
-        session: Session used to fetch the split files if they are missing.
+        session: Session used to fetch the splits archive if it is missing.
         annotations_dir: Directory holding the AIST++ annotation files.
         split: Name of the split, one of `AISTPP_SPLITS`.
-        drop_ignored: Whether to drop the sequences AIST++ flags as poorly
-            reconstructed in its `ignore_list.txt`.
-        force_download: Whether to re-download the split files.
+        drop_ignored: Whether to drop the sequences of `IGNORE_LIST_PATH`.
+        force_download: Whether to re-download the splits archive.
 
     Returns:
         Sequence names of the split, e.g. "gBR_sBM_cAll_d04_mBR0_ch01".
     """
     os.makedirs(annotations_dir, exist_ok=True)
 
-    for filename in ("splits.zip", "ignore_list.txt"):
-        download_file(
-            session,
-            AISTPP_ANNOTATIONS_BASE_URL + filename,
-            os.path.join(annotations_dir, filename),
-            force_download=force_download,
-        )
+    download_file(
+        session,
+        AISTPP_ANNOTATIONS_BASE_URL + "splits.zip",
+        os.path.join(annotations_dir, "splits.zip"),
+        force_download=force_download,
+    )
 
     with zipfile.ZipFile(os.path.join(annotations_dir, "splits.zip")) as archive:
         sequences = set(archive.read(f"splits/{split}.txt").decode().split())
@@ -140,10 +160,7 @@ def _load_split_sequences(
     if not drop_ignored:
         return sequences
 
-    with open(os.path.join(annotations_dir, "ignore_list.txt")) as f:
-        ignored = set(f.read().split())
-
-    return sequences - ignored
+    return sequences - load_ignored_sequences()
 
 
 def _fetch_video_urls(
@@ -152,7 +169,7 @@ def _fetch_video_urls(
     bitrate: str,
 ) -> list[str]:
     list_url = AIST_VIDEO_LIST_URL.format(variant=variant, bitrate=bitrate)
-    response = session.get(list_url)
+    response = session.get(list_url, timeout=HTTP_TIMEOUT_S)
 
     if response.status_code != 200:
         raise Exception(
@@ -188,12 +205,24 @@ def _download_videos(
     def _download_video(video_url: str):
         if not hasattr(worker_state, "session"):
             worker_state.session = _make_session()
-        download_file(
-            worker_state.session,
-            video_url,
-            os.path.join(output_dir, os.path.basename(video_url)),
-            force_download=force_download,
-        )
+
+        for attempt in range(DOWNLOAD_ATTEMPTS):
+            try:
+                download_file(
+                    worker_state.session,
+                    video_url,
+                    os.path.join(output_dir, os.path.basename(video_url)),
+                    force_download=force_download and attempt == 0,
+                )
+                return
+            except Exception as error:
+                if attempt == DOWNLOAD_ATTEMPTS - 1:
+                    raise
+                tqdm.write(
+                    f"Retrying {os.path.basename(video_url)} "
+                    f"({attempt + 1}/{DOWNLOAD_ATTEMPTS - 1}): {error}"
+                )
+                time.sleep(2**attempt)
 
     pbar = tqdm(
         total=len(video_urls),
@@ -284,20 +313,22 @@ def download_aistpp(
         output_dir: Directory where the dataset is downloaded.
         variants: Video variants to download, among "raw" and "refined". The
             AIST++ annotations are aligned with the "refined" videos.
-        bitrate: Video bitrate, either "10M" or "2M". Raw videos weigh 421GB
-            at 10M and 66GB at 2M over the whole annotated set.
+        bitrate: Video bitrate, either "10M" or "2M". Both are 1920x1080;
+            10M is the highest AIST publishes, so it is the native quality
+            rather than a middle setting. Raw videos weigh 421GB at 10M and
+            66GB at 2M over the whole annotated set.
         split: Only download the videos of this AIST++ split, minus the
-            sequences of its `ignore_list.txt`. "all" keeps every annotated
+            sequences of `IGNORE_LIST_PATH`. "all" keeps every annotated
             sequence; the videos of the situations AIST++ does not annotate are
             never downloaded.
-        drop_ignored: Whether to skip the sequences AIST++ flags as poorly
-            reconstructed. Their videos are fine, so a study of the videos
-            alone rather than of the pose annotations can keep them.
+        drop_ignored: Whether to skip the sequences of `IGNORE_LIST_PATH`.
+            Their videos are fine, so a study of the videos alone rather than
+            of the pose annotations can keep them.
         annotations: Whether to download the AIST++ annotation archives.
-        metadata: Whether to download the per-genre video metadata CSVs. They
-            hold the duration of every raw and refined video, from which the
-            trimmed-away pre-roll and the tempo of each musical piece
-            (BPM = 960 / refined duration) are derived.
+        metadata: Whether to download the per-genre video metadata CSVs,
+            which list the URL, duration and file size of every raw and
+            refined video. Nothing in the preprocessing reads them; they are
+            downloaded for inspecting the dataset by hand.
         num_workers: Number of videos downloaded concurrently.
         force_download: Whether to download files that are already complete.
 
