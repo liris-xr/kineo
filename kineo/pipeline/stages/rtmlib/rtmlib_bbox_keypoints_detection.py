@@ -539,7 +539,6 @@ def _create_keypoints_annotations(
             subject_id=default_subject_id,
             xy=kps_xy.cpu(),
             scores=scores.cpu(),
-            annotated=torch.ones(keypoints_xy.shape[0], dtype=torch.bool),
             format=keypoints_format_name,
         )
         annotations.append(keypoint_annotation)

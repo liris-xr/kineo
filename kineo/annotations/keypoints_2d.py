@@ -47,7 +47,6 @@ class Keypoints2DAnnotation:
     subject_id: str
     xy: torch.Tensor  # (n_keypoints, 2)
     scores: torch.Tensor  # (n_keypoints,)
-    annotated: torch.Tensor  # (n_keypoints,)
     format: str  # format of the keypoints (e.g., "h36m", "coco")
 
     def __post_init__(self):
@@ -62,10 +61,6 @@ class Keypoints2DAnnotation:
             raise ValueError(
                 f"Expected scores to be of type torch.float32, got {self.scores.dtype}"
             )
-        if self.annotated.dtype != torch.bool:
-            raise ValueError(
-                f"Expected annotated to be of type torch.bool, got {self.annotated.dtype}"
-            )
         if self.xy.ndim != 2:
             raise ValueError(
                 f"Expected xy to be of shape (n_keypoints, 2), got {self.xy.shape}"
@@ -74,10 +69,6 @@ class Keypoints2DAnnotation:
         if self.scores.shape != (n_keypoints,):
             raise ValueError(
                 f"Expected scores to be of shape ({n_keypoints},), got {self.scores.shape}"
-            )
-        if self.annotated.shape != (n_keypoints,):
-            raise ValueError(
-                f"Expected annotated to be of shape ({n_keypoints},), got {self.annotated.shape}"
             )
         if not isinstance(self.format, str):
             raise ValueError(
@@ -91,7 +82,6 @@ class Keypoints2DAnnotation:
             "subject_id": self.subject_id,
             "xy": self.xy.tolist(),
             "scores": self.scores.tolist(),
-            "annotated": self.annotated.tolist(),
             "format": self.format,
         }
 
@@ -101,9 +91,8 @@ class Keypoints2DAnnotation:
             view_id=dict_data["view_id"],
             frame_idx=dict_data["frame_idx"],
             subject_id=dict_data["subject_id"],
-            xy=torch.tensor(dict_data["xy"]),
-            scores=torch.tensor(dict_data["scores"]),
-            annotated=torch.tensor(dict_data["annotated"]),
+            xy=torch.tensor(dict_data["xy"], dtype=torch.float32),
+            scores=torch.tensor(dict_data["scores"], dtype=torch.float32),
             format=dict_data["format"],
         )
 
@@ -114,7 +103,6 @@ class Keypoints2DAnnotation:
             subject_id=self.subject_id,
             xy=self.xy.cpu(),
             scores=self.scores.cpu(),
-            annotated=self.annotated.cpu(),
             format=self.format,
         )
 
@@ -170,10 +158,6 @@ class Keypoints2DAnnotations(Annotations[Keypoints2DAnnotation]):
             if annotation.scores.shape != (n_keypoints,):
                 raise ValueError(
                     f"Expected scores to be of shape ({n_keypoints},), got {annotation.scores.shape}"
-                )
-            if annotation.annotated.shape != (n_keypoints,):
-                raise ValueError(
-                    f"Expected annotated to be of shape ({n_keypoints},), got {annotation.annotated.shape}"
                 )
 
     def to_dict(self) -> dict:
@@ -365,7 +349,6 @@ class Keypoints2DAnnotations(Annotations[Keypoints2DAnnotation]):
                         frame_idx=annotation.frame_idx,
                         subject_id=annotation.subject_id,
                         xy=annotation.xy[mapping],
-                        annotated=annotation.annotated[mapping],
                         scores=annotation.scores[mapping],
                         format="coco",
                     )
@@ -384,7 +367,6 @@ class Keypoints2DAnnotations(Annotations[Keypoints2DAnnotation]):
                         frame_idx=annotation.frame_idx,
                         subject_id=annotation.subject_id,
                         xy=annotation.xy[mapping],
-                        annotated=annotation.annotated[mapping],
                         scores=annotation.scores[mapping],
                         format="coco",
                     )
@@ -434,6 +416,5 @@ def linear_interpolate_keypoints(
         subject_id=prev_annotation.subject_id,
         xy=interpolated_xy,
         scores=interpolated_scores,
-        annotated=prev_annotation.annotated.clone(),
         format=prev_annotation.format,
     )

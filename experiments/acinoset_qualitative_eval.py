@@ -115,7 +115,6 @@ def load_fte_annotations(
         valid_mask = torch.isfinite(kps_xy).all(dim=-1)
         kps_xy[~valid_mask] = 0
         score = torch.where(valid_mask, 1.0, 0.0)
-        annotated = torch.ones(n_bodyparts, dtype=torch.bool)
 
         mask = score > bbox_kp_score_thr
         if mask.any():
@@ -146,7 +145,6 @@ def load_fte_annotations(
                 subject_id=subject_id,
                 xy=kps_xy,
                 scores=score,
-                annotated=annotated,
                 format=CHEETAH_KPS_FORMAT.name,
             )
         )
@@ -183,7 +181,6 @@ def load_dlc_annotations(
             np.stack([xs[frame_idx], ys[frame_idx]], axis=1), dtype=torch.float32
         )
         score = torch.tensor(scores[frame_idx], dtype=torch.float32)
-        annotated = torch.ones(n_bodyparts, dtype=torch.bool)
 
         mask = score > bbox_kp_score_thr
         if mask.any():
@@ -215,7 +212,6 @@ def load_dlc_annotations(
                 subject_id=subject_id,
                 xy=kps_xy,
                 scores=score,
-                annotated=annotated,
                 format=CHEETAH_KPS_FORMAT.name,
             )
         )

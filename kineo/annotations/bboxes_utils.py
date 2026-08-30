@@ -91,10 +91,9 @@ def generate_bboxes2d_from_kps2d(
     for annotation in kps2d_annotations.annotations:
         xy = annotation.xy  # (n_keypoints, 2)
         scores = annotation.scores  # (n_keypoints,)
-        annotated_mask = annotation.annotated  # (n_keypoints,)
 
-        # Only use annotated keypoints with positive scores
-        valid_mask = annotated_mask & (scores > 0)
+        # Only use keypoints with positive scores
+        valid_mask = scores > 0
         if valid_mask.sum() == 0:
             continue
 

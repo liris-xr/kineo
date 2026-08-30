@@ -35,7 +35,6 @@ def make_keypoints(view_ids, frame_idxs=(0,)):
                 subject_id="subject",
                 xy=torch.zeros((2, 2), dtype=torch.float32),
                 scores=torch.ones(2, dtype=torch.float32),
-                annotated=torch.ones(2, dtype=torch.bool),
                 format=TOY_FORMAT.name,
             )
             for view_id in view_ids

@@ -27,12 +27,10 @@ from kineo.io.audio_loader import AudioLoader
 
 class Keypoints2D(TypedDict):
     xy: torch.Tensor
-    annotated: torch.Tensor
 
 
 class Keypoints3D(TypedDict):
     xyz: torch.Tensor
-    annotated: torch.Tensor
 
 
 class Annotations2D(TypedDict):

@@ -294,7 +294,6 @@ class NLFSMPLKeypointsDetectionStage(PipelineStage[NLFSMPLKeypointsDetectionRunt
                             subject_id=subject_id,
                             xy=kps_xy.cpu(),
                             scores=scores.cpu(),
-                            annotated=torch.ones(kps_xy.shape[0], dtype=torch.bool),
                             format=keypoints_format.name,
                         )
 
