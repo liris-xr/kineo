@@ -210,8 +210,8 @@ def main(
                 annotations={},
                 gt_annotations={
                     "bboxes_2d": gt_bboxes_2d,
-                    "camera_intrinsics": gt_cam_intrinsics,
-                    "camera_extrinsics": gt_cam_extrinsics,
+                    "cameras_intrinsics": gt_cam_intrinsics,
+                    "cameras_extrinsics": gt_cam_extrinsics,
                     "keypoints_3d": gt_keypoints_3d,
                     "keypoints_2d": gt_keypoints_2d,
                 },

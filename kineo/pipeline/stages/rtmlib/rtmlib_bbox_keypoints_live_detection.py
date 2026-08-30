@@ -182,8 +182,8 @@ class RtmlibBboxKeypointsLiveDetectionStage(
 
         rr.spawn()
 
-        camera_intrinsics: CameraIntrinsicsAnnotations = annotations["camera_intrinsics"]
-        camera_extrinsics: CameraExtrinsicsAnnotations = annotations["camera_extrinsics"]
+        camera_intrinsics: CameraIntrinsicsAnnotations = annotations["cameras_intrinsics"]
+        camera_extrinsics: CameraExtrinsicsAnnotations = annotations["cameras_extrinsics"]
 
         n_views = len(views)
         Ks = torch.empty((n_views, 3, 3), dtype=torch.float32, device=device)

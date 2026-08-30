@@ -76,11 +76,11 @@ class BundleAdjustmentSamplingStage(
         device = pipeline.device
 
         cameras_intrinsics: CameraIntrinsicsAnnotations = annotations[
-            "camera_intrinsics"
+            "cameras_intrinsics"
         ]
 
         cameras_extrinsics: CameraExtrinsicsAnnotations = annotations[
-            "camera_extrinsics"
+            "cameras_extrinsics"
         ]
 
         # Assuming kps2d are on a common time reference (same number of keypoints for each view)

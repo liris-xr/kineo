@@ -68,10 +68,10 @@ class ExportToUsdStage(PipelineStage[ExportToUsdRuntimeConfig]):
 
         pred_keypoints_3d: Keypoints3DAnnotations = annotations["keypoints_3d"]
         pred_camera_extrinsics: CameraExtrinsicsAnnotations = annotations[
-            "camera_extrinsics"
+            "cameras_extrinsics"
         ]
         pred_camera_intrinsics: CameraIntrinsicsAnnotations = annotations[
-            "camera_intrinsics"
+            "cameras_intrinsics"
         ]
 
         if global_time_reference is not None:

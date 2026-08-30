@@ -102,11 +102,11 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
         device = pipeline.device
 
         cameras_intrinsics: CameraIntrinsicsAnnotations = annotations[
-            "camera_intrinsics"
+            "cameras_intrinsics"
         ]
 
         cameras_extrinsics: CameraExtrinsicsAnnotations = annotations[
-            "camera_extrinsics"
+            "cameras_extrinsics"
         ]
 
         bundle_adjustment_keypoints: BundleAdjustmentKeypointsAnnotation = (
@@ -182,7 +182,7 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
             use_lbfgs=runtime_cfg.use_lbfgs,
         )
 
-        annotations["camera_extrinsics"] = CameraExtrinsicsAnnotations(
+        annotations["cameras_extrinsics"] = CameraExtrinsicsAnnotations(
             metadata=CameraExtrinsicsAnnotationsMetadata(),
             annotations=[
                 CameraExtrinsicsAnnotation(
@@ -195,7 +195,7 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
             ],
         )
 
-        annotations["camera_intrinsics"] = CameraIntrinsicsAnnotations(
+        annotations["cameras_intrinsics"] = CameraIntrinsicsAnnotations(
             metadata=CameraIntrinsicsAnnotationsMetadata(),
             annotations=[
                 CameraIntrinsicsAnnotation(

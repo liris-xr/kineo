@@ -40,7 +40,7 @@ class GlobalScaleApplicationStage(PipelineStage):
         runtime_cfg: None = None,
     ):
         camera_extrinsics: CameraExtrinsicsAnnotations = annotations[
-            "camera_extrinsics"
+            "cameras_extrinsics"
         ]
         keypoints_3d: Keypoints3DAnnotations = annotations["keypoints_3d"]
         global_scale: GlobalScaleAnnotation = annotations[
@@ -82,7 +82,7 @@ class GlobalScaleApplicationStage(PipelineStage):
             annotations=new_keypoints_3d,
         ).cpu()
 
-        annotations["camera_extrinsics"] = CameraExtrinsicsAnnotations(
+        annotations["cameras_extrinsics"] = CameraExtrinsicsAnnotations(
             metadata=camera_extrinsics.metadata,
             annotations=new_camera_extrinsics,
         ).cpu()

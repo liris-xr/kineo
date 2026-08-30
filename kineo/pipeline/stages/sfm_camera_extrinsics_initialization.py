@@ -96,7 +96,7 @@ class SfMCameraExtrinsicsInitializationStage(
             raise ValueError("No calibration points annotations found.")
 
         cameras_intrinsics: CameraIntrinsicsAnnotations = annotations[
-            "camera_intrinsics"
+            "cameras_intrinsics"
         ]
 
         n_views = len(views)
@@ -177,7 +177,7 @@ class SfMCameraExtrinsicsInitializationStage(
                 )
             )
 
-        annotations["camera_extrinsics"] = CameraExtrinsicsAnnotations(
+        annotations["cameras_extrinsics"] = CameraExtrinsicsAnnotations(
             metadata=CameraExtrinsicsAnnotationsMetadata(),
             annotations=camera_extrinsics_annotations,
         ).cpu()

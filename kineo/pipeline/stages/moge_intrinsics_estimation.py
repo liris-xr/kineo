@@ -98,7 +98,7 @@ class MoGeIntrinsicsEstimationStage(PipelineStage):
             self.moge_model = self.moge_model.to(device)
             try:
                 return {
-                    "camera_intrinsics": self._estimate_views_intrinsics(
+                    "cameras_intrinsics": self._estimate_views_intrinsics(
                         missing_views, device, runtime_cfg.use_half_precision
                     )
                 }
@@ -108,7 +108,7 @@ class MoGeIntrinsicsEstimationStage(PipelineStage):
         cached = per_view_cache.load_or_infer_per_view(
             views=views,
             specs={
-                "camera_intrinsics": per_view_cache.PerViewCacheSpec(
+                "cameras_intrinsics": per_view_cache.PerViewCacheSpec(
                     annotations_cls=CameraIntrinsicsAnnotations,
                     metadata=CameraIntrinsicsAnnotationsMetadata(),
                 )
@@ -119,7 +119,7 @@ class MoGeIntrinsicsEstimationStage(PipelineStage):
             use_cache=runtime_cfg.use_cache,
         )
 
-        annotations["camera_intrinsics"] = cached["camera_intrinsics"]
+        annotations["cameras_intrinsics"] = cached["cameras_intrinsics"]
 
     def _estimate_views_intrinsics(
         self,
