@@ -79,7 +79,7 @@ class Keypoints2DAnnotation:
                 f"Expected format to be of type str, got {type(self.format)}"
             )
 
-    def to_dict(self) -> dict:
+    def to_dict(self, round_xy: bool = True) -> dict:
         return {
             "view_id": self.view_id,
             "frame_idx": self.frame_idx,
@@ -87,7 +87,9 @@ class Keypoints2DAnnotation:
             "xy": [
                 [round(x, XY_DECIMALS), round(y, XY_DECIMALS)]
                 for x, y in self.xy.tolist()
-            ],
+            ]
+            if round_xy
+            else self.xy.tolist(),
             "scores": self.scores.tolist(),
             "format": self.format,
         }
@@ -167,11 +169,17 @@ class Keypoints2DAnnotations(Annotations[Keypoints2DAnnotation]):
                     f"Expected scores to be of shape ({n_keypoints},), got {annotation.scores.shape}"
                 )
 
-    def to_dict(self) -> dict:
+    def to_dict(self, round_xy: bool = True) -> dict:
         return {
             "metadata": self._metadata.to_dict(),
-            "annotations": [annotation.to_dict() for annotation in self._annotations],
+            "annotations": [
+                annotation.to_dict(round_xy=round_xy)
+                for annotation in self._annotations
+            ],
         }
+
+    def to_dict_lossless(self) -> dict:
+        return self.to_dict(round_xy=False)
 
     @staticmethod
     def from_dict(dict_data: dict) -> Keypoints2DAnnotations:

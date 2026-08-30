@@ -157,8 +157,6 @@ def _run_stage(
     n_kp_samples_per_view: int,
     sampler: str = "farthest_point",
     filter_negative_depth: bool = False,
-    min_parallax_deg: float | None = None,
-    max_reproj_error_focal_ratio: float | None = None,
     farthest_point_depth_weight: float = 0.0,
     filter_off_frame_keypoints: bool = True,
 ):
@@ -174,8 +172,6 @@ def _run_stage(
         sampler=sampler,
         filter_off_frame_keypoints=filter_off_frame_keypoints,
         filter_negative_depth=filter_negative_depth,
-        min_parallax_deg=min_parallax_deg,
-        max_reproj_error_focal_ratio=max_reproj_error_focal_ratio,
         farthest_point_depth_weight=farthest_point_depth_weight,
     )
     stage = BundleAdjustmentSamplingStage(
@@ -314,42 +310,9 @@ def test_cheirality_gate_drops_observations_behind_their_view():
     assert bool((_weighted_observations(annotation).sum(dim=0) >= 2).all())
 
 
-def test_reprojection_gate_bounds_the_residual_of_every_kept_observation():
-    from kineo.geometry.metrics import compute_normalized_reprojection_residuals
-
-    max_error = 0.01
-    annotation = _run_stage(
-        n_kp_samples_per_view=-1, max_reproj_error_focal_ratio=max_error
-    )
-
-    height, width = RESOLUTION_HW
-    Ks = torch.tensor(
-        [[500.0, 0.0, width / 2], [0.0, 500.0, height / 2], [0.0, 0.0, 1.0]]
-    ).expand(N_VIEWS, 3, 3)
-    residuals, _ = compute_normalized_reprojection_residuals(
-        kps_3d=annotation.kps_3d,
-        kps_2d=annotation.kps_2d_xy,
-        Ks=Ks,
-        Rts=_rig_extrinsics(),
-        Ds=torch.zeros(N_VIEWS, 5),
-        distortion_model="brown_conrady",
-    )
-
-    kept = _weighted_observations(annotation)
-    assert bool(kept.any())
-    # The emitted points are retriangulated from the gated weights, so this
-    # rechecks the residual against the point the stage actually exports.
-    assert float(residuals[kept].max()) < 2.0 * max_error
-
-
 def test_the_gate_only_ever_shrinks_the_candidate_set():
     ungated = _run_stage(n_kp_samples_per_view=-1)
-    gated = _run_stage(
-        n_kp_samples_per_view=-1,
-        filter_negative_depth=True,
-        min_parallax_deg=1.0,
-        max_reproj_error_focal_ratio=0.01,
-    )
+    gated = _run_stage(n_kp_samples_per_view=-1, filter_negative_depth=True)
 
     assert 0 < gated.kps_3d.shape[0] < ungated.kps_3d.shape[0]
 

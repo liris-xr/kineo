@@ -112,15 +112,15 @@ def load_ignored_sequences() -> set[str]:
         }
 
 
-def split_sequences(split: str, drop_ignored: bool = True) -> list[str]:
-    """Lists the sequences of a TEMPO split.
+def split_sequences(split: str) -> list[str]:
+    """Lists the sequences of a TEMPO split, less the ignored ones.
 
     Args:
         split: Name of the split, one of `PANOPTIC_SPLITS`.
-        drop_ignored: Whether to drop the sequences of `IGNORE_LIST_PATH`.
 
     Returns:
-        Sequence names, in the order the TEMPO configuration lists them.
+        Sequence names, in the order the TEMPO configuration lists them,
+        without those of `IGNORE_LIST_PATH`.
 
     Raises:
         ValueError: If an unknown split is requested.
@@ -136,9 +136,6 @@ def split_sequences(split: str, drop_ignored: bool = True) -> list[str]:
         sequences = list(TEMPO_TEST_SEQUENCES)
     else:
         sequences = list(TEMPO_TRAIN_SEQUENCES) + list(TEMPO_TEST_SEQUENCES)
-
-    if not drop_ignored:
-        return sequences
 
     ignored = load_ignored_sequences()
     return [sequence for sequence in sequences if sequence not in ignored]
@@ -193,7 +190,6 @@ def download_panoptic(
     output_dir: str,
     split: str = "test",
     cameras: Sequence[int] = TEMPO_HD_CAMERAS,
-    drop_ignored: bool = True,
     annotations: bool = True,
     videos: bool = True,
     num_workers: int = 1,
@@ -214,7 +210,6 @@ def download_panoptic(
             about 40GB.
         cameras: HD camera nodes to download, in 0..30. The TEMPO protocol
             reads `TEMPO_HD_CAMERAS`.
-        drop_ignored: Whether to skip the sequences of `IGNORE_LIST_PATH`.
         annotations: Whether to download the calibration and the 3D body
             keypoint archive of each sequence.
         videos: Whether to download the HD videos.
@@ -224,7 +219,7 @@ def download_panoptic(
     Raises:
         ValueError: If an unknown split or camera node is requested.
     """
-    sequences = split_sequences(split, drop_ignored)
+    sequences = split_sequences(split)
 
     unknown_cameras = set(cameras) - set(range(N_HD_CAMERAS))
     if unknown_cameras:

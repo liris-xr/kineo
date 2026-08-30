@@ -2,7 +2,7 @@ import networkx as nx
 import pytest
 import torch
 
-from kineo.pipeline.stages.sfm_camera_extrinsics_initialization import (
+from kineo.pipeline.stages.sfm_camera_extrinsics_initialization_rotation_averaging import (
     _refine_camera_extrinsics,
 )
 

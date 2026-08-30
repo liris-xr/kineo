@@ -9,6 +9,7 @@ from kineo.annotations import (
     Keypoints2DAnnotations,
     Keypoints2DAnnotationsMetadata,
     Keypoints2DAnnotation,
+    BBox2DAnnotation,
     BBox2DAnnotations,
     CameraIntrinsicsAnnotations,
     COCO_17_KEYPOINTS_FORMAT,
@@ -183,21 +184,24 @@ class NLFSkeletonKeypointsDetectionStage(
             view_id = view["view_id"]
             view_n_frames = frame_loader.n_frames
 
-            K = (
-                intrinsics_annotations.filter_by_view_id(view_id)
-                .first_or_default()
-                .K.to(device)
+            view_intrinsics = (
+                intrinsics_annotations.filter_by_view_id(view_id).first_or_default()
                 if intrinsics_annotations is not None
+                else None
+            )
+            K = view_intrinsics.K.to(device) if view_intrinsics is not None else None
+            D = (
+                view_intrinsics.distortion_coefficients.to(device)
+                if view_intrinsics is not None
                 else None
             )
 
-            D = (
-                intrinsics_annotations.filter_by_view_id(view_id)
-                .first_or_default()
-                .distortion_coefficients.to(device)
-                if intrinsics_annotations is not None
-                else None
-            )
+            # Index this view's boxes by frame once. Filtering per frame instead
+            # rescans every box in the sequence for every frame, which dominates
+            # the stage on long multi-view sequences.
+            view_bboxes_by_frame: dict[int, list[BBox2DAnnotation]] = {}
+            for bbox in bboxes_annotations.filter_by_view_id(view_id):
+                view_bboxes_by_frame.setdefault(bbox.frame_idx, []).append(bbox)
 
             world_up_vector = torch.tensor(
                 [0, -1, 0], dtype=torch.float32, device=device
@@ -225,18 +229,16 @@ class NLFSkeletonKeypointsDetectionStage(
                 ]
 
                 for batch_idx, frame_idx in enumerate(batch_frames):
-                    frame_bboxes = bboxes_annotations.filter_by_view_id(
-                        view_id
-                    ).filter_by_frame_idx(frame_idx)
-
-                    frame_annotations = frame_bboxes.annotations
+                    frame_annotations = view_bboxes_by_frame.get(frame_idx, [])
 
                     if len(frame_annotations) == 0:
                         continue
 
                     frame_subjects_ids = [bbox.subject_id for bbox in frame_annotations]
+                    # Assembled on the host, then moved in one transfer: a
+                    # per-box copy costs more than the boxes themselves.
                     frame_bboxes_xyxy = torch.stack(
-                        [bbox.xyxy.to(device) for bbox in frame_annotations]
+                        [bbox.xyxy for bbox in frame_annotations]
                     )
                     frame_bboxes_xywh = torch.empty_like(frame_bboxes_xyxy)
                     frame_bboxes_xywh[..., :2] = frame_bboxes_xyxy[..., :2]
@@ -246,11 +248,10 @@ class NLFSkeletonKeypointsDetectionStage(
                     frame_bboxes_scores = torch.tensor(
                         [[bbox.score] for bbox in frame_annotations],
                         dtype=torch.float32,
-                        device=device,
                     )
                     frame_bboxes_xywhs = torch.cat(
                         [frame_bboxes_xywh, frame_bboxes_scores], dim=-1
-                    )
+                    ).to(device)
 
                     batch_bboxes_xywhs[batch_idx] = frame_bboxes_xywhs
                     batch_subjects_ids[batch_idx] = frame_subjects_ids
@@ -266,12 +267,17 @@ class NLFSkeletonKeypointsDetectionStage(
                     use_half_precision=use_half_precision,
                 )
 
+                # Each per-subject .cpu() is its own device sync, so the whole
+                # batch is brought back at once instead.
+                batch_joints2d_cpu = [j.cpu() for j in batch_results["joints2d"]]
+                batch_confidences_cpu = [
+                    c.cpu() for c in batch_results["joints_confidences"]
+                ]
+
                 for batch_idx in range(actual_batch_size):
                     frame_idx = batch_frames[batch_idx]
-                    batch_joints2d = batch_results["joints2d"][batch_idx]
-                    batch_joints2d_confidences = batch_results["joints_confidences"][
-                        batch_idx
-                    ]
+                    batch_joints2d = batch_joints2d_cpu[batch_idx]
+                    batch_joints2d_confidences = batch_confidences_cpu[batch_idx]
 
                     n_subjects = batch_joints2d.shape[0]
 
@@ -286,8 +292,8 @@ class NLFSkeletonKeypointsDetectionStage(
                             view_id=view_id,
                             frame_idx=frame_idx,
                             subject_id=subject_id,
-                            xy=subject_joints2d_xy.cpu(),
-                            scores=subject_joints2d_confidence.cpu(),
+                            xy=subject_joints2d_xy,
+                            scores=subject_joints2d_confidence,
                             format=keypoints_format.name,
                         )
 

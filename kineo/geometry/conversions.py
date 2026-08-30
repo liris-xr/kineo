@@ -621,9 +621,10 @@ def convert_points_from_homogeneous(
         torch.Tensor: value of the dropped dimension, never bounded. Shape (*, 1).
     """
     divisor = pts[..., -1:]
-    bounded_divisor = torch.where(
-        divisor.abs() < eps, torch.full_like(divisor, eps), divisor
-    )
+    # Signed bound: replacing a small negative divisor with +eps would move the
+    # point in front of the camera, which is what the depth gate reads.
+    sign = torch.where(divisor < 0, -torch.ones_like(divisor), torch.ones_like(divisor))
+    bounded_divisor = torch.where(divisor.abs() < eps, sign * eps, divisor)
     return pts[..., :-1] / bounded_divisor, divisor
 
 

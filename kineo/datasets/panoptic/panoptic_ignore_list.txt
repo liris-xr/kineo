@@ -3,7 +3,11 @@
 # TEMPO (Choudhury et al., ICCV 2023, Sec. 4.1) drops 160906_band3 "due to
 # data corruption". Earlier work sharing the same five-camera split does keep
 # it: it is the tenth entry of VoxelPose's TRAIN_LIST, and VTP inherits that
-# list. Pass --keep-ignored to reproduce those instead.
+# list.
+#
+# `TEMPO_TRAIN_SEQUENCES` already leaves it out, so it is never downloaded
+# rather than downloaded and then dropped. This list is what keeps it out of
+# everything downstream, including a directory the panoptic-toolbox populated.
 #
 # Kept in the repository rather than read from the download so preprocessing
 # is reproducible without re-fetching anything.

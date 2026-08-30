@@ -251,3 +251,29 @@ def test_logs_that_the_cache_is_disabled(template, keypoints_specs, capsys):
     run(make_views("cam1"), keypoints_specs, infer, template, use_cache=False)
 
     assert "[cache] seq keypoints_2d: disabled" in capsys.readouterr().out
+
+
+def test_cached_keypoints_round_trip_exactly(template, keypoints_specs):
+    # to_dict rounds xy to a milli-pixel for the dataset files. The cache must
+    # not, or a cached run and an uncached one feed different numbers to the
+    # solver, which is enough to change where it converges.
+    precise = Keypoints2DAnnotations(
+        metadata=KEYPOINTS_METADATA,
+        annotations=[
+            Keypoints2DAnnotation(
+                view_id="cam1",
+                frame_idx=0,
+                subject_id="subject",
+                xy=torch.tensor([[1.23456789, 2.3456789], [3.456789, 4.56789]]),
+                scores=torch.ones(2, dtype=torch.float32),
+                format=TOY_FORMAT.name,
+            )
+        ],
+    )
+    infer = RecordingInference({"keypoints_2d": lambda _view_ids: precise})
+
+    run(make_views("cam1"), keypoints_specs, infer, template)
+    result = run(make_views("cam1"), keypoints_specs, infer, template)
+
+    assert infer.calls == [["cam1"]], "second run should have hit the cache"
+    assert torch.equal(result["keypoints_2d"][0].xy, precise[0].xy)

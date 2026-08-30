@@ -13,7 +13,9 @@ import warnings
 import torch
 from tqdm import tqdm
 
+from kineo.maths import weighted_median
 from kineo.optimization.utils import optimizer_should_stop
+from kineo.optimization.utils import reprojection_loss
 from kineo.pipeline.pipeline import PipelineStage
 from kineo.pipeline.pipeline import Pipeline
 from kineo.datasets.keypoints_sequence_dataset import ViewInput
@@ -29,13 +31,14 @@ from kineo.annotations.camera_extrinsics import (
     CameraExtrinsicsAnnotation,
     CameraExtrinsicsAnnotationsMetadata,
 )
+from kineo.optimization.manifolds import UnitDirection
 from kineo.optimization.camera_parameters import (
     CameraIntrinsicsParameters,
     CameraExtrinsicsParameters,
 )
 from kineo.geometry.camera import MIN_PROJECTION_DEPTH
 from kineo.geometry.metrics import compute_reprojection_residuals
-from kineo.maths import weighted_mean
+
 from kineo.annotations.bundle_adjustment_keypoints import (
     BundleAdjustmentKeypointsAnnotation,
     BundleAdjustmentKeypointsAnnotations,
@@ -59,12 +62,14 @@ class BundleAdjustmentRuntimeConfig:
     optimize_rotation: bool = True
     optimize_translation: bool = True
     shared_intrinsics: bool = False
-    reproj_huber_delta_px: float = 1.0
+    reproj_huber_delta_px: float = 10.0
     n_iters: int = 10
     tolerance_grad: float = 1e-05
     tolerance_change: float = 1e-09
     patience: int = 5
     dist_coeffs_regularization_weight: float = 1.0
+    # Cost for an invalid observation (behind the camera, non-finite residual).
+    invalid_observation_cost_px: float = 100.0
     use_lbfgs: bool = True
     lr: float = 1.0
 
@@ -77,20 +82,20 @@ def _warn_if_robust_loss_saturated(
     Rts: torch.Tensor,
     dist_coeffs: torch.Tensor,
     distortion_model: CameraDistortionModel,
-    huber_delta: float,
+    reproj_huber_delta_px: float,
 ) -> None:
     """Warn when the Huber loss starts with no inliers left to distinguish.
 
-    Huber is linear past ``huber_delta``, so when the bulk of the observations
+    Huber is linear past ``reproj_huber_delta_px``, so when the bulk of the observations
     already sits above it every residual is treated as an outlier: the objective
     is L1 almost everywhere and the refinement has no quadratic basin to settle
     into. That is worth surfacing, because the symptom otherwise shows up only
     as a mediocre fit that still looks like it converged.
 
     The median is weighted by the observation scores, because that is what the
-    objective sees. Gate-rejected observations are kept in the tensors with a
-    zero score and reproject thousands of pixels away; counting them would fire
-    this warning on data the optimizer correctly ignores.
+    objective sees: gate-rejected observations carry a zero score and reproject
+    thousands of pixels away, so counting them would fire this warning on data
+    the optimizer correctly ignores.
     """
     errors, depth = compute_reprojection_residuals(
         kps_3d=kps_3d,
@@ -108,16 +113,13 @@ def _warn_if_robust_loss_saturated(
     if not keep.any():
         return
 
-    kept_errors, kept_weights = errors[keep], kps_2d_scores[keep]
-    order = kept_errors.argsort()
-    cumulative = kept_weights[order].cumsum(0) / kept_weights.sum()
-    median = float(kept_errors[order][int(torch.searchsorted(cumulative, 0.5))])
-    if median <= huber_delta:
+    median = float(weighted_median(errors[keep], kps_2d_scores[keep])[0])
+    if median <= reproj_huber_delta_px:
         return
 
     warnings.warn(
         f"Bundle adjustment robust loss is saturated: median reprojection error "
-        f"is {median:.1f}px against huber_delta={huber_delta}px, so the bulk of "
+        f"is {median:.1f}px against reproj_huber_delta_px={reproj_huber_delta_px}px, so the bulk of "
         f"the observations is past the knee and the loss is L1 almost "
         f"everywhere. Check the correspondences and the initial geometry.",
         stacklevel=2,
@@ -129,16 +131,13 @@ def _warn_if_observations_were_ejected(
 ) -> None:
     """Warn when the solve ends on materially fewer observations than it began.
 
-    The reprojection loss is a weighted mean over the surviving observations,
-    so ejecting one moves the mean by ``w_j(mu - rho_j) / (W_V - w_j)``, which
-    pays off whenever that observation is worse than average. The incentive is
-    self-limiting, but nothing else records it: ``n_valid`` is otherwise
-    consulted only for total collapse.
+    Rejected observations are charged rather than dropped, so shedding one is
+    not cheaper than fitting it. Losing them anyway means the geometry moved
+    points through the camera plane, and nothing else records that.
 
     ``n_valid_last`` is the last closure *evaluation*, which under a strong
     Wolfe line search may be a rejected trial point rather than the accepted
-    iterate. That is accurate enough for a threshold, not for a per-iteration
-    curve.
+    iterate: accurate enough for a threshold, not for a per-iteration curve.
 
     Args:
         n_valid_first: Observations the first evaluation admitted.
@@ -156,9 +155,8 @@ def _warn_if_observations_were_ejected(
     warnings.warn(
         f"Bundle adjustment ended on {n_valid_last} valid observations against "
         f"{n_valid_first} at the first evaluation ({dropped} lost, "
-        f"{100 * dropped / n_valid_first:.1f}%). The reprojection loss divides "
-        f"by the surviving weights, so check whether the solve improved the fit "
-        f"or discarded the observations that disagreed with it.",
+        f"{100 * dropped / n_valid_first:.1f}%). Points moved through the "
+        f"camera plane during the solve; check the initial geometry.",
         stacklevel=2,
     )
 
@@ -193,12 +191,6 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
             gt_annotations: dict[str, Annotations],
             runtime_cfg: BundleAdjustmentRuntimeConfig,
     ):
-        # -------------------------------------------------------------------------
-        # TODO: Consider replacing this dense optimization with sparse bundle adjustment
-        # using a solver like Ceres. This could significantly improve efficiency and
-        # scalability for large-scale multi-view setups.
-        # -------------------------------------------------------------------------
-
         device = pipeline.device
 
         cameras_intrinsics: CameraIntrinsicsAnnotations = annotations[
@@ -274,12 +266,14 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
             optimize_translation=runtime_cfg.optimize_translation,
             n_iters=runtime_cfg.n_iters,
             shared_intrinsics=runtime_cfg.shared_intrinsics,
-            huber_delta=runtime_cfg.reproj_huber_delta_px,
+            reproj_huber_delta_px=runtime_cfg.reproj_huber_delta_px,
+            invalid_observation_cost_px=runtime_cfg.invalid_observation_cost_px,
             tolerance_grad=runtime_cfg.tolerance_grad,
             tolerance_change=runtime_cfg.tolerance_change,
             patience=runtime_cfg.patience,
             dist_coeffs_regularization_weight=runtime_cfg.dist_coeffs_regularization_weight,
             use_lbfgs=runtime_cfg.use_lbfgs,
+            lr=runtime_cfg.lr,
         )
 
         annotations["cameras_extrinsics"] = CameraExtrinsicsAnnotations(
@@ -353,7 +347,8 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
             optimize_translation: bool = True,
             n_iters: int = 5,
             shared_intrinsics: bool = False,
-            huber_delta: float = 1.0,
+            reproj_huber_delta_px: float = 10.0,
+            invalid_observation_cost_px: float = 100.0,
             tolerance_grad: float = 1e-05,
             tolerance_change: float = 1e-09,
             patience: int = 5,
@@ -371,8 +366,7 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
         ):
             return Ks, dist_coeffs, Rts, kps_3d, []
 
-        # BA is small and sequential (LBFGS line search); CPU avoids the
-        # per-closure host<->device sync and runs faster with on-par accuracy.
+        # BA is small and sequential (LBFGS line search); CPU is faster
         input_device = Ks.device
         Ks = Ks.cpu()
         dist_coeffs = dist_coeffs.cpu()
@@ -392,7 +386,7 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
             Rts=Rts,
             dist_coeffs=dist_coeffs,
             distortion_model=distortion_model,
-            huber_delta=huber_delta,
+            reproj_huber_delta_px=reproj_huber_delta_px,
         )
 
         kps_3d_opt = kps_3d.clone()
@@ -405,11 +399,55 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
         )
         origin_camera_extrinsics.Rt = Rts[0].unsqueeze(0)
 
-        other_cameras_extrinsics = CameraExtrinsicsParameters(
-            batch_size=n_views - 1,
+        # Locking the first camera still leaves the overall scale free:
+        # scaling every other translation and every point together leaves the
+        # reprojections untouched. That direction never moves the loss, but it
+        # does enter the quasi-Newton curvature pairs, where a zero s^T y
+        # degrades the inverse-Hessian estimate. One camera therefore keeps its
+        # distance to the origin and optimizes only its direction. The farthest
+        # camera is chosen, since pinning the scale to a short baseline would
+        # tie it to a poorly determined length.
+        gauge_fixed = optimize_translation and n_views > 2
+        scale_reference_view = (
+            int(Rts[1:, :3, 3].norm(dim=-1).argmax()) + 1 if gauge_fixed else 1
+        )
+        free_views = [
+            view for view in range(1, n_views)
+            if not gauge_fixed or view != scale_reference_view
+        ]
+
+        scale_reference_extrinsics = CameraExtrinsicsParameters(
+            batch_size=1,
             device=device,
         )
-        other_cameras_extrinsics.Rt = Rts[1:]
+        scale_reference_length = torch.zeros((), device=device)
+        scale_reference_direction = None
+        if gauge_fixed:
+            scale_reference_extrinsics.Rt = Rts[scale_reference_view].unsqueeze(0)
+            scale_reference_length = (
+                Rts[scale_reference_view, :3, 3]
+                .norm()
+                .clamp_min(torch.finfo(Rts.dtype).eps)
+            )
+            scale_reference_direction = UnitDirection(
+                Rts[scale_reference_view, :3, 3].unsqueeze(0)
+            ).to(device)
+
+        other_cameras_extrinsics = CameraExtrinsicsParameters(
+            batch_size=len(free_views),
+            device=device,
+        )
+        other_cameras_extrinsics.Rt = Rts[free_views]
+
+        # Assembled as [origin, scale reference, free cameras], so the poses are
+        # gathered back into the caller's view order with a single index.
+        view_order = torch.empty(n_views, dtype=torch.long, device=device)
+        view_order[
+            torch.tensor(
+                ([0, scale_reference_view] if gauge_fixed else [0]) + free_views,
+                device=device,
+            )
+        ] = torch.arange(n_views, device=device)
 
         camera_intrinsics = CameraIntrinsicsParameters(
             batch_size=n_views,
@@ -434,6 +472,21 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
             translation=optimize_translation,
         )
 
+        if gauge_fixed:
+            # Its translation is rebuilt from the fixed length and the direction
+            # below, so leaving it optimized here would hand the optimizer a
+            # parameter with no gradient.
+            scale_reference_extrinsics.set_optimized_parameters(
+                rotation=optimize_rotation,
+                translation=False,
+            )
+
+        extrinsics_parameters = list(other_cameras_extrinsics.optimized_parameters)
+        if gauge_fixed:
+            extrinsics_parameters += list(
+                scale_reference_extrinsics.optimized_parameters
+            ) + [scale_reference_direction.tangent]
+
         if optimize_distortion_coefficients:
             assert (
                     distortion_model == CameraDistortionModel.BROWN_CONRADY
@@ -442,11 +495,13 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
         had_finite_loss = False
         n_valid_first: int | None = None
         n_valid_last = 0
+        # The guard below returns without a backward pass, leaving the zeros
+        # that zero_grad() wrote. Track it so a gradient that was never computed
+        # is not mistaken for a stationary point.
+        last_eval_produced_grad = False
+        history_entries: list[BundleAdjustmentHistoryAnnotation] = []
 
-        def opt_closure():
-            nonlocal had_finite_loss, n_valid_first, n_valid_last
-            optimizer.zero_grad()
-
+        def current_parameters():
             if shared_intrinsics:
                 Ks = camera_intrinsics.K.expand(n_views, -1, -1)
                 dist_coeffs = camera_intrinsics.distortion_coefficients.expand(n_views, -1)
@@ -454,56 +509,73 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
                 Ks = camera_intrinsics.K.reshape(n_views, 3, 3)
                 dist_coeffs = camera_intrinsics.distortion_coefficients.reshape(n_views, -1)
 
-            Rts = torch.cat(
-                [origin_camera_extrinsics.Rt, other_cameras_extrinsics.Rt], dim=0
-            )
+            if gauge_fixed:
+                reference_Rt = torch.cat(
+                    [
+                        scale_reference_extrinsics.Rt[:, :3, :3],
+                        (
+                            scale_reference_length * scale_reference_direction()
+                        ).unsqueeze(-1),
+                    ],
+                    dim=-1,
+                )
+                blocks = [
+                    origin_camera_extrinsics.Rt,
+                    reference_Rt,
+                    other_cameras_extrinsics.Rt,
+                ]
+            else:
+                blocks = [
+                    origin_camera_extrinsics.Rt,
+                    other_cameras_extrinsics.Rt,
+                ]
+            Rts = torch.cat(blocks, dim=0)[view_order]
+            return Ks, dist_coeffs, Rts
 
-            residuals, depth = compute_reprojection_residuals(
-                kps_3d=kps_3d_opt,
-                kps_2d=kps_2d_xy,
-                Ks=Ks,
-                Rts=Rts,
-                Ds=dist_coeffs,
-                distortion_model=distortion_model.value,
-            )
+        def record_history(iteration: int, loss: float | None) -> None:
+            Ks, dist_coeffs, Rts = current_parameters()
+            history_entries.append(BundleAdjustmentHistoryAnnotation(
+                stage_name=self.name,
+                stage_order=self.order,
+                iteration=iteration,
+                view_ids=view_ids,
+                Ks=Ks.detach().clone().cpu(),
+                dist_coeffs=dist_coeffs.detach().clone().cpu(),
+                Rts=Rts.detach().clone().cpu(),
+                loss=loss,
+            ))
 
-            residuals_huber = torch.nn.functional.huber_loss(
-                input=residuals,
-                target=torch.zeros_like(residuals),
-                reduction="none",
-                delta=huber_delta,
-            )
+        def opt_closure():
+            nonlocal had_finite_loss, n_valid_first, n_valid_last
+            nonlocal last_eval_produced_grad
+            optimizer.zero_grad()
+            last_eval_produced_grad = False
 
-            weights = kps_2d_scores.view(n_views, -1)
+            Ks, dist_coeffs, Rts = current_parameters()
 
-            # A point on or behind the camera plane projects to a bounded but
-            # meaningless residual: on the plane it dwarfs every real
-            # observation, and behind it the projection is mirrored, so a
-            # cheirality-violating pose can score a small error and be kept.
-            valid_mask = residuals_huber.isfinite() & (
-                depth.squeeze(-1) > MIN_PROJECTION_DEPTH
+            loss, n_valid_t = reprojection_loss(
+                kps_3d_opt,
+                kps_2d_xy,
+                kps_2d_scores,
+                Ks,
+                Rts,
+                dist_coeffs,
+                distortion_model.value,
+                reproj_huber_delta_px,
+                invalid_observation_cost_px,
             )
-            n_valid = int(valid_mask.sum())
+            n_valid = int(n_valid_t)
 
             if n_valid_first is None:
                 n_valid_first = n_valid
             n_valid_last = n_valid
 
-            residuals_huber = residuals_huber[valid_mask]
-            weights = weights[valid_mask]
-            reprojection_loss = weighted_mean(residuals_huber, weights)
-
-            total_loss = reprojection_loss
+            total_loss = loss
 
             if optimize_distortion_coefficients:
                 dist_coeffs_regularization = (dist_coeffs ** 2).mean()
                 total_loss += dist_coeffs_regularization_weight * dist_coeffs_regularization
 
-            # A non-finite step mid-optimization (e.g. points through the camera
-            # plane) gets a large finite loss so LBFGS line-search backtracks. But
-            # a non-finite / empty very first evaluation means the initial geometry
-            # is degenerate: there is no gradient to backtrack from, so fail loudly
-            # instead of silently returning the unrefined cameras.
             if n_valid == 0 or not torch.isfinite(total_loss):
                 if not had_finite_loss:
                     raise ValueError(
@@ -514,13 +586,14 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
 
             had_finite_loss = True
             total_loss.backward()
+            last_eval_produced_grad = True
 
             return total_loss
 
         if use_lbfgs:
             optimizer = torch.optim.LBFGS(
                 camera_intrinsics.optimized_parameters
-                + other_cameras_extrinsics.optimized_parameters
+                + extrinsics_parameters
                 + [kps_3d_opt],
                 lr=lr,
                 line_search_fn="strong_wolfe",
@@ -528,7 +601,7 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
         else:
             optimizer = torch.optim.AdamW(
                 camera_intrinsics.optimized_parameters
-                + other_cameras_extrinsics.optimized_parameters
+                + extrinsics_parameters
                 + [kps_3d_opt],
                 lr=lr,
             )
@@ -536,56 +609,15 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
         pbar = tqdm(range(n_iters), desc="Refining camera parameters", leave=False)
 
         prev_losses = []
-        history_entries = []
-
-        # Capture initial state for history
-        if shared_intrinsics:
-            _init_Ks = camera_intrinsics.K.expand(n_views, -1, -1)
-            _init_dist_coeffs = camera_intrinsics.distortion_coefficients.expand(n_views, -1)
-        else:
-            _init_Ks = camera_intrinsics.K.reshape(n_views, 3, 3)
-            _init_dist_coeffs = camera_intrinsics.distortion_coefficients.reshape(n_views, -1)
-
-        _init_Rts = torch.cat(
-            [origin_camera_extrinsics.Rt, other_cameras_extrinsics.Rt], dim=0
-        )
-
-        history_entries.append(BundleAdjustmentHistoryAnnotation(
-            stage_name=self.name,
-            stage_order=self.order,
-            iteration=0,
-            view_ids=view_ids,
-            Ks=_init_Ks.detach().clone().cpu(),
-            dist_coeffs=_init_dist_coeffs.detach().clone().cpu(),
-            Rts=_init_Rts.detach().clone().cpu(),
-            loss=None,
-        ))
+        record_history(iteration=0, loss=None)
 
         for iter in pbar:
             loss = optimizer.step(opt_closure)
+
+            if not last_eval_produced_grad:
+                opt_closure()
             pbar.set_postfix(loss=loss.item())
-
-            if shared_intrinsics:
-                _iter_Ks = camera_intrinsics.K.expand(n_views, -1, -1)
-                _iter_dist_coeffs = camera_intrinsics.distortion_coefficients.expand(n_views, -1)
-            else:
-                _iter_Ks = camera_intrinsics.K.reshape(n_views, 3, 3)
-                _iter_dist_coeffs = camera_intrinsics.distortion_coefficients.reshape(n_views, -1)
-
-            _iter_Rts = torch.cat(
-                [origin_camera_extrinsics.Rt, other_cameras_extrinsics.Rt], dim=0
-            )
-
-            history_entries.append(BundleAdjustmentHistoryAnnotation(
-                stage_name=self.name,
-                stage_order=self.order,
-                iteration=iter + 1,
-                view_ids=view_ids,
-                Ks=_iter_Ks.detach().clone().cpu(),
-                dist_coeffs=_iter_dist_coeffs.detach().clone().cpu(),
-                Rts=_iter_Rts.detach().clone().cpu(),
-                loss=loss.item(),
-            ))
+            record_history(iteration=iter + 1, loss=loss.item())
 
             if optimizer_should_stop(
                     optimizer,
@@ -595,7 +627,6 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
                     tolerance_grad=tolerance_grad,
                     tolerance_change=tolerance_change,
             ):
-                # Stop early if no improvement can be made
                 break
 
             prev_losses.append(loss.detach())
@@ -607,16 +638,11 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
         dist_coeffs_opt = (
             camera_intrinsics.distortion_coefficients.detach().expand(n_views, -1).clone()
         )
-        Rts_opt = (
-            torch.cat([origin_camera_extrinsics.Rt, other_cameras_extrinsics.Rt], dim=0)
-            .detach()
-            .clone()
-        )
+        # Same assembly as the closure, so the scale reference is rebuilt from
+        # its fixed length and optimized direction rather than read back raw.
+        Rts_opt = current_parameters()[2].detach().clone()
         kps_3d_opt = kps_3d_opt.detach().clone()
 
-        # LBFGS commits whatever the last step produced, so a non-finite
-        # parameter escapes here and only surfaces stages later as an unrelated
-        # decomposition failure.
         for name, tensor in (
             ("intrinsics", Ks_opt),
             ("distortion coefficients", dist_coeffs_opt),

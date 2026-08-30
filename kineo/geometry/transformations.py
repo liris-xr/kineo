@@ -12,6 +12,11 @@ import torch
 from typing import Literal
 
 from kineo.torch_utils import check_shape
+
+# Cubing a larger radius overflows float32. A downstream finiteness mask
+# cannot undo that: it zeroes the incoming gradient, but the local
+# derivative is already infinite, so the backward pass computes 0 * inf.
+MAX_DISTORTION_RADIUS_SQ = 1e8
 from kornia.utils.grid import create_meshgrid
 from kornia.geometry.transform.imgwarp import remap
 import kornia
@@ -437,7 +442,7 @@ def distort_points_brown_conrady(
     ) / new_fy  # (BxN - Bx1)/Bx1 -> BxN or (N,)
 
     # Distort points
-    r2 = x * x + y * y
+    r2 = (x * x + y * y).clamp(max=MAX_DISTORTION_RADIUS_SQ)
 
     k1, k2, p1, p2, k3 = D[..., 0:1], D[..., 1:2], D[..., 2:3], D[..., 3:4], D[..., 4:5]
 

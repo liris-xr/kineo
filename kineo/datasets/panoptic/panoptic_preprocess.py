@@ -448,7 +448,6 @@ def preprocess_panoptic(
     dataset_dir: str,
     split: str = "all",
     cameras: Sequence[int] = TEMPO_HD_CAMERAS,
-    drop_ignored: bool = True,
     frame_interval: int = TEMPO_FRAME_INTERVAL,
     skip_extract: bool = False,
 ):
@@ -465,8 +464,6 @@ def preprocess_panoptic(
             covers both, and skips whatever is not on disk.
         cameras: HD camera nodes to read. The TEMPO protocol reads
             `TEMPO_HD_CAMERAS`.
-        drop_ignored: Whether to drop the sequences of the repository's
-            `panoptic_ignore_list.txt`.
         frame_interval: Read one annotated frame out of this many. TEMPO reads
             every third, which is 9.99Hz out of the dome's 29.97Hz.
         skip_extract: Whether to skip unpacking the keypoint archives.
@@ -481,7 +478,7 @@ def preprocess_panoptic(
             f"frame_interval must be at least 1, got {frame_interval}."
         )
 
-    sequences = split_sequences(split, drop_ignored)
+    sequences = split_sequences(split)
     test_sequences = set(TEMPO_TEST_SEQUENCES)
 
     sequences_infos = []

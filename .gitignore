@@ -197,3 +197,6 @@ trace.json
 .pixi/*
 !.pixi/config.toml
 configs/efficienttam/efficienttam_s.yaml
+# Claude Code session state
+memory/
+.claude/

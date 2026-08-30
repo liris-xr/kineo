@@ -37,6 +37,16 @@ class Annotations(ABC, Generic[T], Iterable[T]):
     def to_dict(self) -> dict:
         raise NotImplementedError
 
+    def to_dict_lossless(self) -> dict:
+        """Serializes without the rounding `to_dict` may apply.
+
+        `to_dict` feeds the dataset files, where trimming the float repr saves a
+        lot of disk. Machine-only artifacts such as the per-view cache must
+        round-trip exactly instead, so that a cached run and an uncached one see
+        the same numbers.
+        """
+        return self.to_dict()
+
     @staticmethod
     @abstractmethod
     def from_dict(dict_data: dict) -> "Annotations[T]":

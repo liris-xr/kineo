@@ -197,5 +197,6 @@ def _save_per_view(
 
             with open(filepath, "wb") as f:
                 pickle.dump(
-                    inferred_annotations.filter_by_view_id(view_id).to_dict(), f
+                    inferred_annotations.filter_by_view_id(view_id).to_dict_lossless(),
+                    f,
                 )

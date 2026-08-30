@@ -7,7 +7,6 @@ cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/nlfh36m17-fp32_491df61d"
 use_cache: True
 batch_size: 32
 use_half_precision: False
-shared_intrinsics: True
 
 pipeline:
   seed: 19
@@ -52,21 +51,6 @@ pipeline:
         _target_: kineo.pipeline.stages.mvs_triangulation.MVSTriangulationRuntimeConfig
         use_eigendecomposition: True
         min_parallax_deg: 10.0
-
-    smpl_global_scale_estimation:
-      _target_: kineo.pipeline.stages.smpl_global_scale_estimation.SMPLGlobalScaleEstimationStage
-      name: "SMPL Global Scale Estimation"
-      joint_regressor_path: "./body_models/smpl/h36m_joints_regressor.pt"
-      smpl_model_path: "./body_models/smpl/SMPL_NEUTRAL.pkl"
-      order: 100
-      runtime_cfg:
-        _target_: kineo.pipeline.stages.smpl_global_scale_estimation.SMPLGlobalScaleEstimationRuntimeConfig
-        n_iters: 100
-
-    global_scale_application:
-      _target_: kineo.pipeline.stages.global_scale_application.GlobalScaleApplicationStage
-      name: "Global Scale Application"
-      order: 110
 
     annotations_export:
       _target_: kineo.pipeline.stages.annotations_export.AnnotationsExportStage

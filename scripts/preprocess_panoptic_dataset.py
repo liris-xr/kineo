@@ -33,11 +33,6 @@ if __name__ == "__main__":
         "and 23.",
     )
     parser.add_argument(
-        "--keep-ignored",
-        action="store_true",
-        help="Keep the sequences of 'panoptic_ignore_list.txt'",
-    )
-    parser.add_argument(
         "--frame-interval",
         type=int,
         default=TEMPO_FRAME_INTERVAL,
@@ -55,7 +50,6 @@ if __name__ == "__main__":
         args.dataset_dir,
         split=args.split,
         cameras=args.cameras,
-        drop_ignored=not args.keep_ignored,
         frame_interval=args.frame_interval,
         skip_extract=args.skip_extract,
     )

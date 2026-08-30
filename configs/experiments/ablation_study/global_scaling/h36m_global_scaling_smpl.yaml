@@ -8,7 +8,6 @@ cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/h36m_global_scaling_smpl"
 use_cache: True
 batch_size: 32
 use_half_precision: False
-shared_intrinsics: False
 
 pipeline:
   seed: 19

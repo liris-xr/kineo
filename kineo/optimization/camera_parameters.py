@@ -10,7 +10,7 @@
 
 import torch
 
-from roma import special_gramschmidt
+from kineo.optimization.manifolds import Rotation6D
 from kineo.geometry.camera import (
     inverse_K,
     inverse_Rt,
@@ -387,16 +387,8 @@ class CameraExtrinsicsParameters(torch.nn.Module):
         )
 
         # 6D rotation (world to camera)
-        self._rot6d = torch.nn.Parameter(
-            torch.eye(3, device=device, dtype=torch.float32)
-            .repeat(batch_size, 1, 1)[..., :3, :2]
-            .reshape(
-                (
-                    batch_size,
-                    6,
-                )
-            ),
-            requires_grad=requires_grad,
+        self._rotation = Rotation6D(
+            batch_size=batch_size, device=device, requires_grad=requires_grad
         )
 
     @property
@@ -415,20 +407,18 @@ class CameraExtrinsicsParameters(torch.nn.Module):
 
     @property
     def rot6d(self) -> torch.Tensor:
-        return self._rot6d
+        return self._rotation.rot6d
 
     @rot6d.setter
     def rot6d(self, rot6d: torch.Tensor) -> None:
-        check_shape(rot6d, [(self._batch_size, 6), (1, 6)])
-        rot6d = rot6d.expand(self._batch_size, -1)
-        self._rot6d.data = rot6d.to(self._rot6d.device)
+        self._rotation.rot6d = rot6d
 
     @property
     def Rt(self) -> torch.Tensor:
         """
         Get the camera extrinsic matrix (world to camera).
         """
-        R = special_gramschmidt(self._rot6d.view(self._batch_size, 3, 2))
+        R = self._rotation()
         t = self._transl.view(self._batch_size, 3, 1)
         return torch.cat([R, t], dim=-1)
 
@@ -441,8 +431,10 @@ class CameraExtrinsicsParameters(torch.nn.Module):
         check_shape(Rt, [(self._batch_size, 3, 4), (1, 3, 4)])
         Rt = Rt.expand(self._batch_size, -1, -1)
 
-        self._rot6d.data = (
-            Rt[..., :3, :2].reshape((self._batch_size, 6)).to(self._rot6d.device)
+        self._rotation.rot6d.data = (
+            Rt[..., :3, :2]
+            .reshape((self._batch_size, 6))
+            .to(self._rotation.rot6d.device)
         )
         self._transl.data = (
             Rt[..., :3, 3].reshape((self._batch_size, 3)).to(self._transl.device)
@@ -461,7 +453,7 @@ class CameraExtrinsicsParameters(torch.nn.Module):
         """
         Get the position of the camera in the world frame (in OpenCV's convention).
         """
-        R = special_gramschmidt(self._rot6d.view(self._batch_size, 3, 2))
+        R = self._rotation()
         t = self._transl.view(self._batch_size, 3, 1)
         return (-R.transpose(-2, -1) @ t).squeeze(-1)
 
@@ -472,7 +464,7 @@ class CameraExtrinsicsParameters(torch.nn.Module):
         """
         check_shape(world_pos, [(self._batch_size, 3), (1, 3)])
         world_pos = world_pos.expand(self._batch_size, -1)
-        R = special_gramschmidt(self._rot6d.view(self._batch_size, 3, 2))
+        R = self._rotation()
         self._transl.data = -R.transpose(-2, -1) @ world_pos.to(R.device)
 
     @property
@@ -480,7 +472,7 @@ class CameraExtrinsicsParameters(torch.nn.Module):
         """
         Get the rotation matrix of the camera in the world frame.
         """
-        R = special_gramschmidt(self._rot6d.view(self._batch_size, 3, 2))
+        R = self._rotation()
         return R.transpose(-2, -1)
 
     @world_rotmat.setter
@@ -493,7 +485,7 @@ class CameraExtrinsicsParameters(torch.nn.Module):
         rot6d = world_rotmat.transpose(-2, -1)[..., :, :2].reshape(
             (self._batch_size, 6)
         )
-        self._rot6d.data = rot6d.to(self._rot6d.device)
+        self._rotation.rot6d.data = rot6d.to(self._rotation.rot6d.device)
 
     def set_optimized_parameters(
         self,
@@ -508,7 +500,7 @@ class CameraExtrinsicsParameters(torch.nn.Module):
             translation: Whether to optimize camera translation.
         """
         if rotation is not None:
-            self._rot6d.requires_grad = rotation
+            self._rotation.rot6d.requires_grad = rotation
         if translation is not None:
             self._transl.requires_grad = translation
 
@@ -525,8 +517,8 @@ class CameraExtrinsicsParameters(torch.nn.Module):
         Get the optimized parameters with their names.
         """
         params = {}
-        if self._rot6d.requires_grad:
-            params["rot6d"] = self._rot6d
+        if self._rotation.rot6d.requires_grad:
+            params["rot6d"] = self._rotation.rot6d
         if self._transl.requires_grad:
             params["transl"] = self._transl
         return params

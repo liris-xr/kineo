@@ -10,14 +10,7 @@
 
 import itertools
 import torch
-from math import radians
-from kineo.geometry.camera import (
-    MIN_PROJECTION_DEPTH,
-    camera_centers_from_extrinsics,
-    positive_depth_mask,
-)
 from kineo.geometry.conversions import convert_points_from_homogeneous
-from kineo.geometry.metrics import compute_normalized_reprojection_residuals
 from kineo.torch_utils import check_shape
 
 
@@ -222,86 +215,3 @@ def triangulate_points_in_chunks(
         )
 
     return torch.cat(chunks, dim=-2)
-
-
-def triangulation_quality_mask(
-    points_3d: torch.Tensor,
-    points_2d: torch.Tensor,
-    Ks: torch.Tensor,
-    Rts: torch.Tensor,
-    Ds: torch.Tensor,
-    distortion_model: str,
-    observations_mask: torch.Tensor,
-    min_parallax_deg: float | None = None,
-    max_reproj_error_focal_ratio: float | None = None,
-    reject_negative_depth: bool = False,
-    min_depth: float = MIN_PROJECTION_DEPTH,
-) -> torch.Tensor:
-    """Narrows an observation mask to the geometrically trustworthy entries.
-
-    Applies the three conditions a triangulated point is normally required to
-    meet before it is allowed to constrain a bundle adjustment: it lies in
-    front of the cameras that saw it, it reprojects near its own measurements,
-    and the rays that fixed it met at a workable angle. Each is optional, and a
-    condition left at its default is not evaluated at all.
-
-    Rejections compose in that order, so the parallax angle is measured over
-    the views that survived the first two rather than over every view that
-    nominally observed the point.
-
-    Args:
-        points_3d: Triangulated points in the world frame, shape (n_points, 3).
-        points_2d: Measured image-space keypoints, still distorted, with shape
-            (n_views, n_points, 2).
-        Ks: Camera intrinsics with shape (n_views, 3, 3).
-        Rts: World-to-camera extrinsics with shape (n_views, 3, 4).
-        Ds: Distortion coefficients with shape (n_views, n_coefficients).
-        distortion_model: Distortion model name, e.g. ``"brown_conrady"``.
-        observations_mask: Bool tensor of shape (n_views, n_points) flagging
-            the entries that are real observations to begin with.
-        min_parallax_deg: Reject a point whose widest ray pair subtends less
-            than this angle. ``None`` disables the test.
-        max_reproj_error_focal_ratio: Reject an observation whose reprojection
-            lands further than this from its measurement, as a fraction of the
-            view's focal length. Pixels are not comparable across a rig whose
-            views differ in focal length, and dividing by it leaves an angular
-            error. ``None`` disables the test.
-        reject_negative_depth: Whether to reject observations whose point sits
-            behind the camera.
-        min_depth: Depth bound used by the cheirality test.
-
-    Returns:
-        Bool tensor of shape (n_views, n_points), the input mask with the
-        rejected entries cleared. Points failing the per-point parallax test
-        have all of their observations cleared, so a caller can recover the
-        surviving points with ``mask.sum(dim=0) >= 2``.
-    """
-    check_shape(points_3d, ["N", "3"])
-    check_shape(observations_mask, ["C", "N"])
-
-    mask = observations_mask
-
-    if reject_negative_depth:
-        mask = mask & positive_depth_mask(points_3d, Rts, min_depth)
-
-    if max_reproj_error_focal_ratio is not None:
-        residuals, _ = compute_normalized_reprojection_residuals(
-            kps_3d=points_3d,
-            kps_2d=points_2d,
-            Ks=Ks,
-            Rts=Rts,
-            Ds=Ds,
-            distortion_model=distortion_model,
-        )
-        # A non-finite residual fails the comparison, which is the intent.
-        mask = mask & (residuals <= max_reproj_error_focal_ratio)
-
-    if min_parallax_deg is not None:
-        angles = triangulation_parallax_angles(
-            points_3d=points_3d,
-            camera_centers=camera_centers_from_extrinsics(Rts),
-            points_weights=mask.to(points_3d.dtype),
-        )
-        mask = mask & (angles >= radians(min_parallax_deg)).unsqueeze(0)
-
-    return mask

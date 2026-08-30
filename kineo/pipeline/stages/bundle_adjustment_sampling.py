@@ -24,6 +24,7 @@ from kineo.annotations.keypoints_2d import (
     stage_keypoints_2d,
 )
 from kineo.annotations.camera_extrinsics import CameraExtrinsicsAnnotations
+from kineo.geometry.camera import positive_depth_mask
 from kineo.geometry.camera import transform_points_from_world_to_camera
 from kineo.sampling import (
     farthest_point_sampling,
@@ -34,7 +35,6 @@ from kineo.sampling import (
 from kineo.geometry.triangulation import (
     triangulate_points,
     triangulate_points_in_chunks,
-    triangulation_quality_mask,
 )
 from kineo.annotations.global_time_reference import GlobalTimeReferenceAnnotation
 from kineo.geometry.transformations import undistort_points
@@ -94,11 +94,6 @@ class BundleAdjustmentSamplingRuntimeConfig:
     farthest_point_time_weight: float = 1.0
     farthest_point_depth_weight: float = 0.0
     filter_negative_depth: bool = True
-    # Same bar as the MVS triangulation stage, so a point too poorly
-    # conditioned to be worth reconstructing is also too poorly conditioned to
-    # constrain the cameras. ``None`` disables the test.
-    min_parallax_deg: float | None = 10.0
-    max_reproj_error_focal_ratio: float | None = None
     triangulation_chunk_bytes: int = 128 * 1024 * 1024
 
 
@@ -264,8 +259,6 @@ class BundleAdjustmentSamplingStage(
         # asks for neither keeps the cheaper sample-then-triangulate path.
         needs_candidates_geometry = (
             runtime_cfg.filter_negative_depth
-            or runtime_cfg.min_parallax_deg is not None
-            or runtime_cfg.max_reproj_error_focal_ratio is not None
             or runtime_cfg.farthest_point_depth_weight > 0.0
         )
 
@@ -285,24 +278,23 @@ class BundleAdjustmentSamplingStage(
                 points=self._undistorted(
                     candidates_kps_xy, Ks, dist_coeffs, distortion_model
                 ),
-                points_weights=kps_scores[:, candidates_indices],
+                # Masked, not raw: a candidate qualifies on two good views, but
+                # every other view's entry still enters the DLT. An off-frame
+                # keypoint is extrapolated, and undistorting it runs the model
+                # well past the radius it is valid over.
+                points_weights=torch.where(
+                    candidates_observations_mask,
+                    kps_scores[:, candidates_indices],
+                    0.0,
+                ),
                 max_chunk_bytes=runtime_cfg.triangulation_chunk_bytes,
             )
 
-            gated_mask = triangulation_quality_mask(
-                points_3d=candidates_kps_3d,
-                points_2d=candidates_kps_xy,
-                Ks=Ks,
-                Rts=Rts,
-                Ds=dist_coeffs,
-                distortion_model=distortion_model.value,
-                observations_mask=candidates_observations_mask,
-                min_parallax_deg=runtime_cfg.min_parallax_deg,
-                max_reproj_error_focal_ratio=(
-                    runtime_cfg.max_reproj_error_focal_ratio
-                ),
-                reject_negative_depth=runtime_cfg.filter_negative_depth,
-            )
+            gated_mask = candidates_observations_mask
+            if runtime_cfg.filter_negative_depth:
+                gated_mask = gated_mask & positive_depth_mask(
+                    candidates_kps_3d, Rts
+                )
 
             sampling_mask = observations_mask.clone()
             sampling_mask[:, candidates_indices] = gated_mask

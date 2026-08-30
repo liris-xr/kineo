@@ -3,7 +3,7 @@ import networkx as nx
 import torch
 
 from kineo.geometry.rotation_averaging import geodesic_angle, project_to_so3
-from kineo.pipeline.stages.sfm_camera_extrinsics_initialization import (
+from kineo.pipeline.stages.sfm_camera_extrinsics_initialization_rotation_averaging import (
     _average_rotations,
     _compute_absolute_Rts,
     _compute_relative_scale_factors,

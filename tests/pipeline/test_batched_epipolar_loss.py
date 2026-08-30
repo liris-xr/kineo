@@ -1,7 +1,7 @@
 import kornia
 import torch
 
-from kineo.pipeline.stages.sfm_camera_extrinsics_initialization import (
+from kineo.optimization.utils import (
     batched_epipolar_huber_loss,
 )
 
@@ -22,7 +22,10 @@ def _reference_loop_loss(Rts, Ks, edge_index, points1, points2, valid):
         )
         F = kornia.geometry.epipolar.fundamental_from_essential(E, Ks[i], Ks[j])
         sampson = kornia.geometry.epipolar.sampson_epipolar_distance(
-            pts1=points1[e][keep], pts2=points2[e][keep], Fm=F.unsqueeze(0)
+            pts1=points1[e][keep],
+            pts2=points2[e][keep],
+            Fm=F.unsqueeze(0),
+            squared=False,
         ).squeeze(0)
         total = total + torch.nn.functional.huber_loss(
             input=sampson,

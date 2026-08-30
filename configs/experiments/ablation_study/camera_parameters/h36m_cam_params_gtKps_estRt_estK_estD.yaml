@@ -53,7 +53,7 @@ pipeline:
         min_pair_geometric_mean_score: 0.4
         keypoints_indices: null
         sampler: "uniform"
-        filter_off_frame_keypoints: False
+        filter_off_frame_keypoints: True
 
     sfm_camera_extrinsics_initialization:
       _target_: kineo.pipeline.stages.sfm_camera_extrinsics_initialization.SfMCameraExtrinsicsInitializationStage
@@ -64,10 +64,11 @@ pipeline:
         ransac_confidence: 0.99
         ransac_reproj_threshold_px: 3.0
         n_refinement_iters: 200
-        scale_triplet_weighting: "irls"
-        n_scale_irls_iters: 5
         tolerance_grad: 1e-05
         tolerance_change: 1e-09
+        use_lbfgs: True
+        n_relative_scale_factors_iters: 10
+        sampson_huber_delta_px: 1.0
 
     bundle_adjustment_sampling:
       _target_: kineo.pipeline.stages.bundle_adjustment_sampling.BundleAdjustmentSamplingStage
@@ -78,8 +79,7 @@ pipeline:
         n_kp_samples_per_view: 50
         min_keypoint_score: 0.4
         sampler: "uniform"
-        filter_off_frame_keypoints: False
-        min_parallax_deg: 10.0
+        filter_off_frame_keypoints: True
         filter_negative_depth: True
 
     bundle_adjustment_1: # Only optimize camera extrinsics
@@ -90,13 +90,15 @@ pipeline:
         _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentRuntimeConfig
         n_iters: 300
         use_lbfgs: True
+        lr: 1.0
         optimize_distortion_coefficients: False
         optimize_focal_length: False
         optimize_principal_point: False
         optimize_rotation: True
         optimize_translation: True
         shared_intrinsics: ${shared_intrinsics}
-        reproj_huber_delta_px: 1.0
+        reproj_huber_delta_px: 10.0
+        invalid_observation_cost_px: 100.0
 
     bundle_adjustment_2:
       _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentStage
@@ -106,13 +108,15 @@ pipeline:
         _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentRuntimeConfig
         n_iters: 300
         use_lbfgs: True
+        lr: 1.0
         optimize_distortion_coefficients: False
         optimize_focal_length: True
         optimize_principal_point: False
         optimize_rotation: True
         optimize_translation: True
         shared_intrinsics: ${shared_intrinsics}
-        reproj_huber_delta_px: 1.0
+        reproj_huber_delta_px: 10.0
+        invalid_observation_cost_px: 100.0
 
     bundle_adjustment_3:
       _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentStage
@@ -122,13 +126,15 @@ pipeline:
         _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentRuntimeConfig
         n_iters: 300
         use_lbfgs: True
+        lr: 1.0
         optimize_distortion_coefficients: True
         optimize_focal_length: True
         optimize_principal_point: False
         optimize_rotation: True
         optimize_translation: True
         shared_intrinsics: ${shared_intrinsics}
-        reproj_huber_delta_px: 1.0
+        reproj_huber_delta_px: 10.0
+        invalid_observation_cost_px: 100.0
 
     mvs_triangulation:
       _target_: kineo.pipeline.stages.mvs_triangulation.MVSTriangulationStage

@@ -27,6 +27,9 @@ from time import perf_counter
 import builtins
 from typing import TypeVar, Generic
 
+# Model loading is not a stage, so it is reported outside the stage range.
+PIPELINE_CONSTRUCTION_STAGE_IDX = -1
+
 RuntimeConfigType = TypeVar("RuntimeConfigType")
 
 
@@ -80,10 +83,15 @@ class Pipeline:
         device: torch.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu"
         ),
+        construction_duration_seconds: float = 0.0,
     ):
         self.stages = sorted(stages, key=lambda x: (x.order, x.name))
         self.device = device
         self.seed = seed
+        # Model loading happens when the stages are instantiated, so it is paid
+        # once per process rather than per sequence. Reported alongside the
+        # stage timings to keep it visible.
+        self.construction_duration_seconds = construction_duration_seconds
 
     @staticmethod
     def build_pipeline_from_config(
@@ -97,11 +105,13 @@ class Pipeline:
         elif not isinstance(cfg, DictConfig):
             raise ValueError("cfg must be a string, Path, or DictConfig")
 
+        start_time = perf_counter()
         stages = [
             hydra.utils.instantiate(stage)
             for stage in cfg.pipeline.stages.values()
             if stage is not None
         ]
+        construction_duration_seconds = perf_counter() - start_time
 
         for stage in stages:
             if not isinstance(stage, PipelineStage):
@@ -111,6 +121,7 @@ class Pipeline:
             stages=stages,
             device=device,
             seed=cfg.pipeline.seed,
+            construction_duration_seconds=construction_duration_seconds,
         )
         return pipeline
 
@@ -146,7 +157,13 @@ class Pipeline:
             leave=False,
         )
 
-        all_stages_timings: list[StageTiming] = []
+        all_stages_timings: list[StageTiming] = [
+            StageTiming(
+                stage_name="Pipeline Construction",
+                stage_idx=PIPELINE_CONSTRUCTION_STAGE_IDX,
+                duration_seconds=self.construction_duration_seconds,
+            )
+        ]
 
         for stage_idx, stage in pbar:
             pbar.set_postfix(stage_name=stage.name)
