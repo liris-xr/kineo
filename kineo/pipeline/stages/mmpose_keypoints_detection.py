@@ -9,10 +9,8 @@
 # -----------------------------------------------------------------------------
 
 import torch
-import os
 import os.path as osp
 from tqdm import tqdm
-import pickle
 
 from kineo.pipeline.pipeline import PipelineStage
 from kineo.datasets.keypoints_sequence_dataset import ViewInput
@@ -26,6 +24,7 @@ from kineo.annotations import (
     KeypointsFormat,
 )
 from kineo.pipeline.pipeline import Pipeline
+from kineo.pipeline import per_view_cache
 from kineo.maths import clamp
 from mmpose.apis import Pose2DInferencer
 from mmpose.structures import PoseDataSample
@@ -62,7 +61,9 @@ class MMPoseKeypointsDetectionRuntimeConfig:
     batch_size: int = 16
     use_half_precision: bool = True
     use_cache: bool = True
-    cache_output_path_template: str = "cache/{sequence_name}/{annotation_key}.pkl"
+    cache_output_path_template: str = (
+        "cache/{sequence_name}/{annotation_key}/{view_id}.pkl"
+    )
     force_zero_scores_outside_bbox: bool = True
     use_flip_test: bool = True
     frame_step: int = (
@@ -131,56 +132,49 @@ class MMPoseKeypointsDetectionStage(
         if bboxes_annotations is None:
             raise ValueError("Expected bboxes annotations but none were provided")
 
-        if runtime_cfg.use_cache:
-            kps2d_cache_filepath = runtime_cfg.cache_output_path_template.format(
-                sequence_name=sequence_name, annotation_key="keypoints_2d"
-            )
-
-            if os.path.exists(kps2d_cache_filepath):
-                with open(kps2d_cache_filepath, "rb") as f:
-                    keypoints_annotations = Keypoints2DAnnotations.from_dict(
-                        pickle.load(f)
-                    )
-                keypoints_annotations = keypoints_annotations.filter_by_view_ids(
-                    [view["view_id"] for view in views]
-                )
-                print(
-                    f"Loaded keypoints annotations from cache: {kps2d_cache_filepath}"
-                )
-                annotations["keypoints_2d"] = keypoints_annotations.cpu()
-                return
-
-        self.keypoints_inferencer.model = self.keypoints_inferencer.model.to(device)
-
-        try:
-            self.keypoints_inferencer.test_cfg.flip_test = runtime_cfg.use_flip_test
-        except AttributeError:
-            pass
-
-        keypoints_annotations = self._infer_keypoints(
-            views=views,
-            bboxes_annotations=bboxes_annotations,
-            keypoints_inferencer=self.keypoints_inferencer,
-            batch_size=runtime_cfg.batch_size,
-            use_half_precision=runtime_cfg.use_half_precision,
-            force_zero_scores_outside_bbox=runtime_cfg.force_zero_scores_outside_bbox,
-            frame_step=runtime_cfg.frame_step,
-            disable_confidence=runtime_cfg.disable_confidence,
+        keypoints_format = KeypointsFormat.from_mmpose_dataset(
+            self.keypoints_inferencer.model.dataset_meta["dataset_name"]
         )
 
-        self.keypoints_inferencer.model = self.keypoints_inferencer.model.cpu()
+        def infer_missing(missing_views: list[ViewInput]) -> dict[str, Annotations]:
+            self.keypoints_inferencer.model = self.keypoints_inferencer.model.to(device)
 
-        if runtime_cfg.use_cache and not os.path.exists(kps2d_cache_filepath):
-            os.makedirs(os.path.dirname(kps2d_cache_filepath), exist_ok=True)
+            try:
+                self.keypoints_inferencer.test_cfg.flip_test = runtime_cfg.use_flip_test
+            except AttributeError:
+                pass
 
-            if not os.path.exists(kps2d_cache_filepath):
-                with open(kps2d_cache_filepath, "wb") as f:
-                    print(
-                        f"Saving keypoints annotations to cache: {kps2d_cache_filepath}"
+            try:
+                return {
+                    "keypoints_2d": self._infer_keypoints(
+                        views=missing_views,
+                        bboxes_annotations=bboxes_annotations,
+                        keypoints_inferencer=self.keypoints_inferencer,
+                        batch_size=runtime_cfg.batch_size,
+                        use_half_precision=runtime_cfg.use_half_precision,
+                        force_zero_scores_outside_bbox=runtime_cfg.force_zero_scores_outside_bbox,
+                        frame_step=runtime_cfg.frame_step,
+                        disable_confidence=runtime_cfg.disable_confidence,
                     )
-                    pickle.dump(keypoints_annotations.to_dict(), f)
+                }
+            finally:
+                self.keypoints_inferencer.model = self.keypoints_inferencer.model.cpu()
 
-        annotations["keypoints_2d"] = keypoints_annotations.cpu()
+        cached = per_view_cache.load_or_infer_per_view(
+            views=views,
+            specs={
+                "keypoints_2d": per_view_cache.PerViewCacheSpec(
+                    annotations_cls=Keypoints2DAnnotations,
+                    metadata=Keypoints2DAnnotationsMetadata(formats=[keypoints_format]),
+                )
+            },
+            infer_missing=infer_missing,
+            sequence_name=sequence_name,
+            cache_output_path_template=runtime_cfg.cache_output_path_template,
+            use_cache=runtime_cfg.use_cache,
+        )
+
+        annotations["keypoints_2d"] = cached["keypoints_2d"].cpu()
 
     def _infer_keypoints(
         self,

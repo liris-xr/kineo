@@ -1,5 +1,5 @@
 output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/h36m_runtime_rtmpose_medium_video_b32_half"
-cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/h36m_runtime_rtmpose_medium_video_b32_half"
+cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/mmlab-moge-fp16_2b366043"
 use_cache: False
 batch_size: 32
 use_half_precision: True
@@ -42,7 +42,7 @@ pipeline:
         _target_: kineo.pipeline.stages.moge_intrinsics_estimation.MoGeIntrinsicsEstimationRuntimeConfig
         use_cache: ${use_cache}
         use_half_precision: ${use_half_precision}
-        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
+        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}/{view_id}.pkl"
 
     keypoints_pairs_sampling:
       _target_: kineo.pipeline.stages.keypoints_pairs_sampling.KeypointsPairsSamplingStage
