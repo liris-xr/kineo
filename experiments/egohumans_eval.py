@@ -168,12 +168,32 @@ def main(
                     orjson.loads(f.read())
                 )
 
-            if views_filter:
-                gt_bboxes_2d = gt_bboxes_2d.filter_by_view_ids(views_filter)
-                gt_keypoints_2d = gt_keypoints_2d.filter_by_view_ids(views_filter)
-                gt_cam_extrinsics = gt_cam_extrinsics.filter_by_view_ids(views_filter)
-                gt_cam_intrinsics = gt_cam_intrinsics.filter_by_view_ids(views_filter)
-                cameras = [c for c in cameras if c in views_filter]
+            # Preprocess keeps moving cameras with their per-segment poses, but
+            # the pipeline assumes one pose per view for the whole sequence, so
+            # they are left out of the run rather than out of the dataset.
+            non_static_views = [
+                view_id
+                for view_id in gt_cam_extrinsics.views_ids
+                if not gt_cam_extrinsics.is_view_static(view_id)
+            ]
+
+            if non_static_views:
+                tqdm.write(
+                    f"{sequence_name}: skipping non-static views "
+                    f"{', '.join(non_static_views)}"
+                )
+
+            cameras = [
+                camera
+                for camera in cameras
+                if camera not in non_static_views
+                and (not views_filter or camera in views_filter)
+            ]
+
+            gt_bboxes_2d = gt_bboxes_2d.filter_by_view_ids(cameras)
+            gt_keypoints_2d = gt_keypoints_2d.filter_by_view_ids(cameras)
+            gt_cam_extrinsics = gt_cam_extrinsics.filter_by_view_ids(cameras)
+            gt_cam_intrinsics = gt_cam_intrinsics.filter_by_view_ids(cameras)
 
             views = []
             for camera in cameras:
