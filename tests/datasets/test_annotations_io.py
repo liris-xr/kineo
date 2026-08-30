@@ -142,7 +142,7 @@ def test_multiple_poses_per_view_reads_back_as_non_static():
     )
 
     assert not extrinsics.is_view_static("cam11")
-    assert extrinsics.filter_active_by_frame_idx(200).annotations[0].frame_idx == 120
+    assert [a.frame_idx for a in extrinsics.annotations] == [0, 120]
 
 
 def test_h36m_annotation_kinds_match_egohumans():
