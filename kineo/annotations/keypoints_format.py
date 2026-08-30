@@ -12,11 +12,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 
-try:
-    from mmengine.infer.infer import BaseInferencer
-except ImportError:
-    pass
-
 
 @dataclass(frozen=True)
 class KeypointsFormat:
@@ -47,6 +42,15 @@ class KeypointsFormat:
 
     @staticmethod
     def from_mmpose_dataset(dataset_name: str) -> KeypointsFormat:
+        """Reads a format from MMPose's dataset configs.
+
+        Only for formats named by a model at runtime rather than known ahead of
+        time: it locates the installed MMPose source tree, so it works solely
+        where the MMLab stack is already a dependency. The formats this codebase
+        names itself are the constants below.
+        """
+        from mmengine.infer.infer import BaseInferencer
+
         repo_or_mim_dir = BaseInferencer._get_repo_or_mim_dir("mmpose")
         dataset_filepath = os.path.join(
             repo_or_mim_dir, "configs", "_base_", "datasets", f"{dataset_name}.py"
@@ -72,9 +76,7 @@ class KeypointsFormat:
         connectivity = []
         for link_info in skeleton_info.values():
             keypoint1, keypoint2 = link_info["link"]
-            keypoint1_idx = names.index(keypoint1)
-            keypoint2_idx = names.index(keypoint2)
-            connectivity.append((keypoint1_idx, keypoint2_idx))
+            connectivity.append((names.index(keypoint1), names.index(keypoint2)))
 
         return KeypointsFormat(
             name=dataset_name,
@@ -99,3 +101,93 @@ class KeypointsFormat:
             keypoints_names=dict_data["keypoints_names"],
             keypoints_connectivity=dict_data["keypoints_connectivity"],
         )
+
+
+# Transcribed from MMPose's `configs/_base_/datasets/{coco,h36m}.py` so that
+# reading a keypoints format does not require MMPose to be installed.
+COCO_17_KEYPOINTS_FORMAT = KeypointsFormat(
+    name="coco",
+    n_keypoints=17,
+    keypoints_names=[
+        "nose",
+        "left_eye",
+        "right_eye",
+        "left_ear",
+        "right_ear",
+        "left_shoulder",
+        "right_shoulder",
+        "left_elbow",
+        "right_elbow",
+        "left_wrist",
+        "right_wrist",
+        "left_hip",
+        "right_hip",
+        "left_knee",
+        "right_knee",
+        "left_ankle",
+        "right_ankle",
+    ],
+    keypoints_connectivity=[
+        (15, 13),
+        (13, 11),
+        (16, 14),
+        (14, 12),
+        (11, 12),
+        (5, 11),
+        (6, 12),
+        (5, 6),
+        (5, 7),
+        (6, 8),
+        (7, 9),
+        (8, 10),
+        (1, 2),
+        (0, 1),
+        (0, 2),
+        (1, 3),
+        (2, 4),
+        (3, 5),
+        (4, 6),
+    ],
+)
+
+H36M_17_KEYPOINTS_FORMAT = KeypointsFormat(
+    name="h36m",
+    n_keypoints=17,
+    keypoints_names=[
+        "root",
+        "right_hip",
+        "right_knee",
+        "right_foot",
+        "left_hip",
+        "left_knee",
+        "left_foot",
+        "spine",
+        "thorax",
+        "neck_base",
+        "head",
+        "left_shoulder",
+        "left_elbow",
+        "left_wrist",
+        "right_shoulder",
+        "right_elbow",
+        "right_wrist",
+    ],
+    keypoints_connectivity=[
+        (0, 4),
+        (4, 5),
+        (5, 6),
+        (0, 1),
+        (1, 2),
+        (2, 3),
+        (0, 7),
+        (7, 8),
+        (8, 9),
+        (9, 10),
+        (8, 11),
+        (11, 12),
+        (12, 13),
+        (8, 14),
+        (14, 15),
+        (15, 16),
+    ],
+)

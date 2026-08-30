@@ -25,8 +25,8 @@ from kineo.annotations.keypoints_3d import (
     Keypoints3DAnnotation,
     Keypoints3DAnnotations,
     Keypoints3DAnnotationsMetadata,
-    KeypointsFormat,
 )
+from kineo.annotations.keypoints_format import H36M_17_KEYPOINTS_FORMAT
 from kineo.annotations.camera_intrinsics import CameraDistortionModel
 import cv2
 
@@ -170,7 +170,7 @@ def load_hsfm_predictions_in_folder(
         )
         keypoints_3d_annotations = Keypoints3DAnnotations(
             metadata=Keypoints3DAnnotationsMetadata(
-                formats=[KeypointsFormat.from_mmpose_dataset("h36m")],
+                formats=[H36M_17_KEYPOINTS_FORMAT],
             ),
             annotations=keypoints_3d_annotations,
         )
@@ -218,7 +218,7 @@ def load_hsfm_predictions_in_folder(
     )
     keypoints_3d_annotations = Keypoints3DAnnotations(
         metadata=Keypoints3DAnnotationsMetadata(
-            formats=[KeypointsFormat.from_mmpose_dataset("h36m")]
+            formats=[H36M_17_KEYPOINTS_FORMAT]
         ),
         annotations=all_keypoints_3d_annotations,
     )

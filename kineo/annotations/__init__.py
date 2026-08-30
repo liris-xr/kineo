@@ -9,7 +9,11 @@ from kineo.annotations.keypoints_2d import (
     Keypoints2DAnnotation,
     Keypoints2DAnnotationsMetadata,
 )
-from kineo.annotations.keypoints_format import KeypointsFormat
+from kineo.annotations.keypoints_format import (
+    KeypointsFormat,
+    COCO_17_KEYPOINTS_FORMAT,
+    H36M_17_KEYPOINTS_FORMAT,
+)
 from kineo.annotations.keypoints_3d import (
     Keypoints3DAnnotations,
     Keypoints3DAnnotation,
@@ -48,6 +52,8 @@ __all__ = [
     "BBox2DAnnotation",
     "BBox2DAnnotationsMetadata",
     "KeypointsFormat",
+    "COCO_17_KEYPOINTS_FORMAT",
+    "H36M_17_KEYPOINTS_FORMAT",
     "Keypoints2DAnnotations",
     "Keypoints2DAnnotation",
     "Keypoints2DAnnotationsMetadata",

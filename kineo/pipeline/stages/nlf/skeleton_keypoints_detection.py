@@ -11,14 +11,14 @@ from kineo.annotations import (
     Keypoints2DAnnotation,
     BBox2DAnnotations,
     CameraIntrinsicsAnnotations,
+    COCO_17_KEYPOINTS_FORMAT,
+    H36M_17_KEYPOINTS_FORMAT,
 )
 from kineo.pipeline.pipeline import Pipeline
 from kineo.pipeline import per_view_cache
 from kineo.pipeline.stages.nlf.model_wrapper import NLFModelWrapper
 from kineo.pipeline.stages.nlf.skeleton_keypoints_format import (
-    H36M_17_KEYPOINTS_FORMAT,
     COCO_19_KEYPOINTS_FORMAT,
-    COCO_17_KEYPOINTS_FORMAT,
     SMPL_24_KEYPOINTS_FORMAT,
 )
 

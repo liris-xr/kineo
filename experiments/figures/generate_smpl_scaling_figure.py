@@ -6,10 +6,8 @@ from smplx import SMPL, SMPLLayer
 from smplx.lbs import vertices2joints
 from tqdm import tqdm
 
-from kineo.annotations.keypoints_3d import (
-    Keypoints3DAnnotations,
-    KeypointsFormat,
-)
+from kineo.annotations.keypoints_3d import Keypoints3DAnnotations
+from kineo.annotations.keypoints_format import H36M_17_KEYPOINTS_FORMAT
 from aitviewer.scene.camera import WeakPerspectiveCamera
 
 from aitviewer.headless import HeadlessRenderer
@@ -19,7 +17,7 @@ from aitviewer.configuration import CONFIG as C
 
 from kineo.geometry.conversions import convert_world_points_from_opencv_to_opengl
 
-H36M_KPS_FORMAT = KeypointsFormat.from_mmpose_dataset("h36m")
+H36M_KPS_FORMAT = H36M_17_KEYPOINTS_FORMAT
 
 C.window_type = "pyglet"
 
