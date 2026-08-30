@@ -1,8 +1,6 @@
 from __future__ import annotations
 import torch
-import os
 from tqdm import tqdm
-import pickle
 
 from kineo.pipeline.pipeline import PipelineStage
 from kineo.datasets.keypoints_sequence_dataset import ViewInput
@@ -15,6 +13,7 @@ from kineo.annotations import (
     CameraIntrinsicsAnnotations,
 )
 from kineo.pipeline.pipeline import Pipeline
+from kineo.pipeline import per_view_cache
 from kineo.pipeline.stages.nlf.model_wrapper import NLFModelWrapper
 from kineo.pipeline.stages.nlf.skeleton_keypoints_format import (
     H36M_17_KEYPOINTS_FORMAT,
@@ -38,7 +37,9 @@ class NLFSkeletonKeypointsDetectionRuntimeConfig:
     batch_size: int = 16
     use_half_precision: bool = True
     use_cache: bool = True
-    cache_output_path_template: str = "cache/{sequence_name}/{annotation_key}.pkl"
+    cache_output_path_template: str = (
+        "cache/{sequence_name}/{annotation_key}/{view_id}.pkl"
+    )
     frame_step: int = (
         1  # Infer every N frames (1 = every frame, 2 = every other frame, etc.)
     )
@@ -107,49 +108,42 @@ class NLFSkeletonKeypointsDetectionStage(
         if bboxes_annotations is None:
             raise ValueError("Expected bboxes annotations but none were provided")
 
-        if runtime_cfg.use_cache:
-            kps2d_cache_filepath = runtime_cfg.cache_output_path_template.format(
-                sequence_name=sequence_name, annotation_key="keypoints_2d"
-            )
-
-            if os.path.exists(kps2d_cache_filepath):
-                with open(kps2d_cache_filepath, "rb") as f:
-                    keypoints_annotations = Keypoints2DAnnotations.from_dict(
-                        pickle.load(f)
+        def infer_missing(missing_views: list[ViewInput]) -> dict[str, Annotations]:
+            self.model = self.model.to(device)
+            try:
+                return {
+                    "keypoints_2d": self._infer_keypoints(
+                        views=missing_views,
+                        device=device,
+                        bboxes_annotations=bboxes_annotations,
+                        intrinsics_annotations=intrinsics_annotations,
+                        model=self.model,
+                        batch_size=runtime_cfg.batch_size,
+                        use_half_precision=runtime_cfg.use_half_precision,
+                        frame_step=runtime_cfg.frame_step,
+                        skeleton_name=runtime_cfg.skeleton_name,
                     )
-                print(
-                    f"Loaded keypoints annotations from cache: {kps2d_cache_filepath}"
-                )
-                annotations["keypoints_2d"] = keypoints_annotations.cpu()
-                return
+                }
+            finally:
+                self.model = self.model.cpu()
 
-        self.model = self.model.to(device)
-
-        keypoints_annotations = self._infer_keypoints(
+        cached = per_view_cache.load_or_infer_per_view(
             views=views,
-            device=device,
-            bboxes_annotations=bboxes_annotations,
-            intrinsics_annotations=intrinsics_annotations,
-            model=self.model,
-            batch_size=runtime_cfg.batch_size,
-            use_half_precision=runtime_cfg.use_half_precision,
-            frame_step=runtime_cfg.frame_step,
-            skeleton_name=runtime_cfg.skeleton_name,
+            specs={
+                "keypoints_2d": per_view_cache.PerViewCacheSpec(
+                    annotations_cls=Keypoints2DAnnotations,
+                    metadata=Keypoints2DAnnotationsMetadata(
+                        formats=[KEYPOINTS_FORMAT[runtime_cfg.skeleton_name]]
+                    ),
+                )
+            },
+            infer_missing=infer_missing,
+            sequence_name=sequence_name,
+            cache_output_path_template=runtime_cfg.cache_output_path_template,
+            use_cache=runtime_cfg.use_cache,
         )
 
-        self.model = self.model.cpu()
-
-        if runtime_cfg.use_cache:
-            os.makedirs(os.path.dirname(kps2d_cache_filepath), exist_ok=True)
-
-            if not os.path.exists(kps2d_cache_filepath):
-                with open(kps2d_cache_filepath, "wb") as f:
-                    print(
-                        f"Saving keypoints annotations to cache: {kps2d_cache_filepath}"
-                    )
-                    pickle.dump(keypoints_annotations.to_dict(), f)
-
-        annotations["keypoints_2d"] = keypoints_annotations.cpu()
+        annotations["keypoints_2d"] = cached["keypoints_2d"].cpu()
 
     def _infer_keypoints(
         self,
