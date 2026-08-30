@@ -112,9 +112,17 @@ class MetricsExportStage(PipelineStage[MetricsExportRuntimeConfig]):
             pred_cam_extrinsics_annotations=pred_camera_extrinsics,
         )
 
+        non_static_views = [
+            view_id
+            for view_id in gt_camera_extrinsics.views_ids
+            if not gt_camera_extrinsics.is_view_static(view_id)
+        ]
+
         avg_metrics = {
             "cam_stats": cam_metrics,
             "human_stats": human_metrics,
+            "has_non_static_camera": len(non_static_views) > 0,
+            "non_static_views": non_static_views,
             "stage_timings": stage_timings,
             "n_total_frames": n_total_frames,
             "avg_fps": avg_fps,
