@@ -653,7 +653,8 @@ def preprocess_aistpp(
                     "annotations": annotations_relpaths,
                     "views": {
                         camera_name: {
-                            "video_path": _video_relpath(videos[camera_name], variant)
+                            "video_path": _video_relpath(videos[camera_name], variant),
+                            "annotated_start_frame": frame_offsets[camera_name],
                         }
                         for camera_name in matched_cameras
                     },
