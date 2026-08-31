@@ -75,7 +75,7 @@ class GlobalTimeResamplingStage(PipelineStage[GlobalTimeResamplingRuntimeConfig]
         n_views = len(views)
 
         camera_temporal: CameraTemporalAnnotations | None = annotations.get(
-            "camera_temporal", None
+            "cameras_temporal", None
         )
 
         if camera_temporal is None:
@@ -92,7 +92,7 @@ class GlobalTimeResamplingStage(PipelineStage[GlobalTimeResamplingRuntimeConfig]
                     for view_idx in range(n_views)
                 ],
             )
-            annotations["camera_temporal"] = camera_temporal
+            annotations["cameras_temporal"] = camera_temporal
 
         # Short path, if all cameras are synchronized and have the same number of frames, we can return the annotations as is (e.g. for synchronized datasets)
         if all(a.time_offset == 0.0 for a in camera_temporal.annotations) and all(
@@ -280,11 +280,6 @@ class GlobalTimeResamplingStage(PipelineStage[GlobalTimeResamplingRuntimeConfig]
                             subject_id=subject_id,
                             xy=resampled_kps_2d_xy[f, view_idx],
                             scores=resampled_kps_2d_scores[f, view_idx],
-                            annotated=torch.ones_like(
-                                resampled_kps_2d_xy[f, view_idx, :, 0],
-                                dtype=torch.bool,
-                                device=device,
-                            ),
                             format=kps_format_name,
                         )
                     )

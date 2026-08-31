@@ -81,7 +81,7 @@ class NLFSMPLKeypointsDetectionStage(PipelineStage[NLFSMPLKeypointsDetectionRunt
         bboxes_annotations: BBox2DAnnotations = annotations.get("bboxes_2d")
 
         intrinsics_annotations: CameraIntrinsicsAnnotations = annotations.get(
-            "camera_intrinsics"
+            "cameras_intrinsics"
         )
 
         if bboxes_annotations is None:
@@ -294,7 +294,6 @@ class NLFSMPLKeypointsDetectionStage(PipelineStage[NLFSMPLKeypointsDetectionRunt
                             subject_id=subject_id,
                             xy=kps_xy.cpu(),
                             scores=scores.cpu(),
-                            annotated=torch.ones(kps_xy.shape[0], dtype=torch.bool),
                             format=keypoints_format.name,
                         )
 

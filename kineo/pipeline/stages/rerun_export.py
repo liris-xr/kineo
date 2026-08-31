@@ -173,10 +173,10 @@ class RerunExportStage(PipelineStage[RerunExportRuntimeConfig]):
         pred_keypoints_2d: Keypoints2DAnnotations = annotations["keypoints_2d"]
         pred_keypoints_3d: Keypoints3DAnnotations = annotations["keypoints_3d"]
         pred_camera_extrinsics: CameraExtrinsicsAnnotations = annotations[
-            "camera_extrinsics"
+            "cameras_extrinsics"
         ]
         pred_camera_intrinsics: CameraIntrinsicsAnnotations = annotations[
-            "camera_intrinsics"
+            "cameras_intrinsics"
         ]
         pred_world_reconstruction: WorldReconstructedSceneAnnotations = annotations.get(
             "world_reconstructed_scene"
@@ -186,8 +186,8 @@ class RerunExportStage(PipelineStage[RerunExportRuntimeConfig]):
 
         gt_keypoints_2d: Keypoints2DAnnotations = gt_annotations.get("keypoints_2d")
         gt_keypoints_3d: Keypoints3DAnnotations = gt_annotations.get("keypoints_3d")
-        gt_camera_extrinsics: CameraExtrinsicsAnnotations = gt_annotations.get("camera_extrinsics")
-        gt_camera_intrinsics: CameraIntrinsicsAnnotations = gt_annotations.get("camera_intrinsics")
+        gt_camera_extrinsics: CameraExtrinsicsAnnotations = gt_annotations.get("cameras_extrinsics")
+        gt_camera_intrinsics: CameraIntrinsicsAnnotations = gt_annotations.get("cameras_intrinsics")
 
         if gt_camera_extrinsics is not None:
             pred_keypoints_3d, pred_camera_extrinsics, pred_world_reconstruction = self.align_predictions_to_gt(
@@ -311,8 +311,8 @@ class RerunExportStage(PipelineStage[RerunExportRuntimeConfig]):
                 prefix="kineo",
                 fps=target_fps,
                 # Fetch the annotations again because we modified them in the align_predictions_to_gt method
-                pred_camera_extrinsics=annotations.get("camera_extrinsics"),
-                gt_camera_extrinsics=gt_annotations.get("camera_extrinsics"),
+                pred_camera_extrinsics=annotations.get("cameras_extrinsics"),
+                gt_camera_extrinsics=gt_annotations.get("cameras_extrinsics"),
                 smpl_color_override=runtime_cfg.smpl_color_override,
                 start_frame_idx=runtime_cfg.start_frame_idx,
                 end_frame_idx=runtime_cfg.end_frame_idx,

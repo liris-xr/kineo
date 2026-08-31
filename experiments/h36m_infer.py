@@ -142,8 +142,8 @@ def main(
                 annotations={},
                 gt_annotations={
                     "keypoints_3d": gt_keypoints_3d,
-                    "camera_extrinsics": gt_cam_extrinsics,
-                    "camera_intrinsics": gt_cam_intrinsics,
+                    "cameras_extrinsics": gt_cam_extrinsics,
+                    "cameras_intrinsics": gt_cam_intrinsics,
                 },
             )
         except Exception:

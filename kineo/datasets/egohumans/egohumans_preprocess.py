@@ -10,6 +10,7 @@
 
 from kineo.io.file import extract_tar_with_progress
 from glob import glob
+import itertools
 import os
 from tqdm import tqdm
 import numpy as np
@@ -18,12 +19,10 @@ from typing import Any
 import torch
 import roma
 import pickle
-from kineo.annotations.keypoints_format import KeypointsFormat
+from kineo.annotations.keypoints_format import COCO_17_KEYPOINTS_FORMAT
 
 from kineo.io.frame_sequence_loader import ImagesLoader
 from kineo.datasets.keypoints_sequence_dataset import ViewInput
-from kineo.visualization.viz_3d import show_keypoints_and_cameras
-from kineo.visualization.viz_2d import show_bboxes_and_reproj_keypoints
 from kineo.annotations.global_time_reference import (
     GlobalTimeReferenceAnnotations,
     GlobalTimeReferenceAnnotationsMetadata,
@@ -43,11 +42,7 @@ from kineo.annotations.keypoints_3d import (
     Keypoints3DAnnotations,
     Keypoints3DAnnotationsMetadata,
 )
-from kineo.annotations.camera_temporal import (
-    CameraTemporalAnnotations,
-    CameraTemporalAnnotationsMetadata,
-    CameraTemporalAnnotation,
-)
+from kineo.datasets import annotations_io
 from kineo.annotations.camera_extrinsics import (
     CameraExtrinsicsAnnotation,
     CameraExtrinsicsAnnotations,
@@ -198,53 +193,15 @@ def _generate_annotations(
                 os.path.join(dataset_dir, subseq_annotations_dir), exist_ok=True
             )
 
-            kps_2d_annotations_relpath = os.path.join(
-                subseq_annotations_dir,
-                "keypoints_2d.json",
-            )
-            kps_2d_annotations_abspath = os.path.join(
-                dataset_dir, kps_2d_annotations_relpath
-            )
-
-            kps_3d_annotations_relpath = os.path.join(
-                subseq_annotations_dir,
-                "keypoints_3d.json",
-            )
-            kps_3d_annotations_abspath = os.path.join(
-                dataset_dir, kps_3d_annotations_relpath
-            )
-
-            bboxes_annotations_relpath = os.path.join(
-                subseq_annotations_dir,
-                "bboxes_2d.json",
-            )
-            bboxes_annotations_abspath = os.path.join(
-                dataset_dir, bboxes_annotations_relpath
-            )
-
-            cam_temporal_annotations_relpath = os.path.join(
-                subseq_annotations_dir,
-                "cameras_temporal.json",
-            )
-            cam_temporal_annotations_abspath = os.path.join(
-                dataset_dir, cam_temporal_annotations_relpath
-            )
-
-            cam_intrinsics_annotations_relpath = os.path.join(
-                subseq_annotations_dir,
-                "cameras_intrinsics.json",
-            )
-            cam_intrinsics_annotations_abspath = os.path.join(
-                dataset_dir, cam_intrinsics_annotations_relpath
-            )
-
-            cam_extrinsics_annotations_relpath = os.path.join(
-                subseq_annotations_dir,
-                "cameras_extrinsics.json",
-            )
-            cam_extrinsics_annotations_abspath = os.path.join(
-                dataset_dir, cam_extrinsics_annotations_relpath
-            )
+            annotations_relpaths = {
+                key: Path(
+                    os.path.join(subseq_annotations_dir, filename)
+                ).as_posix()
+                for key, filename in annotations_io.ANNOTATION_FILENAMES.items()
+                if os.path.exists(
+                    os.path.join(dataset_dir, subseq_annotations_dir, filename)
+                )
+            }
 
             sequence_dir = sequence["directory"]
             sequence_name = sequence["name"]
@@ -273,7 +230,6 @@ def _generate_annotations(
                     included_cams=included_cams,
                     colmap_dir=os.path.join(subsequence_abs_dir, "colmap/workplace"),
                     cfg=cfg,
-                    static_only=True,
                     merge_static_extrinsics=True,
                     merge_translation_tolerance=merge_translation_tolerance,
                     merge_rotation_tolerance=merge_rotation_tolerance,
@@ -287,7 +243,6 @@ def _generate_annotations(
                     kps_2d_annotations,
                     kps_3d_annotations,
                     bboxes_annotations,
-                    cam_temporal_annotations,
                 ) = _generate_subsequence_annotations(
                     subsequence_abs_dir=subsequence_abs_dir,
                     cam_intrinsics_annotations=cam_intrinsics_annotations,
@@ -297,59 +252,22 @@ def _generate_annotations(
                     show=show,
                 )
 
-                with open(kps_2d_annotations_abspath, "wb") as f:
-                    f.write(orjson.dumps(kps_2d_annotations.to_dict()))
-                tqdm.write(
-                    f"Saved keypoints 2d annotations to {kps_2d_annotations_abspath}"
-                )
-
-                with open(kps_3d_annotations_abspath, "wb") as f:
-                    f.write(orjson.dumps(kps_3d_annotations.to_dict()))
-                tqdm.write(
-                    f"Saved keypoints 3d annotations to {kps_3d_annotations_abspath}"
-                )
-
-                with open(bboxes_annotations_abspath, "wb") as f:
-                    f.write(orjson.dumps(bboxes_annotations.to_dict()))
-                tqdm.write(
-                    f"Saved bboxes 2d annotations to {bboxes_annotations_abspath}"
-                )
-
-                with open(cam_temporal_annotations_abspath, "wb") as f:
-                    f.write(orjson.dumps(cam_temporal_annotations.to_dict()))
-                tqdm.write(
-                    f"Saved cameras temporal annotations to {cam_temporal_annotations_abspath}"
-                )
-
-                with open(cam_intrinsics_annotations_abspath, "wb") as f:
-                    f.write(orjson.dumps(cam_intrinsics_annotations.to_dict()))
-                tqdm.write(
-                    f"Saved cameras intrinsics to {cam_intrinsics_annotations_abspath}"
-                )
-
-                with open(cam_extrinsics_annotations_abspath, "wb") as f:
-                    f.write(orjson.dumps(cam_extrinsics_annotations.to_dict()))
-                tqdm.write(
-                    f"Saved cameras extrinsics to {cam_extrinsics_annotations_abspath}"
+                annotations_relpaths = annotations_io.write_sequence_annotations(
+                    dataset_dir=dataset_dir,
+                    annotations_reldir=subseq_annotations_dir,
+                    annotations={
+                        "keypoints_2d": kps_2d_annotations,
+                        "keypoints_3d": kps_3d_annotations,
+                        "bboxes_2d": bboxes_annotations,
+                        "cameras_intrinsics": cam_intrinsics_annotations,
+                        "cameras_extrinsics": cam_extrinsics_annotations,
+                    },
                 )
 
             sequences_infos.append(
                 {
                     "sequence_name": f"{sequence_name}_{subsequence_idx + 1:03d}",
-                    "annotations": {
-                        "keypoints_2d": Path(kps_2d_annotations_relpath).as_posix(),
-                        "keypoints_3d": Path(kps_3d_annotations_relpath).as_posix(),
-                        "bboxes_2d": Path(bboxes_annotations_relpath).as_posix(),
-                        "cameras_temporal": Path(
-                            cam_temporal_annotations_relpath
-                        ).as_posix(),
-                        "cameras_intrinsics": Path(
-                            cam_intrinsics_annotations_relpath
-                        ).as_posix(),
-                        "cameras_extrinsics": Path(
-                            cam_extrinsics_annotations_relpath
-                        ).as_posix(),
-                    },
+                    "annotations": annotations_relpaths,
                     "views": {
                         view_id: {
                             "images_dir": (
@@ -385,7 +303,6 @@ def _generate_subsequence_annotations(
     Keypoints2DAnnotations,
     Keypoints3DAnnotations,
     BBox2DAnnotations,
-    CameraTemporalAnnotations,
 ]:
     assert cam_intrinsics_annotations.views_ids == cam_extrinsics_annotations.views_ids
 
@@ -423,6 +340,10 @@ def _generate_subsequence_annotations(
     )
 
     if show:
+        # Lazy import to keep aitviewer optional
+        from kineo.visualization.viz_3d import show_keypoints_and_cameras
+        from kineo.visualization.viz_2d import show_bboxes_and_reproj_keypoints
+
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         views = []
         for camera in cameras:
@@ -479,20 +400,10 @@ def _generate_subsequence_annotations(
             fps=FPS,
         )
 
-    # All cameras are synchronized
-    cam_temporal_annotations = CameraTemporalAnnotations(
-        metadata=CameraTemporalAnnotationsMetadata(),
-        annotations=[
-            CameraTemporalAnnotation(view_id=view_id, frame_idx=0, time_offset=0.0)
-            for view_id in cameras
-        ],
-    )
-
     return (
         kps_2d_annotations,
         kps_3d_annotations,
         bboxes_annotations,
-        cam_temporal_annotations,
     )
 
 
@@ -500,16 +411,17 @@ def _load_cameras_annotations(
     included_cams: list[str],
     colmap_dir: str,
     cfg: dict[str, Any],
-    static_only: bool = True,
     merge_static_extrinsics: bool = True,
     merge_translation_tolerance: float = 0.02,  # in meters
     merge_rotation_tolerance: float = 1.0,  # in degrees
 ) -> tuple[CameraIntrinsicsAnnotations, CameraExtrinsicsAnnotations]:
+    image_pose_lines = _load_colmap_image_pose_lines(colmap_dir)
+
     cam_intrinsics_annotations = _load_cameras_intrinsics(
-        included_cams, colmap_dir, cfg
+        included_cams, colmap_dir, cfg, image_pose_lines
     )
     cam_extrinsics_annotations = _load_cameras_extrinsics(
-        included_cams, colmap_dir, cfg
+        included_cams, colmap_dir, cfg, image_pose_lines
     )
 
     if merge_static_extrinsics:
@@ -519,21 +431,9 @@ def _load_cameras_annotations(
             rotation_tolerance=merge_rotation_tolerance,
         )
 
-    if static_only:
-        new_annotations: list[CameraExtrinsicsAnnotation] = []
-        views_ids = cam_extrinsics_annotations.views_ids
-        for view_id in views_ids:
-            view_annotations = cam_extrinsics_annotations.filter_by_view_id(view_id)
-            if len(view_annotations) == 1:
-                new_annotations.append(view_annotations.first_or_default())
-            else:
-                tqdm.write(
-                    f"View {view_id} has multiple extrinsics annotations (not static), not including it."
-                )
-        cam_extrinsics_annotations = CameraExtrinsicsAnnotations(
-            metadata=cam_extrinsics_annotations.metadata,
-            annotations=new_annotations,
-        )
+    for view_id in cam_extrinsics_annotations.views_ids:
+        if not cam_extrinsics_annotations.is_view_static(view_id):
+            tqdm.write(f"View {view_id} is non-static; keeping per-segment extrinsics.")
 
     # Remove any camera in intrinsics annotations that is not both in the intrinsics and the extrinsics annotations
     extrinsics_views_ids = cam_extrinsics_annotations.views_ids
@@ -686,7 +586,7 @@ def _load_bboxes_annotations(
 def _load_keypoints_annotations(
     keypoints_dir: str, cfg: dict[str, Any]
 ) -> Keypoints3DAnnotations:
-    kps_format = KeypointsFormat.from_mmpose_dataset("coco")
+    kps_format = COCO_17_KEYPOINTS_FORMAT
 
     kps_files = sorted(glob(os.path.join(keypoints_dir, "*.npy")))
 
@@ -710,7 +610,6 @@ def _load_keypoints_annotations(
                 frame_idx=frame_idx,
                 subject_id=subject_id,
                 xyz=kps,
-                annotated=torch.ones_like(kps[:, 0], dtype=torch.bool),
                 scores=torch.ones_like(kps[:, 0], dtype=torch.float32),
                 format=kps_format.name,
             )
@@ -728,27 +627,21 @@ def _load_keypoints_annotations(
     return kps_annotations
 
 
-def _get_camera_name_from_colmap_camera_id(colmap_dir: str, colmap_camera_id: int):
-    """
-    Get the camera name from the Colmap camera id.
-    """
-    extrinsics_calibration_file = os.path.join(colmap_dir, "images.txt")
+def _load_colmap_image_pose_lines(colmap_dir: str) -> list[str]:
+    with open(os.path.join(colmap_dir, "images.txt")) as f:
+        # Skip the 4 header lines and the 2D points lines
+        return list(itertools.islice(f, 4, None, 2))
 
-    with open(extrinsics_calibration_file) as f:
-        extrinsics = f.readlines()
-        extrinsics = extrinsics[4:]  # drop the first 4 lines (commented lines)
-        extrinsics = extrinsics[::2]  # only alternate lines
 
-    for line in extrinsics:
+def _load_colmap_camera_id_to_name_map(pose_lines: list[str]) -> dict[int, str]:
+    id_to_name: dict[int, str] = {}
+    for line in pose_lines:
         line = line.strip().split()
         camera_id = int(line[-2])
-        image_path = line[-1]
-        camera_name = image_path.split("/")[0]
+        camera_name = line[-1].split("/")[0]
+        id_to_name.setdefault(camera_id, camera_name)
 
-        if camera_id == colmap_camera_id:
-            return camera_name
-
-    return None
+    return id_to_name
 
 
 def _load_coordinate_transform(colmap_dir: str, cfg: dict[str, Any]) -> np.ndarray:
@@ -762,7 +655,10 @@ def _load_coordinate_transform(colmap_dir: str, cfg: dict[str, Any]) -> np.ndarr
 
 
 def _load_cameras_intrinsics(
-    included_cams: list[str], colmap_dir: str, cfg: dict[str, Any]
+    included_cams: list[str],
+    colmap_dir: str,
+    cfg: dict[str, Any],
+    image_pose_lines: list[str],
 ) -> CameraIntrinsicsAnnotations:
     intrinsics_calibration_file = os.path.join(colmap_dir, "cameras.txt")
 
@@ -770,14 +666,14 @@ def _load_cameras_intrinsics(
         intrinsics = f.readlines()
         intrinsics = intrinsics[3:]  # drop the first 3 lines (commented lines)
 
+    colmap_camera_id_to_name = _load_colmap_camera_id_to_name_map(image_pose_lines)
+
     cam_intrinsics_annotations: list[CameraIntrinsicsAnnotation] = []
 
     for line in intrinsics:
         line = line.split()
         cam_id = int(line[0])
-        cam_name = _get_camera_name_from_colmap_camera_id(
-            colmap_dir=colmap_dir, colmap_camera_id=cam_id
-        )
+        cam_name = colmap_camera_id_to_name.get(cam_id)
 
         if cam_name not in included_cams:
             continue
@@ -859,6 +755,7 @@ def _load_cameras_extrinsics(
     included_cams: list[str],
     colmap_dir: str,
     cfg: dict[str, Any],
+    image_pose_lines: list[str],
 ) -> CameraExtrinsicsAnnotations:
     coordinate_transform = _load_coordinate_transform(colmap_dir, cfg)
 
@@ -883,21 +780,12 @@ def _load_cameras_extrinsics(
             )
         )
 
-    extrinsics_calibration_file = os.path.join(colmap_dir, "images.txt")
-
-    with open(extrinsics_calibration_file) as f:
-        extrinsics = f.readlines()
-        extrinsics = extrinsics[4:]  # drop the first 4 lines (commented lines)
-        extrinsics = extrinsics[::2]  # only alternate lines (skip points2d)
-
-    for line in extrinsics:
+    for line in image_pose_lines:
         line = line.strip().split()
 
-        name = line[9]
-        name = str(Path(name).with_suffix(""))
-        # Split name by /, first element is the subject name, second is the frame_idx
-        cam_name, frame_id = name.split("/")
-        frame_id = int(frame_id)
+        # COLMAP names are cam01/00001.jpg on every OS
+        cam_name, frame_file = line[9].split("/", 1)
+        frame_id = int(os.path.splitext(frame_file)[0])
 
         if (
             cam_name in cfg.CALIBRATION.MANUAL_EXO_CAMERAS

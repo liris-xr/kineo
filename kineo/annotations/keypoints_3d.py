@@ -48,7 +48,6 @@ class Keypoints3DAnnotation:
     frame_idx: int  # frame index in the global time reference
     subject_id: str
     xyz: torch.Tensor  # (n_keypoints, 3)
-    annotated: torch.Tensor  # (n_keypoints,)
     scores: torch.Tensor  # (n_keypoints,)
     format: str  # format of the keypoints (e.g., "h36m", "coco")
 
@@ -64,18 +63,14 @@ class Keypoints3DAnnotation:
             raise ValueError(
                 f"Expected score to be of type torch.float32, got {self.scores.dtype}"
             )
-        if self.annotated.dtype != torch.bool:
-            raise ValueError(
-                f"Expected annotated to be of type torch.bool, got {self.annotated.dtype}"
-            )
         if self.xyz.ndim != 2:
             raise ValueError(
                 f"Expected xyz to be of shape (n_keypoints, 3), got {self.xyz.shape}"
             )
         n_keypoints = self.xyz.shape[0]
-        if self.annotated.shape != (n_keypoints,):
+        if self.scores.shape != (n_keypoints,):
             raise ValueError(
-                f"Expected annotated to be of shape ({n_keypoints},), got {self.annotated.shape}"
+                f"Expected scores to be of shape ({n_keypoints},), got {self.scores.shape}"
             )
         if not isinstance(self.format, str):
             raise ValueError(
@@ -87,7 +82,6 @@ class Keypoints3DAnnotation:
             "frame_idx": self.frame_idx,
             "subject_id": self.subject_id,
             "xyz": self.xyz.tolist(),
-            "annotated": self.annotated.tolist(),
             "scores": self.scores.tolist(),
             "format": self.format,
         }
@@ -97,9 +91,8 @@ class Keypoints3DAnnotation:
         return Keypoints3DAnnotation(
             frame_idx=dict_data["frame_idx"],
             subject_id=dict_data["subject_id"],
-            xyz=torch.tensor(dict_data["xyz"]),
-            annotated=torch.tensor(dict_data["annotated"]),
-            scores=torch.tensor(dict_data["scores"]),
+            xyz=torch.tensor(dict_data["xyz"], dtype=torch.float32),
+            scores=torch.tensor(dict_data["scores"], dtype=torch.float32),
             format=dict_data["format"],
         )
 
@@ -116,7 +109,6 @@ class Keypoints3DAnnotation:
             frame_idx=self.frame_idx,
             subject_id=self.subject_id,
             xyz=new_xyz,
-            annotated=self.annotated.clone(),
             scores=self.scores.clone(),
             format=self.format,
         )
@@ -129,7 +121,6 @@ class Keypoints3DAnnotation:
             frame_idx=self.frame_idx,
             subject_id=self.subject_id,
             xyz=self.xyz.to(device),
-            annotated=self.annotated.to(device),
             scores=self.scores.to(device),
             format=self.format,
         )
@@ -178,9 +169,9 @@ class Keypoints3DAnnotations(Annotations[Keypoints3DAnnotation]):
                 raise ValueError(
                     f"Expected xyz to be of shape ({n_keypoints}, 3), got {annotation.xyz.shape}"
                 )
-            if annotation.annotated.shape != (n_keypoints,):
+            if annotation.scores.shape != (n_keypoints,):
                 raise ValueError(
-                    f"Expected annotated to be of shape ({n_keypoints},), got {annotation.annotated.shape}"
+                    f"Expected scores to be of shape ({n_keypoints},), got {annotation.scores.shape}"
                 )
 
     def to_dict(self) -> dict:
@@ -249,7 +240,6 @@ class Keypoints3DAnnotations(Annotations[Keypoints3DAnnotation]):
                     frame_idx=annotation.frame_idx + shift,
                     subject_id=annotation.subject_id,
                     xyz=annotation.xyz.clone(),
-                    annotated=annotation.annotated.clone(),
                     scores=annotation.scores.clone(),
                     format=annotation.format,
                 )
@@ -340,7 +330,6 @@ class Keypoints3DAnnotations(Annotations[Keypoints3DAnnotation]):
                         frame_idx=annotation.frame_idx,
                         subject_id=annotation.subject_id,
                         xyz=annotation.xyz[mapping],
-                        annotated=annotation.annotated[mapping],
                         scores=annotation.scores[mapping],
                         format="coco",
                     )
@@ -358,7 +347,6 @@ class Keypoints3DAnnotations(Annotations[Keypoints3DAnnotation]):
                         frame_idx=annotation.frame_idx,
                         subject_id=annotation.subject_id,
                         xyz=annotation.xyz[mapping],
-                        annotated=annotation.annotated[mapping],
                         scores=annotation.scores[mapping],
                         format="coco",
                     )
@@ -412,7 +400,6 @@ class Keypoints3DAnnotations(Annotations[Keypoints3DAnnotation]):
                         frame_idx=new_frame_idxs[i].item(),
                         subject_id=subject_id,
                         xyz=resampled_kps_xyz[i],
-                        annotated=torch.ones_like(resampled_kps_xyz[i, ..., 0], dtype=torch.bool),
                         scores=resampled_kps_scores[i],
                         format=subject_annotations[0].format,
                     )

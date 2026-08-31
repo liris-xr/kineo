@@ -14,10 +14,10 @@ import os
 import torch
 
 from kineo.io.frame_sequence_loader import VideoLoader
+from kineo.datasets import annotations_io
 from kineo.datasets.keypoints_sequence_dataset import (
     KeypointsSequenceDataset,
     KeypointsSequence,
-    KeypointsSequenceAnnotations,
     ViewInput,
 )
 
@@ -70,22 +70,20 @@ class H36MSequenceDataset(KeypointsSequenceDataset):
                     raise NotImplementedError
 
                 views_inputs.append(
-                    {
-                        "name": view_name,
-                        "frame_loader": VideoLoader(
+                    ViewInput(
+                        view_id=view_name,
+                        frame_loader=VideoLoader(
                             video_path=video_path,
                             selected_frames=selected_frames,
                             device=self.device,
                         ),
-                    }
+                        audio_loader=None,
+                    )
                 )
 
             if "annotations" in sequence_data:
-                annotations_filepath = os.path.join(
-                    self.dataset_dirpath, sequence_data["annotations"]
-                )
-                annotations = KeypointsSequenceAnnotations.load_from_file(
-                    annotations_filepath
+                annotations = annotations_io.load_sequence_annotations(
+                    self.dataset_dirpath, sequence_data
                 )
             else:
                 annotations = None

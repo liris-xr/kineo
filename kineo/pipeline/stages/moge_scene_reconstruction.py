@@ -79,10 +79,10 @@ class MoGeSceneReconstructionStage(PipelineStage[MoGeSceneReconstructionRuntimeC
         self.moge_model = self.moge_model.to(device)
 
         camera_intrinsics: CameraIntrinsicsAnnotations = annotations[
-            "camera_intrinsics"
+            "cameras_intrinsics"
         ]
         camera_extrinsics: CameraExtrinsicsAnnotations = annotations[
-            "camera_extrinsics"
+            "cameras_extrinsics"
         ]
 
         views_ids = [v["view_id"] for v in views]

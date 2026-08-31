@@ -44,10 +44,10 @@ class GTScaleComputationStage(PipelineStage[None]):
         runtime_cfg: None = None,
     ):
         pred_camera_extrinsics: CameraExtrinsicsAnnotations = annotations[
-            "camera_extrinsics"
+            "cameras_extrinsics"
         ]
         gt_camera_extrinsics: CameraExtrinsicsAnnotations = gt_annotations.get(
-            "camera_extrinsics"
+            "cameras_extrinsics"
         )
 
         _, _, s = pred_camera_extrinsics.compute_similarity_transform(

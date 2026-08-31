@@ -75,10 +75,10 @@ class Visualization3DStage(PipelineStage[Visualization3DRuntimeConfig]):
 
         pred_keypoints_3d: Keypoints3DAnnotations = annotations.get("keypoints_3d")
         pred_camera_extrinsics: CameraExtrinsicsAnnotations = annotations.get(
-            "camera_extrinsics"
+            "cameras_extrinsics"
         )
         pred_camera_intrinsics: CameraIntrinsicsAnnotations = annotations.get(
-            "camera_intrinsics"
+            "cameras_intrinsics"
         )
         pred_world_reconstruction: WorldReconstructedSceneAnnotations = annotations.get(
             "world_reconstructed_scene"
@@ -89,10 +89,10 @@ class Visualization3DStage(PipelineStage[Visualization3DRuntimeConfig]):
 
         gt_keypoints_3d: Keypoints3DAnnotations = gt_annotations.get("keypoints_3d")
         gt_camera_extrinsics: CameraExtrinsicsAnnotations = gt_annotations.get(
-            "camera_extrinsics"
+            "cameras_extrinsics"
         )
         gt_camera_intrinsics: CameraIntrinsicsAnnotations = gt_annotations.get(
-            "camera_intrinsics"
+            "cameras_intrinsics"
         )
 
         if global_time_reference is not None:

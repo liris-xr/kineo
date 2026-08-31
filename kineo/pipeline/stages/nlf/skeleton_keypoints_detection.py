@@ -11,14 +11,14 @@ from kineo.annotations import (
     Keypoints2DAnnotation,
     BBox2DAnnotations,
     CameraIntrinsicsAnnotations,
+    COCO_17_KEYPOINTS_FORMAT,
+    H36M_17_KEYPOINTS_FORMAT,
 )
 from kineo.pipeline.pipeline import Pipeline
 from kineo.pipeline import per_view_cache
 from kineo.pipeline.stages.nlf.model_wrapper import NLFModelWrapper
 from kineo.pipeline.stages.nlf.skeleton_keypoints_format import (
-    H36M_17_KEYPOINTS_FORMAT,
     COCO_19_KEYPOINTS_FORMAT,
-    COCO_17_KEYPOINTS_FORMAT,
     SMPL_24_KEYPOINTS_FORMAT,
 )
 
@@ -102,7 +102,7 @@ class NLFSkeletonKeypointsDetectionStage(
         bboxes_annotations: BBox2DAnnotations = annotations.get("bboxes_2d")
 
         intrinsics_annotations: CameraIntrinsicsAnnotations = annotations.get(
-            "camera_intrinsics"
+            "cameras_intrinsics"
         )
 
         if bboxes_annotations is None:
@@ -288,9 +288,6 @@ class NLFSkeletonKeypointsDetectionStage(
                             subject_id=subject_id,
                             xy=subject_joints2d_xy.cpu(),
                             scores=subject_joints2d_confidence.cpu(),
-                            annotated=torch.ones(
-                                subject_joints2d_xy.shape[0], dtype=torch.bool
-                            ),
                             format=keypoints_format.name,
                         )
 

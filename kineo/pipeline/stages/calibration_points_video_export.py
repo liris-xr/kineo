@@ -185,10 +185,8 @@ class CalibrationPointsVideoExportStage(
             if kps_2d is not None:
                 for annot in kps_2d_lookup.get((view1_id, local_idx1), []):
                     xy = annot.xy.cpu().numpy()
-                    visibility = annot.annotated.cpu().numpy()
                     if skeleton_kp_indices is not None:
                         xy = xy[skeleton_kp_indices]
-                        visibility = visibility[skeleton_kp_indices]
                     draw_keypoints(
                         combined, xy,
                         colors_bgr=runtime_cfg.skeleton_color_bgr,
@@ -196,14 +194,11 @@ class CalibrationPointsVideoExportStage(
                         connectivity_colors_bgr=runtime_cfg.skeleton_color_bgr,
                         keypoints_radius=runtime_cfg.skeleton_keypoint_radius,
                         bone_width=runtime_cfg.skeleton_bone_width,
-                        visibility=visibility,
                     )
                 for annot in kps_2d_lookup.get((view2_id, local_idx2), []):
                     xy = annot.xy.cpu().numpy()
-                    visibility = annot.annotated.cpu().numpy()
                     if skeleton_kp_indices is not None:
                         xy = xy[skeleton_kp_indices]
-                        visibility = visibility[skeleton_kp_indices]
                     xy = xy.copy()
                     xy[:, 0] += w1  # offset x for view2
                     draw_keypoints(
@@ -213,7 +208,6 @@ class CalibrationPointsVideoExportStage(
                         connectivity_colors_bgr=runtime_cfg.skeleton_color_bgr,
                         keypoints_radius=runtime_cfg.skeleton_keypoint_radius,
                         bone_width=runtime_cfg.skeleton_bone_width,
-                        visibility=visibility,
                     )
 
             # Advance accumulation index to include all points up to current frame

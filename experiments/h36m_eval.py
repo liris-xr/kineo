@@ -155,8 +155,8 @@ def main(
                     "bboxes_2d": gt_bboxes_2d,
                     "keypoints_2d": gt_keypoints_2d,
                     "keypoints_3d": gt_keypoints_3d,
-                    "camera_extrinsics": gt_cam_extrinsics,
-                    "camera_intrinsics": gt_cam_intrinsics,
+                    "cameras_extrinsics": gt_cam_extrinsics,
+                    "cameras_intrinsics": gt_cam_intrinsics,
                 },
             )
         except Exception:

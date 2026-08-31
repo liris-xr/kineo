@@ -25,8 +25,8 @@ from kineo.annotations.keypoints_3d import (
     Keypoints3DAnnotation,
     Keypoints3DAnnotations,
     Keypoints3DAnnotationsMetadata,
-    KeypointsFormat,
 )
+from kineo.annotations.keypoints_format import H36M_17_KEYPOINTS_FORMAT
 from kineo.annotations.camera_intrinsics import CameraDistortionModel
 import cv2
 
@@ -126,7 +126,6 @@ def load_hsfm_predictions_in_folder(
                     frame_idx=frame_idx,
                     subject_id=subject_id,
                     xyz=h36m_joints.reshape(-1, 3).to(torch.float32),
-                    annotated=torch.ones_like(h36m_joints[:, 0], dtype=torch.bool),
                     scores=torch.ones_like(h36m_joints[:, 0], dtype=torch.float32),
                     format="h36m",
                 )
@@ -171,7 +170,7 @@ def load_hsfm_predictions_in_folder(
         )
         keypoints_3d_annotations = Keypoints3DAnnotations(
             metadata=Keypoints3DAnnotationsMetadata(
-                formats=[KeypointsFormat.from_mmpose_dataset("h36m")],
+                formats=[H36M_17_KEYPOINTS_FORMAT],
             ),
             annotations=keypoints_3d_annotations,
         )
@@ -219,7 +218,7 @@ def load_hsfm_predictions_in_folder(
     )
     keypoints_3d_annotations = Keypoints3DAnnotations(
         metadata=Keypoints3DAnnotationsMetadata(
-            formats=[KeypointsFormat.from_mmpose_dataset("h36m")]
+            formats=[H36M_17_KEYPOINTS_FORMAT]
         ),
         annotations=all_keypoints_3d_annotations,
     )

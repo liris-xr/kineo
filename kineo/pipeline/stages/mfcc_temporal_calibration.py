@@ -42,7 +42,7 @@ class MFCCTemporalCalibrationStage(PipelineStage[TemporalCalibrationRuntimeConfi
     """
     Temporal calibration stage that uses MFCC cross-correlation to estimate the time offsets between views.
 
-    Produces :class:`CameraTemporalAnnotations` with the time offsets for each view with key "camera_temporal".
+    Produces :class:`CameraTemporalAnnotations` with the time offsets for each view with key "cameras_temporal".
     """
 
     def __init__(
@@ -111,7 +111,7 @@ class MFCCTemporalCalibrationStage(PipelineStage[TemporalCalibrationRuntimeConfi
             print(f"{view['view_id']}: {time_offsets[i].item()}{' (ref)' if is_ref else ''}")
         print("--------------------------------")
 
-        annotations["camera_temporal"] = CameraTemporalAnnotations(
+        annotations["cameras_temporal"] = CameraTemporalAnnotations(
             metadata=CameraTemporalAnnotationsMetadata(),
             annotations=[
                 CameraTemporalAnnotation(

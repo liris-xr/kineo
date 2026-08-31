@@ -63,18 +63,18 @@ class MetricsExportStage(PipelineStage[MetricsExportRuntimeConfig]):
     ):
         pred_keypoints_3d: Keypoints3DAnnotations = annotations["keypoints_3d"]
         pred_camera_extrinsics: CameraExtrinsicsAnnotations = annotations[
-            "camera_extrinsics"
+            "cameras_extrinsics"
         ]
         pred_camera_intrinsics: CameraIntrinsicsAnnotations = annotations[
-            "camera_intrinsics"
+            "cameras_intrinsics"
         ]
 
         gt_keypoints_3d: Keypoints3DAnnotations = gt_annotations.get("keypoints_3d")
         gt_camera_extrinsics: CameraExtrinsicsAnnotations = gt_annotations.get(
-            "camera_extrinsics"
+            "cameras_extrinsics"
         )
         gt_camera_intrinsics: CameraIntrinsicsAnnotations = gt_annotations.get(
-            "camera_intrinsics"
+            "cameras_intrinsics"
         )
 
         stage_timings: StageTimingsAnnotations = annotations.get("stage_timings")
@@ -112,9 +112,17 @@ class MetricsExportStage(PipelineStage[MetricsExportRuntimeConfig]):
             pred_cam_extrinsics_annotations=pred_camera_extrinsics,
         )
 
+        non_static_views = [
+            view_id
+            for view_id in gt_camera_extrinsics.views_ids
+            if not gt_camera_extrinsics.is_view_static(view_id)
+        ]
+
         avg_metrics = {
             "cam_stats": cam_metrics,
             "human_stats": human_metrics,
+            "has_non_static_camera": len(non_static_views) > 0,
+            "non_static_views": non_static_views,
             "stage_timings": stage_timings,
             "n_total_frames": n_total_frames,
             "avg_fps": avg_fps,

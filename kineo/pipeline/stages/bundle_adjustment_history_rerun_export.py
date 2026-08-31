@@ -68,7 +68,7 @@ class BundleAdjustmentHistoryRerunExportStage(
 
         ba_kps = ba_kps_annots.first_or_default()
         device = pipeline.device
-        cameras_intrinsics: CameraIntrinsicsAnnotations = annotations["camera_intrinsics"]
+        cameras_intrinsics: CameraIntrinsicsAnnotations = annotations["cameras_intrinsics"]
         distortion_model = cameras_intrinsics.first_or_default().distortion_model.value
 
         # Build resolution lookup

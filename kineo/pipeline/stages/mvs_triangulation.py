@@ -68,10 +68,10 @@ class MVSTriangulationStage(PipelineStage[MVSTriangulationRuntimeConfig]):
         n_views = len(views)
 
         camera_intrinsics: CameraIntrinsicsAnnotations = annotations[
-            "camera_intrinsics"
+            "cameras_intrinsics"
         ]
         camera_extrinsics: CameraExtrinsicsAnnotations = annotations[
-            "camera_extrinsics"
+            "cameras_extrinsics"
         ]
 
         kps_2d: Keypoints2DAnnotations = annotations["keypoints_2d"]
@@ -229,9 +229,6 @@ class MVSTriangulationStage(PipelineStage[MVSTriangulationRuntimeConfig]):
                     frame_idx=f,
                     xyz=all_kps_3d[f, subject_idx],
                     scores=all_kps_3d_scores[f, subject_idx],
-                    annotated=torch.ones_like(
-                        all_kps_3d[f, subject_idx][..., 0], dtype=torch.bool
-                    ),
                     format=kps_format.name,
                 )
                 kps_3d_annotations.append(kps_3d_annotation)
