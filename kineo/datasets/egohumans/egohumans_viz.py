@@ -18,7 +18,6 @@ from kineo.annotations.bboxes_2d import BBox2DAnnotations
 from kineo.annotations.camera_extrinsics import CameraExtrinsicsAnnotations
 from kineo.annotations.camera_intrinsics import CameraIntrinsicsAnnotations
 from kineo.visualization.viz_3d import show_keypoints_and_cameras
-from kineo.visualization.viz_2d import show_bboxes_and_keypoints
 from kineo.datasets.keypoints_sequence_dataset import ViewInput
 from kineo.io.frame_sequence_loader import ImagesLoader
 

@@ -17,8 +17,6 @@ from kineo.io.frame_sequence_loader import VideoLoader
 from kineo.annotations.keypoints_3d import Keypoints3DAnnotations
 from kineo.annotations.camera_extrinsics import CameraExtrinsicsAnnotations
 from kineo.annotations.camera_intrinsics import CameraIntrinsicsAnnotations
-from kineo.annotations.bboxes_2d import BBox2DAnnotations
-from kineo.annotations.keypoints_2d import Keypoints2DAnnotations
 
 import orjson
 from tqdm import tqdm

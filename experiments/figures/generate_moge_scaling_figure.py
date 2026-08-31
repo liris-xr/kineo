@@ -10,7 +10,6 @@ from kineo.annotations.camera_intrinsics import CameraIntrinsicsAnnotations
 from aitviewer.scene.camera import PinholeCamera, OpenCVCamera
 from aitviewer.scene.node import Node
 from aitviewer.headless import HeadlessRenderer
-from aitviewer.viewer import Viewer
 from aitviewer.renderables.skeletons import Skeletons
 from aitviewer.renderables.point_clouds import PointClouds
 from aitviewer.renderables.billboard import Billboard

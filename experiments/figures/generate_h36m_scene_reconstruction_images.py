@@ -13,13 +13,11 @@ from kineo.annotations.bboxes_2d import BBox2DAnnotations
 import pickle
 from kineo.geometry.camera import inverse_Rt
 from kineo.geometry.transformations import compute_similarity_transform
-from kineo.geometry.conversions import convert_world_points_from_opencv_to_opengl
 
 from aitviewer.headless import HeadlessRenderer
 from aitviewer.scene.camera import PinholeCamera
 from aitviewer.configuration import CONFIG as C
 from aitviewer.scene.node import Node
-from aitviewer.viewer import Viewer
 
 from kineo.visualization.viz_3d import add_keypoints_3d
 from kineo.visualization.viz_3d import add_cameras

@@ -9,9 +9,7 @@
 # -----------------------------------------------------------------------------
 
 import torch
-import os.path as osp
 from tqdm import tqdm
-import warnings
 
 import cv2
 
@@ -20,7 +18,6 @@ from kineo.datasets.keypoints_sequence_dataset import ViewInput
 from kineo.annotations import (
     Annotations,
     BBox2DAnnotations,
-    BBox2DAnnotationsMetadata,
     BBox2DAnnotation,
     Keypoints2DAnnotations,
     Keypoints2DAnnotation,
@@ -35,7 +32,6 @@ from dataclasses import dataclass
 from kineo.maths import clamp
 import numpy as np
 
-from kineo.pipeline.stages.rtmlib.tools.object_detection.yolox import YOLOX
 from kineo.pipeline.stages.rtmlib.tools.pose_estimation.rtmpose import RTMPose
 from kineo.pipeline.stages.rtmlib.skeleton.coco17 import coco17
 from kineo.pipeline.stages.rtmlib.skeleton.coco133 import coco133

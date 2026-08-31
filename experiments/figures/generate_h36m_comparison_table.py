@@ -21,7 +21,6 @@ from aitviewer.headless import HeadlessRenderer
 from aitviewer.configuration import CONFIG as C
 from kineo.eval.human_metrics import compute_human_metrics, get_min_median_max_frames
 
-import json
 import traceback
 import shutil
 from kineo.visualization.viz_3d import add_keypoints_3d_and_cameras

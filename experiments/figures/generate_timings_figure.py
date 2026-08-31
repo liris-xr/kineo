@@ -6,7 +6,6 @@ from kineo.annotations.global_time_reference import GlobalTimeReferenceAnnotatio
 import matplotlib.pyplot as plt
 import matplotlib
 import numpy as np
-from matplotlib.ticker import FuncFormatter
 matplotlib.use("TkAgg")
 
 def compute_sequence_timings(annotations_dir: str) -> dict:

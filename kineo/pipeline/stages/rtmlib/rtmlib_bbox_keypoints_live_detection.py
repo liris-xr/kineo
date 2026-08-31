@@ -9,13 +9,8 @@
 # -----------------------------------------------------------------------------
 
 import torch
-import os
-import os.path as osp
-from tqdm import tqdm
-import pickle
 import warnings
 
-import cv2
 
 from kineo.pipeline.pipeline import PipelineStage
 from kineo.datasets.keypoints_sequence_dataset import ViewInput
@@ -36,7 +31,6 @@ from dataclasses import dataclass
 from kineo.geometry.triangulation import triangulate_points
 from kineo.geometry.transformations import undistort_points
 from kineo.geometry.metrics import pairwise_reprojection_consensus_score
-from kineo.maths import clamp
 import numpy as np
 
 from kineo.pipeline.stages.rtmlib.tools.object_detection.yolox import YOLOX
@@ -48,7 +42,6 @@ from kineo.pipeline.stages.rtmlib.skeleton.openpose134 import openpose134
 from kineo.pipeline.stages.rtmlib.skeleton.halpe26 import halpe26
 from kineo.pipeline.stages.rtmlib.skeleton.hand21 import hand21
 
-from kineo.visualization.viz_2d import draw_bboxes, draw_keypoints
 
 from collections import namedtuple
 
