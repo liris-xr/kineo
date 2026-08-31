@@ -155,10 +155,14 @@ def compute_human_metrics(
         frame_idx = frame_to_idx[ann.frame_idx]
         gt_kps3d[frame_idx, subject_idx, :] = ann.xyz
 
+    # Not reconstructed is not the same as reconstructed at the origin.
+    reconstructed = torch.zeros((n_frames, n_subjects), dtype=torch.bool)
+
     for ann in pred_keypoints_3d_annotations.annotations:
         subject_idx = subject_id_to_idx[ann.subject_id]
         for slot in slots_by_pred_frame.get(ann.frame_idx, ()):
             pred_kps3d[slot, subject_idx] = ann.xyz
+            reconstructed[slot, subject_idx] = True
 
     if len(pred_cam_extrinsics_annotations.annotations) == n_views:
         pred_world2cam = torch.empty((n_views, 3, 4), device=device)
@@ -169,7 +173,7 @@ def compute_human_metrics(
 
         pred_world2cam = pred_world2cam.unsqueeze(0).expand(n_frames, -1, -1, -1)
     else:
-        pred_world2cam = torch.empty((n_frames, n_views, 3, 4), device=device)
+        pred_world2cam = torch.zeros((n_frames, n_views, 3, 4), device=device)
 
         for ann in pred_cam_extrinsics_annotations.annotations:
             view_idx = view_id_to_idx[ann.view_id]
@@ -220,10 +224,14 @@ def compute_human_metrics(
             dim=-1,
         )
 
+    w_mpjpe[~reconstructed] = float("nan")
+    pa_mpjpe[~reconstructed] = float("nan")
+
     return {
         frames[frame_idx]: [
             {
                 "subject_id": subject_id,
+                "reconstructed": bool(reconstructed[frame_idx, subject_idx]),
                 "joints": [
                     {
                         "joint_name": gt_kps_format.keypoints_names[kp_idx],
@@ -244,9 +252,11 @@ def flatten_human_metrics(human_metrics: dict[str, Any]) -> dict[str, Any]:
     # We collect them as a list so that the caller can compute the statistics (mean, median, std, min, max).
     all_w_mpjpe = []
     all_pa_mpjpe = []
+    all_reconstructed = []
 
     for frame_metrics in human_metrics.values():
         for subject_metrics in frame_metrics:
+            all_reconstructed.append(float(subject_metrics["reconstructed"]))
             for keypoint_metrics in subject_metrics["joints"]:
                 all_w_mpjpe.append(keypoint_metrics["w-mpjpe"])
                 all_pa_mpjpe.append(keypoint_metrics["pa-mpjpe"])
@@ -254,4 +264,6 @@ def flatten_human_metrics(human_metrics: dict[str, Any]) -> dict[str, Any]:
     return {
         "w-mpjpe": all_w_mpjpe,
         "pa-mpjpe": all_pa_mpjpe,
+        # The errors above skip what was never reconstructed; this is what.
+        "reconstructed": all_reconstructed,
     }
