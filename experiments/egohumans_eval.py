@@ -15,18 +15,10 @@ os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 
 import torch
 from kineo.pipeline.pipeline import Pipeline
-from kineo.datasets.keypoints_sequence_dataset import ViewInput
-from kineo.io.frame_sequence_loader import ImagesLoader
-from kineo.annotations.keypoints_3d import Keypoints3DAnnotations
-from kineo.annotations.keypoints_2d import Keypoints2DAnnotations
-from kineo.annotations.camera_extrinsics import CameraExtrinsicsAnnotations
-from kineo.annotations.camera_intrinsics import CameraIntrinsicsAnnotations
-from kineo.annotations.bboxes_2d import BBox2DAnnotations
+from kineo.datasets.egohumans.egohumans_dataset import EgoHumansSequenceDataset
 
 from collections import defaultdict
 
-import glob
-import orjson
 from tqdm import tqdm
 import argparse
 import traceback
@@ -107,66 +99,41 @@ def main(
 
     pipeline = Pipeline.build_pipeline_from_config(config_file, device)
 
-    sequences_file = os.path.join(dataset_dir, "egohumans_sequences.json")
+    dataset = EgoHumansSequenceDataset(
+        os.path.join(dataset_dir, "egohumans_sequences.json"), device=device
+    )
 
-    with open(sequences_file, "rb") as f:
-        sequences = orjson.loads(f.read())
+    indices = [
+        index
+        for index, sequence_data in enumerate(dataset.sequences_data)
+        if not sequences_filter
+        or sequence_data["sequence_name"] in sequences_filter
+    ]
 
-    if sequences_filter:
-        sequences = [s for s in sequences if s["sequence_name"] in sequences_filter]
-    
     print("The following sequences will be processed:")
-    for sequence in sequences:
-        print(f"- {sequence['sequence_name']}")
+    for index in indices:
+        print(f"- {dataset.sequences_data[index]['sequence_name']}")
 
-    pbar = tqdm(sequences, desc="Processing sequences")
+    pbar = tqdm(indices, desc="Processing sequences")
 
     failed_sequences = []
 
-    for sequence in pbar:
-        sequence_name = sequence["sequence_name"]
+    for index in pbar:
+        sequence_name = dataset.sequences_data[index]["sequence_name"]
 
         pbar.set_description(f"Processing sequence: {sequence_name}")
 
         try:
-            cameras = list(sequence["views"].keys())
+            sequence = dataset[index]
+            annotations = sequence["annotations"]
 
-            bboxes_2d_file = sequence["annotations"]["bboxes_2d"]
-            bboxes_2d_file = os.path.join(dataset_dir, bboxes_2d_file)
+            gt_bboxes_2d = annotations["bboxes_2d"]
+            gt_keypoints_2d = annotations["keypoints_2d"]
+            gt_keypoints_3d = annotations["keypoints_3d"]
+            gt_cam_intrinsics = annotations["cameras_intrinsics"]
+            gt_cam_extrinsics = annotations["cameras_extrinsics"]
 
-            with open(bboxes_2d_file, "rb") as f:
-                gt_bboxes_2d = BBox2DAnnotations.from_dict(orjson.loads(f.read()))
-
-            keypoints_3d_file = sequence["annotations"]["keypoints_3d"]
-            keypoints_3d_file = os.path.join(dataset_dir, keypoints_3d_file)
-
-            with open(keypoints_3d_file, "rb") as f:
-                gt_keypoints_3d = Keypoints3DAnnotations.from_dict(
-                    orjson.loads(f.read())
-                )
-
-            keypoints_2d_file = sequence["annotations"]["keypoints_2d"]
-            keypoints_2d_file = os.path.join(dataset_dir, keypoints_2d_file)
-            with open(keypoints_2d_file, "rb") as f:
-                gt_keypoints_2d = Keypoints2DAnnotations.from_dict(
-                    orjson.loads(f.read())
-                )
-
-            cam_intrinsics_file = sequence["annotations"]["cameras_intrinsics"]
-            cam_intrinsics_file = os.path.join(dataset_dir, cam_intrinsics_file)
-
-            with open(cam_intrinsics_file, "rb") as f:
-                gt_cam_intrinsics = CameraIntrinsicsAnnotations.from_dict(
-                    orjson.loads(f.read())
-                )
-
-            cam_extrinsics_file = sequence["annotations"]["cameras_extrinsics"]
-            cam_extrinsics_file = os.path.join(dataset_dir, cam_extrinsics_file)
-
-            with open(cam_extrinsics_file, "rb") as f:
-                gt_cam_extrinsics = CameraExtrinsicsAnnotations.from_dict(
-                    orjson.loads(f.read())
-                )
+            cameras = [view["view_id"] for view in sequence["views_inputs"]]
 
             # Preprocess keeps moving cameras with their per-segment poses, but
             # the pipeline assumes one pose per view for the whole sequence, so
@@ -195,34 +162,11 @@ def main(
             gt_cam_extrinsics = gt_cam_extrinsics.filter_by_view_ids(cameras)
             gt_cam_intrinsics = gt_cam_intrinsics.filter_by_view_ids(cameras)
 
-            views = []
-            for camera in cameras:
-                images_dir = sequence["views"][camera]["images_dir"]
-                fps = sequence["views"][camera]["fps"]
-                imgs_paths = sorted(
-                    glob.glob(
-                        os.path.join(
-                            dataset_dir,
-                            images_dir,
-                            "*.jpg",
-                        )
-                    )
-                )
-                n_imgs = len(imgs_paths)
-
-                frame_timestamps_local = (torch.arange(n_imgs) / fps).tolist()
-
-                views.append(
-                    ViewInput(
-                        view_id=camera,
-                        frame_loader=ImagesLoader(
-                            img_paths=imgs_paths,
-                            frame_timestamps_local=frame_timestamps_local,
-                            device=device,
-                        ),
-                        audio_loader=None,
-                    )
-                )
+            views = [
+                view
+                for view in sequence["views_inputs"]
+                if view["view_id"] in cameras
+            ]
 
             _ = pipeline.run(
                 sequence_name=sequence_name,
