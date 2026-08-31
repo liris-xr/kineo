@@ -14,11 +14,14 @@ Each function logs one kind of structured data under the entity path its kind
 owns, so a recording is composed by calling the ones a caller has data for.
 """
 
+from collections.abc import Sequence
+
 import numpy as np
 import rerun as rr
 import torch
 from tqdm import tqdm
 
+from kineo.annotations.bboxes_2d import BBox2DAnnotations
 from kineo.annotations.camera_extrinsics import CameraExtrinsicsAnnotations
 from kineo.annotations.camera_intrinsics import CameraIntrinsicsAnnotations
 from kineo.annotations.global_time_reference import GlobalTimeReferenceAnnotation
@@ -446,3 +449,67 @@ def log_videos(
                     continue
                 rr.set_time("time", duration=float(packet.pts * packet.time_base))
                 rr.log(entity_path, rr.VideoStream.from_fields(sample=bytes(packet)))
+
+
+def log_bboxes_2d(
+    bboxes_2d: BBox2DAnnotations,
+    prefix: str = "kineo",
+    fps: float = 25.0,
+):
+    """Logs 2D bounding boxes under the camera they were annotated in.
+
+    Args:
+        bboxes_2d: Boxes to log, over any number of views and subjects.
+        prefix: Root entity path the boxes are logged under.
+        fps: Rate the frame indices are turned into timestamps with.
+    """
+    for frame_idx in bboxes_2d.frames:
+        rr.set_time("frame_idx", sequence=frame_idx)
+        rr.set_time("time", timestamp=frame_idx / fps)
+
+        for annotation in bboxes_2d.filter_by_frame_idx(frame_idx):
+            color = get_subject_color_rgba(annotation.subject_id)
+            rr.log(
+                f"{prefix}/cameras/{annotation.view_id}"
+                f"/bboxes_2d_{annotation.subject_id}",
+                rr.Boxes2D(
+                    array=annotation.xyxy.cpu().numpy(),
+                    array_format=rr.Box2DFormat.XYXY,
+                    colors=[int(c * 255) for c in color],
+                ),
+            )
+def log_video_asset(
+    video_path: str,
+    view_id: str,
+    local_frame_indices: Sequence[int],
+    prefix: str = "kineo",
+    fps: float = 25.0,
+):
+    """Shows a video file in a camera, without decoding or re-encoding it.
+
+    The encoded file is carried into the recording as it is and every timeline
+    step points at one of its frames, so the footage keeps the quality it was
+    stored at and the recording grows by the size of the file.
+
+    Args:
+        video_path: Video file, decoded by the viewer rather than here.
+        view_id: View the video belongs to.
+        local_frame_indices: Frame of the video each timeline step shows.
+        prefix: Root entity path the video is logged under.
+        fps: Rate the timeline steps are turned into timestamps with.
+    """
+    entity_path = f"{prefix}/cameras/{view_id}/rgb"
+    video = rr.AssetVideo(path=video_path)
+    rr.log(entity_path, video, static=True)
+
+    frame_timestamps_ns = video.read_frame_timestamps_nanos()
+
+    for frame_idx, local_frame_idx in enumerate(local_frame_indices):
+        rr.set_time("frame_idx", sequence=frame_idx)
+        rr.set_time("time", timestamp=frame_idx / fps)
+        rr.log(
+            entity_path,
+            rr.VideoFrameReference(
+                nanoseconds=frame_timestamps_ns[local_frame_idx]
+            ),
+        )

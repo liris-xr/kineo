@@ -1,7 +1,7 @@
 # Rerun sequence preview — design
 
 **Date:** 2026-08-31
-**Status:** approved, not implemented
+**Status:** implemented
 
 ## Problem
 
@@ -55,16 +55,20 @@ rewriting them would put the pipeline's existing rerun output at risk for no
 gain. SMPL and world-reconstruction logging stay in the stage: both are
 pipeline outputs rather than annotations, and `log_smpl` pulls in `smplx`.
 
-New, each split into a pure conversion and a thin logging wrapper so the
-conversion is testable without a recording stream:
+New:
 
-- `log_bboxes_2d` — `rr.Boxes2D` per view and subject. No equivalent exists
-  today.
+- `log_bboxes_2d` — `rr.Boxes2D` per view and subject, straight from the
+  annotation's `xyxy`. No equivalent exists today.
 - `log_video_asset` — `rr.AssetVideo` plus one `rr.VideoFrameReference` per
-  timeline step. The file on disk is referenced, not re-encoded, which is
-  what separates this from `log_videos`.
-- `log_image_frames` — `rr.EncodedImage` referencing each JPEG on disk, for
-  views backed by an image sequence.
+  timeline step. Nothing is decoded or re-encoded, which is what separates
+  this from `log_videos`, but the encoded file is *carried into the
+  recording*: a recording costs what the videos behind it cost. Measured at
+  278 MB for one nine-view AIST++ sequence.
+
+Every view goes through `log_video_asset`, image sequences included. Logging
+JPEGs as `rr.EncodedImage` was tried and abandoned: it embeds each file, so
+one EgoHumans sequence of 4K frames produced a 4.4 GB recording against
+759 MB once encoded.
 
 Entity paths follow the convention the stage already uses, so a preview and
 a pipeline export can be read side by side:
@@ -72,7 +76,7 @@ a pipeline export can be read side by side:
 | Entity | Content |
 | --- | --- |
 | `ground_truth/cameras/{view_id}` | `rr.Pinhole` and `rr.Transform3D` |
-| `ground_truth/cameras/{view_id}/rgb` | video asset or image frames |
+| `ground_truth/cameras/{view_id}/rgb` | video asset |
 | `ground_truth/cameras/{view_id}/keypoints_2d_{subject_id}` | 2D keypoints |
 | `ground_truth/cameras/{view_id}/bboxes_2d_{subject_id}` | 2D boxes |
 | `ground_truth/skeletons_3d_{joints,bones}_{subject_id}` | 3D skeleton |
@@ -82,30 +86,48 @@ the footage.
 
 ### `kineo/visualization/sequence_preview.py` (new)
 
-One composition function:
+The composition function, plus the pure re-indexing the timeline needs:
 
 ```python
 def preview_sequence(
     sequence: KeypointsSequence,
     fps: float,
     output_path: str | None = None,
+    max_frames: int | None = None,
 ) -> None:
 ```
 
-It logs the ground-truth cameras and 3D skeletons, then, per view, the media
-followed by that view's 2D keypoints and boxes. A view's media kind is read
-off its frame loader: `VideoLoader` takes the `rr.AssetVideo` path,
-`ImagesLoader` the encoded-image path. `output_path` of `None` spawns the
-viewer; otherwise the recording is written to that `.rrd`.
+It logs the ground-truth cameras and 3D skeletons, then, per view, the
+footage followed by that view's 2D keypoints and boxes. `output_path` of
+`None` spawns the viewer; otherwise the recording is written to that `.rrd`.
+`max_frames` shortens the timeline and the annotations on it — not the
+footage, which is embedded whole.
 
-**Timeline.** Steps are indices into the sequence's
-`global_time_reference` annotation when it carries one, and plain frame
-indices otherwise. This is what keeps AIST++ *raw* honest: its 3D keypoints
-are numbered from the start of the annotated window while its 2D keypoints
-and video frames are numbered from the start of each camera's own recording,
-so a shared timeline that ignores the reference shows 3D and 2D drifting
-apart by hundreds of frames, differently per view. Human3.6M and EgoHumans
-are frame-aligned, and the identity mapping is correct for them.
+**Timeline.** Steps are indices into the sequence's `global_time_reference`
+annotation when it carries one, and plain frame indices otherwise, which
+`local_frame_indices` resolves per view.
+
+Annotations carrying a `view_id` are numbered from the start of *their own
+view's* recording, so `rebase_on_global_frames` re-indexes them onto the
+timeline before they are logged. Without it an AIST++ *raw* sequence puts
+its 3D keypoints on steps 0-574 and its 2D keypoints on steps 775-1362,
+spread differently across the nine views: measured, then fixed, then pinned
+by a test. Human3.6M and EgoHumans are frame-aligned and the mapping is the
+identity.
+
+**Making the footage viewable.** Two shapes of view do not go straight into
+`rr.AssetVideo`, and each is converted once and cached beside its source:
+
+- An image sequence (EgoHumans) is encoded into `preview.mp4` next to the
+  images, at their own resolution so the 2D annotations still land on the
+  pixels they were measured on. 601 4K frames take 11 s and 62 MB.
+- A video the viewer cannot decode is transcoded to `<name>_preview.mp4`
+  beside the original, frames passed through so an index still means the
+  same frame. Human3.6M needs this: it ships MPEG-4 Part 2, and rerun
+  decodes only H.264, H.265, AV1 and VP9.
+
+Both live in `kineo/io/ffmpeg.py` as `encode_images_to_video`,
+`get_video_codec` and `transcode_video_to_h264`.
 
 ### `kineo/datasets/egohumans/egohumans_dataset.py` (new)
 
@@ -122,11 +144,12 @@ views, which is an evaluation decision rather than a loading one.
 
 ### `scripts/preview_{aistpp,h36m,egohumans}_sequence.py` (new)
 
-One script per dataset, each roughly 25 lines: argparse over the dataset
-path, `--sequence` to pick a sequence by name, `--save` to write an `.rrd`
-instead of spawning the viewer; build the dataset; call `preview_sequence`.
-AIST++ additionally takes `--variant` (`raw` or `refined`), which its
-sequence listings are already split by.
+One script per dataset, each roughly 40 lines: the sequences file to read,
+`--sequence` to pick one by name, `--save` to write an `.rrd` instead of
+spawning the viewer, `--max-frames` to shorten the timeline; build the
+dataset; call `preview_sequence`. The AIST++ variant is the listing the
+caller passes, `raw` or `refined`, and Human3.6M additionally takes
+`--split`.
 
 ## Testing
 
@@ -134,8 +157,9 @@ sequence listings are already split by.
   `egohumans_sequences.json`, a couple of JPEGs per view, and annotation
   files: the views load, the frame timestamps follow the declared fps, and
   the annotations arrive keyed by kind.
-- The pure conversions behind `log_bboxes_2d`, `log_video_asset` and
-  `log_image_frames`, on tensors, with no recording stream open.
+- `local_frame_indices` and `rebase_on_global_frames`, on tensors, with no
+  recording stream open: one instant lands on one step in every view, and
+  annotations outside the annotated window are dropped.
 - The moved functions keep their existing behaviour; the import site in
   `rerun_export.py` is the only thing that changes, and a benchmark config
   that enables the stage still exports.
@@ -150,6 +174,8 @@ skeletons sit on the subjects and the boxes on the people.
   recording. They stay separate on purpose: the stage's re-encode handles
   resampled pipeline frames, and the asset path handles untouched files. A
   later change may fold one into the other; this design does not.
-- `rr.AssetVideo` leaves the file unread until the viewer opens it, so a
-  moved or deleted video surfaces as an empty view rather than an error at
-  logging time.
+- Previews are written into the dataset directories: 713 MB across the eight
+  views of one EgoHumans sequence, four files for one Human3.6M sequence.
+  They are reused on later runs and are safe to delete.
+- A recording holds every view's footage in full, so previewing a many-view
+  sequence costs hundreds of megabytes even with `max_frames` set.

@@ -258,3 +258,146 @@ def decode_video_to_grayscale(video_path: str, width: int, height: int) -> torch
     return torch.frombuffer(bytearray(result.stdout), dtype=torch.uint8).reshape(
         -1, frame_size
     )
+
+
+def encode_images_to_video(image_paths: list[str], output_path: str, fps: float):
+    """Encodes an image sequence into a video at the images' own resolution.
+
+    The resolution is left alone so that annotations expressed in image pixels
+    still land where they belong.
+
+    Args:
+        image_paths: Images to encode, in the order they are shown.
+        output_path: Video file to write.
+        fps: Rate the images are played back at.
+
+    Raises:
+        ValueError: If ffmpeg fails.
+    """
+    # A list file takes the images whatever they are named, which a numbered
+    # input pattern does not.
+    with tempfile.NamedTemporaryFile(
+        "w", suffix=".txt", delete=False
+    ) as list_file:
+        for path in image_paths:
+            list_file.write(f"file '{path.replace(os.sep, '/')}'\n")
+
+    encode_cmd = [
+        "ffmpeg",
+        "-hide_banner",
+        "-v",
+        "error",
+        "-y",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-r",
+        str(fps),
+        "-i",
+        list_file.name,
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        # Visually lossless enough for a preview at a fraction of the size.
+        "-crf",
+        "28",
+        "-pix_fmt",
+        "yuv420p",
+        output_path,
+    ]
+
+    try:
+        result = subprocess.run(encode_cmd, capture_output=True)
+    finally:
+        os.remove(list_file.name)
+
+    if result.returncode != 0:
+        raise ValueError(
+            f"Failed to encode {output_path}: {result.stderr.decode().strip()}"
+        )
+
+
+def get_video_codec(video_path: str) -> str:
+    """Reads the codec a video's first video stream is encoded with.
+
+    Args:
+        video_path: Path to the video to probe.
+
+    Returns:
+        The codec name, as ffprobe spells it.
+
+    Raises:
+        ValueError: If ffprobe fails, or the file holds no video stream.
+    """
+    ffprobe_cmd = [
+        "ffprobe",
+        "-hide_banner",
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=codec_name",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        video_path,
+    ]
+
+    result = subprocess.run(ffprobe_cmd, capture_output=True, text=True)
+
+    if result.returncode != 0:
+        raise ValueError(
+            f"Failed to probe {video_path}: {result.stderr.strip()}"
+        )
+
+    codec_name = result.stdout.strip()
+
+    if not codec_name:
+        raise ValueError(f"{video_path} holds no video stream.")
+
+    return codec_name
+
+
+def transcode_video_to_h264(video_path: str, output_path: str):
+    """Re-encodes a video to H.264, frame for frame.
+
+    Frames are passed through rather than resampled, so an index into the
+    source video is still an index into the result.
+
+    Args:
+        video_path: Video to re-encode.
+        output_path: Video file to write.
+
+    Raises:
+        ValueError: If ffmpeg fails.
+    """
+    transcode_cmd = [
+        "ffmpeg",
+        "-hide_banner",
+        "-v",
+        "error",
+        "-y",
+        "-i",
+        video_path,
+        "-fps_mode",
+        "passthrough",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "28",
+        "-pix_fmt",
+        "yuv420p",
+        "-an",
+        output_path,
+    ]
+
+    result = subprocess.run(transcode_cmd, capture_output=True)
+
+    if result.returncode != 0:
+        raise ValueError(
+            f"Failed to transcode {video_path}: {result.stderr.decode().strip()}"
+        )
