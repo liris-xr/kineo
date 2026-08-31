@@ -19,6 +19,7 @@ from kineo.annotations.camera_extrinsics import CameraExtrinsicsAnnotations
 from kineo.annotations.camera_intrinsics import CameraIntrinsicsAnnotations
 from kineo.annotations.stage_timing import StageTimingsAnnotations
 import numpy as np
+import torch
 import orjson
 from dataclasses import dataclass
 import os
@@ -35,6 +36,14 @@ def default(obj):
 @dataclass(frozen=True)
 class MetricsExportRuntimeConfig:
     output_path_template: str = "./outputs/metrics/{sequence_name}.json"
+
+
+def _frame_timestamps(time_reference) -> torch.Tensor | None:
+    """Frame timestamps of a global time reference, if there is one."""
+    if time_reference is None:
+        return None
+    annotation = time_reference.first_or_default()
+    return None if annotation is None else annotation.timestamps
 
 
 class MetricsExportStage(PipelineStage[MetricsExportRuntimeConfig]):
@@ -110,6 +119,12 @@ class MetricsExportStage(PipelineStage[MetricsExportRuntimeConfig]):
             gt_cam_extrinsics_annotations=gt_camera_extrinsics,
             pred_keypoints_3d_annotations=pred_keypoints_3d,
             pred_cam_extrinsics_annotations=pred_camera_extrinsics,
+            gt_frame_timestamps=_frame_timestamps(
+                gt_annotations.get("global_time_reference")
+            ),
+            pred_frame_timestamps=_frame_timestamps(
+                annotations.get("global_time_reference")
+            ),
         )
 
         non_static_views = [
