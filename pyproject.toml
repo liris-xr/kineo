@@ -190,3 +190,26 @@ args = [
     { "arg" = "config_file", "default" = "configs/experiments/benchmarks/egohumans_benchmark_nlf_estRt_estK_estD.yaml" },
 ]
 cmd = "python experiments/egohumans_eval.py {{ dataset_dir }} --config-file {{config_file}}"
+
+[tool.pixi.tasks.chime6-windows]
+args = [
+    { "arg" = "dataset_dir" },
+    { "arg" = "output_json", "default" = "experiments/data/chime6_windows.json" },
+]
+cmd = "python experiments/chime6_window_selection.py {{ dataset_dir }} {{ output_json }}"
+
+[tool.pixi.tasks.chime6-sync-eval]
+args = [
+    { "arg" = "dataset_dir" },
+    { "arg" = "windows_json", "default" = "experiments/data/chime6_windows.json" },
+    { "arg" = "output_dir", "default" = "outputs/chime6_sync" },
+]
+cmd = "python experiments/chime6_audio_sync_eval.py {{ dataset_dir }} {{ windows_json }} {{ output_dir }}"
+
+[tool.pixi.tasks.aistpp-download]
+args = ["dataset_dir"]
+cmd = "python scripts/download_aistpp_dataset.py {{ dataset_dir }}"
+
+[tool.pixi.tasks.aistpp-preprocess]
+args = ["dataset_dir"]
+cmd = "python scripts/preprocess_aistpp_dataset.py {{ dataset_dir }}"

@@ -194,9 +194,17 @@ def _mfcc_cross_correlate(ref: torch.Tensor, sub: torch.Tensor) -> torch.Tensor:
     """
     FFT-based cross-correlation summed across MFCC coefficients.
 
-    Each coefficient is normalized to unit variance before correlation so that
-    no single cepstral band dominates the alignment signal (low-order MFCC
-    coefficients carry much more energy than high-order ones without this step).
+    Each coefficient is centered and normalized to unit variance before
+    correlation so that no single cepstral band dominates the alignment signal
+    (low-order MFCC coefficients carry much more energy than high-order ones
+    without this step).
+
+    Centering is what makes the peak meaningful, not a refinement of it: c0
+    (log energy) has a mean on the order of 60x its standard deviation, and an
+    uncentered correlation is therefore dominated by the product of the two
+    means times the overlap length. That term is a triangular envelope peaking
+    at full overlap, which pins ``argmax`` at zero lag for equal-length clips
+    whatever the true offset is.
 
     Uses the time-reversal trick: convolving ``ref`` with ``sub[::-1]`` is
     equivalent to cross-correlating ``ref`` with ``sub``, without needing
@@ -210,10 +218,10 @@ def _mfcc_cross_correlate(ref: torch.Tensor, sub: torch.Tensor) -> torch.Tensor:
         1D float64 tensor of length ``T_ref + T_sub - 1``. Zero-lag is at index
         ``T_sub - 1``; a peak at index k gives ``lag = k - (T_sub - 1)`` hops.
     """
-    ref_std = ref.std(dim=1, keepdim=True).clamp(min=1e-8)
-    sub_std = sub.std(dim=1, keepdim=True).clamp(min=1e-8)
-    ref_n = ref / ref_std
-    sub_rev = sub.flip(dims=[1]) / sub_std
+    ref_c = ref - ref.mean(dim=1, keepdim=True)
+    sub_c = sub - sub.mean(dim=1, keepdim=True)
+    ref_n = ref_c / ref_c.std(dim=1, keepdim=True).clamp(min=1e-8)
+    sub_rev = sub_c.flip(dims=[1]) / sub_c.std(dim=1, keepdim=True).clamp(min=1e-8)
 
     # Pad >= linear-conv length so the FFT's circular convolution equals the linear one.
     valid_len = ref.shape[1] + sub.shape[1] - 1
@@ -227,6 +235,60 @@ def _mfcc_cross_correlate(ref: torch.Tensor, sub: torch.Tensor) -> torch.Tensor:
     corr_f = (ref_f * sub_f).sum(dim=0)
     corr = torch.fft.irfft(corr_f, n=fft_size)[:valid_len]
     return corr
+
+
+def _mfcc_in_chunks(
+    mfcc_fn: MFCC,
+    waveform: torch.Tensor,
+    hop_length: int,
+    n_fft: int,
+    chunk_frames: int = 30000,
+) -> torch.Tensor:
+    """Compute MFCC over long audio without materializing one huge STFT.
+
+    A single call holds the full ``(n_fft // 2 + 1, n_frames)`` spectrogram
+    before reducing it to a handful of cepstral coefficients, so cost grows
+    with the frame count rather than with the output: ten minutes of 16 kHz
+    audio at a 1 ms hop peaks near 15 GB, which thrashes or exhausts a GPU
+    even though the result is a few megabytes.
+
+    Each chunk carries ``n_fft // 2`` samples of context on both sides so its
+    frames match what a single call would produce; the context frames are then
+    trimmed. The result is identical, not approximate.
+
+    Args:
+        mfcc_fn: Configured MFCC transform.
+        waveform: Waveform of shape (1, n_samples).
+        hop_length: Hop of the transform, in samples.
+        n_fft: FFT size of the transform.
+        chunk_frames: Frames to produce per chunk. The default keeps peak
+            memory near 1 GB. Larger chunks are not faster: at ten minutes and
+            a 1 ms hop, 120k frames measured slower than 30k because the
+            allocation starts competing for the card again.
+
+    Returns:
+        Tensor of shape (n_mfcc, n_frames).
+    """
+    n_samples = waveform.shape[-1]
+    chunk = chunk_frames * hop_length
+    if n_samples <= chunk:
+        return mfcc_fn(waveform).squeeze(0)
+
+    # Context must be a whole number of hops, otherwise each chunk's frame
+    # grid is offset from the full-length one and the trim lands mid-frame.
+    pad = -(-(n_fft // 2) // hop_length) * hop_length
+    pieces = []
+    for start in range(0, n_samples, chunk):
+        stop = min(start + chunk, n_samples)
+        lo, hi = max(0, start - pad), min(n_samples, stop + pad)
+        out = mfcc_fn(waveform[..., lo:hi]).squeeze(0)
+        skip = (start - lo) // hop_length
+        if stop == n_samples:
+            pieces.append(out[:, skip:])
+        else:
+            pieces.append(out[:, skip : skip + (stop - start) // hop_length])
+
+    return torch.cat(pieces, dim=1)[:, : n_samples // hop_length + 1]
 
 
 def _estimate_pairwise_time_offset(
@@ -273,8 +335,12 @@ def _estimate_pairwise_time_offset(
         },
     ).to(compute_device)
 
-    mfcc_ref = mfcc_fn(ref_mono.float().unsqueeze(0)).squeeze(0)
-    mfcc_target = mfcc_fn(target_mono.float().unsqueeze(0)).squeeze(0)
+    mfcc_ref = _mfcc_in_chunks(
+        mfcc_fn, ref_mono.float().unsqueeze(0), hop_length, n_fft
+    )
+    mfcc_target = _mfcc_in_chunks(
+        mfcc_fn, target_mono.float().unsqueeze(0), hop_length, n_fft
+    )
 
     corr = _mfcc_cross_correlate(mfcc_ref, mfcc_target)
     peak_idx = torch.argmax(corr)
