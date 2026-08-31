@@ -461,6 +461,7 @@ def preprocess_aistpp(
     min_match_margin: float = 2.0,
     num_workers: int = 8,
     force_match: bool = False,
+    skip_match: bool = False,
     skip_extract: bool = False,
 ):
     """Preprocesses AIST++ over the raw AIST videos for use in Kineo.
@@ -487,16 +488,23 @@ def preprocess_aistpp(
         num_workers: Number of cameras matched concurrently.
         force_match: Whether to re-match every video pair rather than reuse the
             offsets shipped with the repository or left by an earlier run.
+        skip_match: Whether to skip matching altogether, dropping the sequences
+            whose offsets are neither shipped nor left by an earlier run rather
+            than measuring them, which costs hours.
         skip_extract: Whether to skip unpacking the annotation archives.
 
     Raises:
-        ValueError: If an unknown split is requested.
+        ValueError: If an unknown split is requested, or if both `force_match`
+            and `skip_match` are set.
         FileNotFoundError: If the annotation archives are missing.
     """
     if split not in AISTPP_SPLITS:
         raise ValueError(
             f"Unknown split '{split}', expected any of {list(AISTPP_SPLITS)}."
         )
+
+    if force_match and skip_match:
+        raise ValueError("force_match and skip_match are mutually exclusive.")
 
     if not skip_extract:
         _extract_annotations(dataset_dir)
@@ -508,6 +516,7 @@ def preprocess_aistpp(
     time_offsets = {} if force_match else _load_known_offsets(dataset_dir, split)
     n_reused = 0
     n_missing_videos = 0
+    n_missing_offsets = 0
     n_weak_matches = 0
 
     pbar = tqdm(sequence_names, desc=f"Preprocessing AIST++ ({split})")
@@ -526,6 +535,9 @@ def preprocess_aistpp(
         offsets = time_offsets.get(sequence_name)
         if offsets is not None and set(offsets) == set(videos):
             n_reused += 1
+        elif skip_match:
+            n_missing_offsets += 1
+            continue
         else:
             offsets = _estimate_sequence_offsets(dataset_dir, videos, num_workers)
             time_offsets[sequence_name] = offsets
@@ -660,8 +672,9 @@ def preprocess_aistpp(
     print(
         f"Preprocessed {len(sequences_infos['raw'])} sequences, reused "
         f"{n_reused} already-measured offsets, skipped {n_missing_videos} with "
-        f"no downloaded video and {n_weak_matches} with an inconclusive "
-        "raw-to-refined match."
+        f"no downloaded video, {n_missing_offsets} with no already-measured "
+        f"offsets and {n_weak_matches} with an inconclusive raw-to-refined "
+        "match."
     )
 
 

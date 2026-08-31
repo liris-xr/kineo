@@ -44,6 +44,13 @@ if __name__ == "__main__":
         "with the repository or left behind by an interrupted run",
     )
     parser.add_argument(
+        "--skip-match",
+        action="store_true",
+        help="Skip matching raw videos against refined ones altogether, "
+        "dropping the sequences whose offsets are neither shipped with the "
+        "repository nor left behind by an earlier run",
+    )
+    parser.add_argument(
         "--skip-extract",
         action="store_true",
         help="Whether to skip unpacking the annotation archives",
@@ -57,5 +64,6 @@ if __name__ == "__main__":
         min_match_margin=args.min_match_margin,
         num_workers=args.num_workers,
         force_match=args.force_match,
+        skip_match=args.skip_match,
         skip_extract=args.skip_extract,
     )
