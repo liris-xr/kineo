@@ -13,6 +13,7 @@ from kineo.pipeline.pipeline import Pipeline
 from kineo.pipeline.pipeline import ViewInput
 from kineo.pipeline.pipeline import Annotations
 
+from kineo.eval import time_alignment
 from kineo.eval.sequence_metrics import compute_camera_metrics_over_sequence, compute_human_metrics_over_sequence
 from kineo.annotations.keypoints_3d import Keypoints3DAnnotations
 from kineo.annotations.camera_extrinsics import CameraExtrinsicsAnnotations
@@ -44,6 +45,37 @@ def _frame_timestamps(time_reference) -> torch.Tensor | None:
         return None
     annotation = time_reference.first_or_default()
     return None if annotation is None else annotation.timestamps
+
+
+def _pinned_view(camera_temporal) -> str | None:
+    """View a pipeline put its predictions' clock on: the one it left at zero."""
+    if camera_temporal is None:
+        return None
+    return next(
+        (a.view_id for a in camera_temporal.annotations if a.time_offset == 0.0),
+        None,
+    )
+
+
+def _gt_frame_timestamps(gt_time_reference, pinned_view: str | None):
+    """Ground-truth instants, on the clock the predictions ended up on.
+
+    Ground truth is annotated on the clock of whichever view it was built
+    against; the predictions are on the clock of whichever view the pipeline
+    pinned. Restating the annotations settles the two on one clock, whatever
+    reference the pipeline was configured with.
+    """
+    timestamps = _frame_timestamps(gt_time_reference)
+
+    if timestamps is None or pinned_view is None:
+        return timestamps
+
+    annotation = gt_time_reference.first_or_default()
+
+    if pinned_view not in annotation.closest_local_frame_idx:
+        return timestamps
+
+    return time_alignment.timestamps_on_view(annotation, pinned_view)
 
 
 class MetricsExportStage(PipelineStage[MetricsExportRuntimeConfig]):
@@ -119,8 +151,9 @@ class MetricsExportStage(PipelineStage[MetricsExportRuntimeConfig]):
             gt_cam_extrinsics_annotations=gt_camera_extrinsics,
             pred_keypoints_3d_annotations=pred_keypoints_3d,
             pred_cam_extrinsics_annotations=pred_camera_extrinsics,
-            gt_frame_timestamps=_frame_timestamps(
-                gt_annotations.get("global_time_reference")
+            gt_frame_timestamps=_gt_frame_timestamps(
+                gt_annotations.get("global_time_reference"),
+                _pinned_view(annotations.get("cameras_temporal")),
             ),
             pred_frame_timestamps=_frame_timestamps(
                 annotations.get("global_time_reference")

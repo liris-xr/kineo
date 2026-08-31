@@ -1,6 +1,10 @@
 import pytest
 import torch
 
+from kineo.annotations.global_time_reference import (
+    GlobalTimeReferenceAnnotation,
+)
+from kineo.eval import time_alignment
 from kineo.eval.time_alignment import (
     build_slots_by_prediction_frame,
     resolve_timestamps_to_frame_indices,
@@ -95,3 +99,45 @@ def test_ground_truth_before_the_prediction_starts_is_dropped():
     gt = _timeline(3, 10.0)  # 0.0, 0.1, 0.2
     pred = _timeline(2, 10.0, start=0.15)  # 0.15, 0.25
     assert build_slots_by_prediction_frame([0, 1, 2], gt, pred) == {0: [2]}
+
+
+def _reference(timestamps, closest_local_frame_idx):
+    return GlobalTimeReferenceAnnotation(
+        timestamps=torch.tensor(timestamps),
+        closest_local_frame_idx={
+            view_id: torch.tensor(frames)
+            for view_id, frames in closest_local_frame_idx.items()
+        },
+    )
+
+
+def test_timestamps_on_view_restates_instants_on_that_views_clock():
+    reference = _reference(
+        timestamps=[10 / 50, 11 / 50, 12 / 50],
+        closest_local_frame_idx={"c01": [10, 11, 12], "c02": [12, 13, 14]},
+    )
+
+    torch.testing.assert_close(
+        time_alignment.timestamps_on_view(reference, "c02"),
+        torch.tensor([12 / 50, 13 / 50, 14 / 50]),
+    )
+
+
+def test_timestamps_on_the_view_they_were_built_against_are_unchanged():
+    reference = _reference(
+        timestamps=[10 / 50, 11 / 50, 12 / 50],
+        closest_local_frame_idx={"c01": [10, 11, 12], "c02": [12, 13, 14]},
+    )
+
+    torch.testing.assert_close(
+        time_alignment.timestamps_on_view(reference, "c01"), reference.timestamps
+    )
+
+
+def test_timestamps_on_an_unknown_view_is_an_error():
+    reference = _reference(
+        timestamps=[0.0, 0.02], closest_local_frame_idx={"c01": [0, 1]}
+    )
+
+    with pytest.raises(ValueError, match="c09"):
+        time_alignment.timestamps_on_view(reference, "c09")

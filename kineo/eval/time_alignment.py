@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import torch
 
+from kineo.annotations.global_time_reference import GlobalTimeReferenceAnnotation
+
 
 def resolve_timestamps_to_frame_indices(
     query_timestamps: torch.Tensor,
@@ -53,6 +55,43 @@ def resolve_timestamps_to_frame_indices(
     queries = query_timestamps.to(torch.float64).to(frames.device)
 
     return torch.searchsorted(frames, queries, right=True) - 1
+
+
+def timestamps_on_view(
+    reference: GlobalTimeReferenceAnnotation, view_id: str
+) -> torch.Tensor:
+    """Restates a timeline's instants on one view's local clock.
+
+    A pipeline resamples onto the clock of the view it pins to a zero offset,
+    so annotations have to be read on that same view's clock to meet its
+    predictions. Both clocks being uniform and of the same rate, which holds for
+    a constant-frame-rate recording, an instant's local frame index is all that
+    is needed to restate it.
+
+    Args:
+        reference: Timeline to restate, holding the local frame of each view
+            shown at each of its instants.
+        view_id: View whose clock to restate the instants on.
+
+    Returns:
+        The instants, in seconds on `view_id`'s clock.
+
+    Raises:
+        ValueError: If the timeline is too short to read a rate off, or does not
+            cover `view_id`.
+    """
+    if reference.timestamps.numel() < 2:
+        raise ValueError("Cannot read a rate off fewer than two instants.")
+
+    if view_id not in reference.closest_local_frame_idx:
+        raise ValueError(
+            f"Timeline does not cover view {view_id}: "
+            f"{sorted(reference.closest_local_frame_idx)}."
+        )
+
+    frame_duration = reference.timestamps[1] - reference.timestamps[0]
+
+    return reference.closest_local_frame_idx[view_id] * frame_duration
 
 
 def build_slots_by_prediction_frame(
