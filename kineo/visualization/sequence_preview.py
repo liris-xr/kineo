@@ -24,6 +24,7 @@ import rerun as rr
 import torch
 
 from kineo.annotations.annotations import Annotations
+from kineo.annotations.camera_intrinsics import CameraIntrinsicsAnnotations
 from kineo.annotations.global_time_reference import GlobalTimeReferenceAnnotation
 from kineo.datasets.keypoints_sequence_dataset import KeypointsSequence, ViewInput
 from kineo.io.ffmpeg import (
@@ -40,6 +41,11 @@ PREVIEW_VIDEO_NAME = "preview.mp4"
 
 # What rerun's viewer can decode. Anything else is transcoded first.
 VIEWABLE_CODECS = frozenset({"h264", "hevc", "av1", "vp9"})
+
+# Keypoint dot radius, as a share of the image height. Radii are in pixels in
+# a 2D view, so a fixed one is a speck on a 4K frame and a blob on a small one.
+KEYPOINTS_RADIUS_RATIO = 0.004
+MIN_KEYPOINTS_RADIUS = 2.0
 
 AnnotationsT = TypeVar("AnnotationsT", bound=Annotations)
 
@@ -64,6 +70,23 @@ def local_frame_indices(
         return torch.arange(n_frames)
 
     return time_reference.closest_local_frame_idx[view_id]
+
+
+def keypoints_radius(cameras_intrinsics: CameraIntrinsicsAnnotations) -> float:
+    """Radius that draws a keypoint the same size whatever the view's size.
+
+    Args:
+        cameras_intrinsics: Intrinsics of the views being logged, read for
+            their resolutions.
+
+    Returns:
+        A radius in pixels, of the tallest view logged.
+    """
+    heights = [
+        annotation.resolution_hw[0] for annotation in cameras_intrinsics
+    ]
+
+    return max(MIN_KEYPOINTS_RADIUS, KEYPOINTS_RADIUS_RATIO * max(heights))
 
 
 def rebase_on_global_frames(
@@ -183,7 +206,10 @@ def preview_sequence(
             keypoints_2d = take_first_frames(keypoints_2d, max_frames)
 
         viz_rerun.log_keypoints_2d(
-            keypoints_2d=keypoints_2d, prefix=GROUND_TRUTH_PREFIX, fps=fps
+            keypoints_2d=keypoints_2d,
+            prefix=GROUND_TRUTH_PREFIX,
+            fps=fps,
+            radius=keypoints_radius(cameras_intrinsics),
         )
 
     bboxes_2d = annotations.get("bboxes_2d")
