@@ -10,6 +10,7 @@
 
 import torch
 from abc import ABC, abstractmethod
+from kineo.io.audio_file import load_waveform
 from kineo.io.ffmpeg import extract_audio
 
 
@@ -36,3 +37,25 @@ class VideoAudioLoader(AudioLoader):
         if audio is not None:
             audio = audio.to(self.device)
         return audio, sample_rate
+
+
+class WaveformAudioLoader(AudioLoader):
+    """Reads an audio file, or a fixed window of one."""
+
+    def __init__(
+        self,
+        audio_path: str,
+        device: torch.device,
+        start_frame: int = 0,
+        n_frames: int = -1,
+    ):
+        super().__init__(device)
+        self.audio_path = audio_path
+        self.start_frame = start_frame
+        self.n_frames = n_frames
+
+    def load_audio(self) -> tuple[torch.Tensor, int]:
+        audio, sample_rate = load_waveform(
+            self.audio_path, self.start_frame, self.n_frames
+        )
+        return audio.to(self.device), sample_rate

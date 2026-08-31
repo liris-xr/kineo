@@ -8,25 +8,19 @@
 # Contact: guillaume.lavoue@enise.ec-lyon.fr
 # -----------------------------------------------------------------------------
 
-"""
-Select CHiME-6 evaluation windows by acoustic content.
+"""Select CHiME-6 evaluation windows by acoustic content.
 
 Reads the CHiME-6 transcripts and emits time ranges on the synchronized audio
 clock, grouped by how many people are talking: silence, a single speaker,
-overlapping speakers, or a mix when the corpus offers nothing purer.
+overlapping speakers, or a mix when the corpus offers nothing purer. Each
+window carries the Kinect arrays that recorded it, with their floorplan
+positions, so the geometry a temporal calibration is scored against travels
+with the window.
 
 No audio is decoded; only the per-session duration is read from the wav
 headers so windows stay inside the shortest device.
-
-Outputs:
-  - chime6_windows.json    windows plus a per-cell generation report
-
-Usage:
-    pixi run python experiments/chime6_window_selection.py \
-        <chime6_dev_dir> <output_json> [--sessions S02 S09] [--lengths 30 60]
 """
 
-import argparse
 import glob
 import json
 import os
@@ -35,6 +29,12 @@ import numpy as np
 import orjson
 
 from kineo.io.audio_file import get_waveform_info
+
+DEVICE_POSITIONS_PATH = os.path.join(
+    os.path.dirname(__file__), "chime6_device_positions.json"
+)
+
+WINDOWS_FILENAME = "chime6_windows.json"
 
 WINDOW_LENGTHS_S = [30.0, 60.0, 120.0, 300.0, 600.0]
 
@@ -128,14 +128,6 @@ def composition(
     return out / length
 
 
-def session_duration(audio_dir: str, session: str) -> float:
-    """Duration of the shortest Kinect channel of a session, in seconds."""
-    paths = sorted(glob.glob(os.path.join(audio_dir, f"{session}_U0*.CH1.wav")))
-    if not paths:
-        raise FileNotFoundError(f"No Kinect audio for {session} in {audio_dir}")
-    return min(get_waveform_info(p).duration for p in paths)
-
-
 def select_cell(
     scores: np.ndarray,
     qualifies: np.ndarray,
@@ -168,6 +160,75 @@ def select_cell(
         if len(selected) == count:
             break
     return selected
+
+
+def audio_dir(dataset_dir: str, split: str) -> str:
+    """Directory holding a split's wav files."""
+    return os.path.join(dataset_dir, "CHiME6", "audio", split)
+
+
+def transcript_dir(dataset_dir: str, split: str) -> str:
+    """Directory holding a split's transcripts, as the archive unpacks it."""
+    return os.path.join(
+        dataset_dir,
+        "CHiME6_transcriptions",
+        "transcriptions",
+        "transcriptions",
+        split,
+    )
+
+
+def list_sessions(dataset_dir: str, split: str) -> list[str]:
+    """Session identifiers of a split, read from its wav file names."""
+    paths = glob.glob(os.path.join(audio_dir(dataset_dir, split), "*_U0*.CH1.wav"))
+    return sorted({os.path.basename(p).split("_")[0] for p in paths})
+
+
+def session_duration(dataset_dir: str, split: str, session: str) -> float:
+    """Duration of the shortest Kinect channel of a session, in seconds."""
+    paths = sorted(
+        glob.glob(os.path.join(audio_dir(dataset_dir, split), f"{session}_U0*.CH1.wav"))
+    )
+    if not paths:
+        raise FileNotFoundError(f"No Kinect audio for {session} in {split}")
+    return min(get_waveform_info(p).duration for p in paths)
+
+
+def build_views(positions: dict, split: str, session: str) -> dict:
+    """Describe the Kinect arrays of a session.
+
+    One view per array, reading channel CH1. The four channels of an array are
+    sample-synchronized and 22.6 cm apart, so the other three add no
+    calibration case the first does not already cover.
+
+    Args:
+        positions: Parsed device position file.
+        split: Split the session belongs to.
+        session: Session identifier, e.g. "S02".
+
+    Returns:
+        Maps each unit with audio to its wav path relative to the dataset root,
+        its floorplan position in metres and its room.
+
+    Raises:
+        KeyError: If the session has no measured device positions.
+    """
+    if session not in positions["sessions"]:
+        raise KeyError(
+            f"No device positions for {session}. Positions are measured off "
+            f"the floorplans in {DEVICE_POSITIONS_PATH}."
+        )
+
+    units = positions["sessions"][session]["units"]
+    return {
+        unit: {
+            "audio_path": f"CHiME6/audio/{split}/{session}_{unit}.CH1.wav",
+            "position_m": [spec["x"], spec["y"]],
+            "room": spec["room"],
+        }
+        for unit, spec in sorted(units.items())
+        if spec["has_audio"]
+    }
 
 
 def build_windows(
@@ -273,7 +334,7 @@ def build_windows(
                         "session_id": session,
                         "start_time_s": round(t0, 3),
                         "duration_s": length,
-                        "class": target if qualified else "mixed",
+                        "content_class": target if qualified else "mixed",
                         "composition": {
                             "silence": round(float(comp[idx, 0]), 3),
                             "single": round(float(comp[idx, 1]), 3),
@@ -294,49 +355,66 @@ def build_windows(
     return windows, report
 
 
-def main(
+def preprocess_chime6(
     dataset_dir: str,
-    output_json: str,
-    sessions: list[str] = ["S02", "S09"],
+    split: str = "dev",
+    sessions: list[str] = [],
     lengths: list[float] = WINDOW_LENGTHS_S,
-    count: int = WINDOWS_PER_CELL,
+    windows_per_cell: int = WINDOWS_PER_CELL,
 ):
-    audio_dir = os.path.join(dataset_dir, "CHiME6", "audio", "dev")
-    transcript_dir = os.path.join(
-        dataset_dir, "CHiME6_transcriptions", "transcriptions", "transcriptions", "dev"
-    )
+    """Writes the evaluation windows of a CHiME-6 split.
+
+    Args:
+        dataset_dir: Directory the dataset was downloaded and extracted into.
+        split: Split to preprocess, among "dev", "train" and "eval".
+        sessions: Sessions to preprocess, or empty to take every session the
+            split has audio for.
+        lengths: Window lengths to select, in seconds.
+        windows_per_cell: Windows to select per (length, class) pair.
+
+    Raises:
+        FileNotFoundError: If a session has no Kinect audio.
+        KeyError: If a session has no measured device positions.
+    """
+    with open(DEVICE_POSITIONS_PATH, "rb") as f:
+        positions = orjson.loads(f.read())
+
+    sessions = sessions or list_sessions(dataset_dir, split)
 
     windows: list[dict] = []
     report: dict = {}
     for session in sessions:
-        duration = session_duration(audio_dir, session)
+        duration = session_duration(dataset_dir, split, session)
         session_windows, session_report = build_windows(
             session,
-            os.path.join(transcript_dir, f"{session}.json"),
+            os.path.join(transcript_dir(dataset_dir, split), f"{session}.json"),
             duration,
             lengths,
-            count,
+            windows_per_cell,
         )
+        views = build_views(positions, split, session)
+        for window in session_windows:
+            window["views"] = views
         windows.extend(session_windows)
         report[session] = {"duration_s": round(duration, 3), "cells": session_report}
 
     classes: dict = {}
     for window in windows:
-        classes[window["class"]] = classes.get(window["class"], 0) + 1
+        classes[window["content_class"]] = classes.get(window["content_class"], 0) + 1
     print("\n===== total =====")
     print(f"  windows: {len(windows)}")
     for name, n in sorted(classes.items()):
         print(f"    {name:<8} {n}")
 
-    os.makedirs(os.path.dirname(os.path.abspath(output_json)), exist_ok=True)
+    output_json = os.path.join(dataset_dir, WINDOWS_FILENAME)
     with open(output_json, "w") as f:
         json.dump(
             {
                 "meta": {
-                    "dataset_dir": dataset_dir,
+                    "split": split,
                     "sessions": sessions,
                     "lengths_s": lengths,
-                    "windows_per_cell": count,
+                    "windows_per_cell": windows_per_cell,
                     "audio_start_guard_s": AUDIO_START_GUARD_S,
                     "thresholds": THRESHOLDS,
                     "single_max_overlap": SINGLE_MAX_OVERLAP,
@@ -349,23 +427,3 @@ def main(
         )
         f.write("\n")
     print(f"\nWrote {output_json}")
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("dataset_dir", type=str)
-    parser.add_argument("output_json", type=str)
-    parser.add_argument("--sessions", type=str, nargs="+", default=["S02", "S09"])
-    parser.add_argument(
-        "--lengths", type=float, nargs="+", default=WINDOW_LENGTHS_S
-    )
-    parser.add_argument("--windows-per-cell", type=int, default=WINDOWS_PER_CELL)
-    args = parser.parse_args()
-
-    main(
-        args.dataset_dir,
-        args.output_json,
-        args.sessions,
-        args.lengths,
-        args.windows_per_cell,
-    )
