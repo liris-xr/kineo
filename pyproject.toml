@@ -215,3 +215,11 @@ cmd = "python scripts/download_aistpp_dataset.py {{ dataset_dir }}"
 [tool.pixi.tasks.aistpp-preprocess]
 args = ["dataset_dir"]
 cmd = "python scripts/preprocess_aistpp_dataset.py {{ dataset_dir }}"
+
+[tool.pixi.tasks.aistpp-benchmark]
+depends-on = ["download-checkpoints"]
+args = [
+    { "arg" = "dataset_dir" },
+    { "arg" = "config_file", "default" = "configs/experiments/benchmarks/aistpp_benchmark_nlf_estRt_estK_estDk1k2.yaml" },
+]
+cmd = "python experiments/aistpp_eval.py {{ dataset_dir }} --config-file {{config_file}}"
