@@ -9,7 +9,6 @@
 # -----------------------------------------------------------------------------
 
 import torch
-import os.path as osp
 from tqdm import tqdm
 import warnings
 

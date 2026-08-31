@@ -6,7 +6,6 @@ from ..base import BaseTool
 from .post_processings import convert_coco_to_openpose, get_simcc_maximum
 from .pre_processings import bbox_xyxy2cs, top_down_affine
 
-import cv2
 
 
 class RTMPose(BaseTool):

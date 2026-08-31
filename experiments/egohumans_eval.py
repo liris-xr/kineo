@@ -17,7 +17,6 @@ import torch
 from kineo.pipeline.pipeline import Pipeline
 from kineo.datasets.egohumans.egohumans_dataset import EgoHumansSequenceDataset
 
-from collections import defaultdict
 
 from tqdm import tqdm
 import argparse

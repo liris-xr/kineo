@@ -28,8 +28,6 @@ import orjson
 from tqdm import tqdm
 import argparse
 import traceback
-from collections import defaultdict
-import json
 
 torch.use_deterministic_algorithms(True)
 torch.backends.cuda.matmul.allow_tf32 = False

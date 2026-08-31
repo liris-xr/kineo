@@ -427,8 +427,6 @@ class NLFSMPLFittingStage(PipelineStage[NLFSMPLFittingRuntimeConfig]):
         vertices_2d = torch.zeros((n_frames, n_views, n_vertices, 2), device=device)
         vertices_2d_scores = torch.zeros((n_frames, n_views, n_vertices), device=device)
 
-        import cv2
-        import numpy as np
 
         for annot in tqdm(
             subject_kps_2d.annotations, desc="Collecting 2D keypoints", leave=False
