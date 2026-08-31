@@ -205,11 +205,17 @@ def preview_sequence(
         if max_frames is not None:
             keypoints_2d = take_first_frames(keypoints_2d, max_frames)
 
-        viz_rerun.log_keypoints_2d(
+        radius = (
+            keypoints_radius(cameras_intrinsics)
+            if cameras_intrinsics is not None
+            else MIN_KEYPOINTS_RADIUS
+        )
+        viz_rerun.log_skeletons_2d(
             keypoints_2d=keypoints_2d,
             prefix=GROUND_TRUTH_PREFIX,
             fps=fps,
-            radius=keypoints_radius(cameras_intrinsics),
+            joint_radius=radius,
+            bones_thickness=radius / 2,
         )
 
     bboxes_2d = annotations.get("bboxes_2d")

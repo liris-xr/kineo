@@ -77,7 +77,7 @@ a pipeline export can be read side by side:
 | --- | --- |
 | `ground_truth/cameras/{view_id}` | `rr.Pinhole` and `rr.Transform3D` |
 | `ground_truth/cameras/{view_id}/rgb` | video asset |
-| `ground_truth/cameras/{view_id}/keypoints_2d_{subject_id}` | 2D keypoints |
+| `ground_truth/cameras/{view_id}/skeletons_2d_{joints,bones}_{subject_id}` | 2D skeleton |
 | `ground_truth/cameras/{view_id}/bboxes_2d_{subject_id}` | 2D boxes |
 | `ground_truth/skeletons_3d_{joints,bones}_{subject_id}` | 3D skeleton |
 
@@ -98,7 +98,10 @@ def preview_sequence(
 ```
 
 It logs the ground-truth cameras and 3D skeletons, then, per view, the
-footage followed by that view's 2D keypoints and boxes. `output_path` of
+footage followed by that view's 2D skeleton and boxes. Joint radii and bone
+thicknesses are read in pixels by a 2D view, so they are scaled to the view's
+height: the logging defaults are hundredths of a pixel, invisible on a 4K
+frame. `output_path` of
 `None` spawns the viewer; otherwise the recording is written to that `.rrd`.
 `max_frames` shortens the timeline and the annotations on it — not the
 footage, which is embedded whole.
