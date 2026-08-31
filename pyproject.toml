@@ -52,7 +52,9 @@ platforms = ["linux-64", "win-64"]
 
 [tool.pixi.pypi-dependencies]
 kineo = { path = ".", editable = true }
-moge = { git = "https://github.com/microsoft/MoGe.git" }
+# Pinned: MoGe-3 (main) forces torch through its own cu130 index, which
+# conflicts with the cu128 pin below and makes the solve fail.
+moge = { git = "https://github.com/microsoft/MoGe.git", rev = "925b8ed835a7a9cdb7578ba15c658a0afc969030" }
 
 torch = { version = "==2.10.*", index = "https://download.pytorch.org/whl/cu128" }
 torchvision = { version = ">=0.22.0", index = "https://download.pytorch.org/whl/cu128" }
