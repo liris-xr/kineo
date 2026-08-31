@@ -27,6 +27,16 @@ pipeline:
         _target_: kineo.pipeline.stages.mfcc_temporal_calibration.TemporalCalibrationRuntimeConfig
         ref_idx: 0
 
+    # Settled before anything decodes: the AIST videos run at 59.94 Hz and the
+    # pipeline at 20, so two frames in three would be inferred and thrown away.
+    global_time_reference:
+      _target_: kineo.pipeline.stages.global_time_reference.GlobalTimeReferenceStage
+      name: "Global Time Reference"
+      order: 6
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.global_time_reference.GlobalTimeReferenceRuntimeConfig
+        target_fps: 20
+
     # Infer intrinsics before NLF to provide it to the model
     moge_intrinsics_estimation:
       _target_: kineo.pipeline.stages.moge_intrinsics_estimation.MoGeIntrinsicsEstimationStage

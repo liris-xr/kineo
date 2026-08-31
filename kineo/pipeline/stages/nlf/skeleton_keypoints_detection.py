@@ -16,6 +16,7 @@ from kineo.annotations import (
 )
 from kineo.pipeline.pipeline import Pipeline
 from kineo.pipeline import per_view_cache
+from kineo.pipeline.stages.global_time_reference import build_inference_frames
 from kineo.pipeline.stages.nlf.model_wrapper import NLFModelWrapper
 from kineo.pipeline.stages.nlf.skeleton_keypoints_format import (
     COCO_19_KEYPOINTS_FORMAT,
@@ -122,6 +123,9 @@ class NLFSkeletonKeypointsDetectionStage(
                         use_half_precision=runtime_cfg.use_half_precision,
                         frame_step=runtime_cfg.frame_step,
                         skeleton_name=runtime_cfg.skeleton_name,
+                        inference_frames_by_view=build_inference_frames(
+                            annotations, missing_views
+                        ),
                     )
                 }
             finally:
@@ -156,6 +160,7 @@ class NLFSkeletonKeypointsDetectionStage(
         use_half_precision: bool = True,
         frame_step: int = 1,
         skeleton_name: str = "smpl_24",
+        inference_frames_by_view: dict[str, list[int]] | None = None,
     ) -> Keypoints2DAnnotations:
         """
         Infer keypoints for all views.
@@ -170,9 +175,17 @@ class NLFSkeletonKeypointsDetectionStage(
 
         all_keypoints_annotations: list[Keypoints2DAnnotation] = []
 
+        # Without a settled timeline, every frame is a candidate.
+        if inference_frames_by_view is None:
+            inference_frames_by_view = {
+                view["view_id"]: _get_inference_frames(
+                    view["frame_loader"].n_frames, frame_step
+                )
+                for view in views
+            }
+
         n_total_inference_frames = sum(
-            len(_get_inference_frames(view["frame_loader"].n_frames, frame_step))
-            for view in views
+            len(inference_frames_by_view[view["view_id"]]) for view in views
         )
         pbar = tqdm(
             total=n_total_inference_frames, desc="Inferring keypoints", leave=False
@@ -181,7 +194,6 @@ class NLFSkeletonKeypointsDetectionStage(
         for view in views:
             frame_loader = view["frame_loader"]
             view_id = view["view_id"]
-            view_n_frames = frame_loader.n_frames
 
             K = (
                 intrinsics_annotations.filter_by_view_id(view_id)
@@ -203,7 +215,7 @@ class NLFSkeletonKeypointsDetectionStage(
                 [0, -1, 0], dtype=torch.float32, device=device
             )
 
-            inference_frames = _get_inference_frames(view_n_frames, frame_step)
+            inference_frames = inference_frames_by_view[view_id]
 
             for batch_start in range(0, len(inference_frames), batch_size):
                 batch_end = min(batch_start + batch_size, len(inference_frames))

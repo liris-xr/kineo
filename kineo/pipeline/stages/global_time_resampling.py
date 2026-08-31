@@ -14,19 +14,17 @@ from kineo.pipeline.pipeline import PipelineStage
 from kineo.pipeline.pipeline import Pipeline
 from kineo.datasets.keypoints_sequence_dataset import ViewInput
 from kineo.annotations import Annotations
-from kineo.annotations.camera_temporal import (
-    CameraTemporalAnnotations,
-    CameraTemporalAnnotation,
-    CameraTemporalAnnotationsMetadata,
-)
+from kineo.annotations.camera_temporal import CameraTemporalAnnotations
 from kineo.annotations.keypoints_2d import (
     Keypoints2DAnnotations,
     Keypoints2DAnnotation,
 )
-from kineo.annotations.global_time_reference import (
-    GlobalTimeReferenceAnnotations,
-    GlobalTimeReferenceAnnotationsMetadata,
-    GlobalTimeReferenceAnnotation,
+from kineo.annotations.global_time_reference import GlobalTimeReferenceAnnotation
+from kineo.datasets.annotations_io import build_synchronized_camera_temporal
+from kineo.pipeline.stages.global_time_reference import (
+    build_global_time_reference,
+    build_view_timelines,
+    is_pass_through,
 )
 from kineo.annotations.bboxes_2d import BBox2DAnnotations, BBox2DAnnotation
 
@@ -80,88 +78,38 @@ class GlobalTimeResamplingStage(PipelineStage[GlobalTimeResamplingRuntimeConfig]
 
         if camera_temporal is None:
             print("No camera temporal annotations provided, assuming synchronized cameras.")
-            # If no camera temporal annotations is provided, assume synchronized cameras.
-            camera_temporal = CameraTemporalAnnotations(
-                metadata=CameraTemporalAnnotationsMetadata(),
-                annotations=[
-                    CameraTemporalAnnotation(
-                        frame_idx=0,
-                        view_id=views[view_idx]["view_id"],
-                        time_offset=0.0,
-                    )
-                    for view_idx in range(n_views)
-                ],
+            camera_temporal = build_synchronized_camera_temporal(
+                [view["view_id"] for view in views]
             )
             annotations["cameras_temporal"] = camera_temporal
 
-        # Short path, if all cameras are synchronized and have the same number of frames, we can return the annotations as is (e.g. for synchronized datasets)
-        if all(a.time_offset == 0.0 for a in camera_temporal.annotations) and all(
-            v["frame_loader"].n_frames == views[0]["frame_loader"].n_frames
-            for v in views
-        ):
-            timestamps = views[0]["frame_loader"].frame_timestamps_local
-            n_frames = views[0]["frame_loader"].n_frames
-            closest_local_frame_idx = {
-                v["view_id"]: torch.arange(n_frames) for v in views
-            }
+        # A stage may have settled the timeline before the detectors ran.
+        if "global_time_reference" not in annotations:
+            annotations["global_time_reference"] = build_global_time_reference(
+                views=views,
+                camera_temporal=camera_temporal,
+                target_fps=runtime_cfg.target_fps,
+                device=device,
+            )
 
-            annotations["global_time_reference"] = GlobalTimeReferenceAnnotations(
-                metadata=GlobalTimeReferenceAnnotationsMetadata(),
-                annotations=[
-                    GlobalTimeReferenceAnnotation(
-                        timestamps=timestamps.clone(),
-                        closest_local_frame_idx=closest_local_frame_idx,
-                    )
-                ],
-            ).cpu()
+        global_time_reference: GlobalTimeReferenceAnnotation = annotations[
+            "global_time_reference"
+        ].first_or_default()
+
+        if is_pass_through(global_time_reference):
             return
 
         kps_2d: Keypoints2DAnnotations = annotations["keypoints_2d"]
         bboxes_2d: BBox2DAnnotations = annotations["bboxes_2d"]
 
-        views_frame_timestamps = []
+        views_frame_timestamps = build_view_timelines(views, camera_temporal, device)
 
-        for view_idx in range(n_views):
-            # Take the first time_offset, assuming fixed camera temporal annotations (no clock drift)
-            camera_temporal_view_i: CameraTemporalAnnotation = (
-                camera_temporal.filter_by_view_id(
-                    views[view_idx]["view_id"]
-                ).first_or_default()
-            )
-
-            if camera_temporal_view_i is None:
-                raise ValueError(
-                    f"No camera temporal annotations found for view {views[view_idx]['view_id']}"
-                )
-
-            view_local_frame_timestamps = views[view_idx][
-                "frame_loader"
-            ].frame_timestamps_local.to(device)
-            views_frame_timestamps.append(
-                view_local_frame_timestamps + camera_temporal_view_i.time_offset
-            )
-
-        resampled_timestamps = _create_uniform_timestamp_grid(
-            views_frame_timestamps,
-            runtime_cfg.target_fps,
-            device,
-        )
+        resampled_timestamps = global_time_reference.timestamps.to(device)
         n_frames = resampled_timestamps.numel()
-
-        closest_local_frame_idx: dict[str, torch.Tensor] = {}
+        closest_local_frame_idx = global_time_reference.closest_local_frame_idx
 
         resampled_kps_2d_annotations: list[Keypoints2DAnnotation] = []
         resampled_bboxes_2d_annotations: list[BBox2DAnnotation] = []
-
-        for view_idx in range(n_views):
-            view_id = views[view_idx]["view_id"]
-            view_frame_timestamps = views_frame_timestamps[view_idx]
-            closest_local_frame_idx[view_id] = (
-                _get_closest_view_local_frame_for_global_frames(
-                    view_frame_timestamps=view_frame_timestamps,
-                    global_frame_timestamps=resampled_timestamps,
-                )
-            )
 
         for subject_id in kps_2d.subjects_ids:
             kps_2d_subject = kps_2d.filter_by_subject_id(subject_id)
@@ -338,54 +286,6 @@ class GlobalTimeResamplingStage(PipelineStage[GlobalTimeResamplingRuntimeConfig]
             metadata=bboxes_2d.metadata, annotations=resampled_bboxes_2d_annotations
         ).cpu()
 
-        annotations["global_time_reference"] = GlobalTimeReferenceAnnotations(
-            metadata=GlobalTimeReferenceAnnotationsMetadata(),
-            annotations=[
-                GlobalTimeReferenceAnnotation(
-                    timestamps=resampled_timestamps,
-                    closest_local_frame_idx=closest_local_frame_idx,
-                )
-            ],
-        ).cpu()
-
-
-def _create_uniform_timestamp_grid(
-    view_frame_timestamps: list[torch.Tensor],
-    fps: float,
-    device: torch.device,
-) -> torch.Tensor:
-    """
-    Create a uniform timestamp grid from a given timestamp tensor.
-    """
-    min_timestamp = max([timestamps.min() for timestamps in view_frame_timestamps])
-    max_timestamp = min([timestamps.max() for timestamps in view_frame_timestamps])
-    duration = max_timestamp - min_timestamp
-    n_frames = int(duration * fps)
-    return torch.arange(
-        min_timestamp, max_timestamp, duration / n_frames, device=device
-    )
-
-
-def _get_closest_view_local_frame_for_global_frames(
-    view_frame_timestamps: torch.Tensor,
-    global_frame_timestamps: torch.Tensor,
-) -> torch.Tensor:
-    """
-    Get the closest local frame index for each global frame index.
-    """
-    right_indices = torch.searchsorted(view_frame_timestamps, global_frame_timestamps)
-
-    right_indices = torch.clamp(right_indices, 1, len(view_frame_timestamps))
-    left_indices = right_indices - 1
-
-    left_dist = torch.abs(view_frame_timestamps[left_indices] - global_frame_timestamps)
-    right_dist = torch.where(
-        right_indices < len(view_frame_timestamps),
-        torch.abs(view_frame_timestamps[right_indices] - global_frame_timestamps),
-        float("inf"),
-    )
-
-    return torch.where(left_dist <= right_dist, left_indices, right_indices)
 
 
 def _resample_keypoints(
