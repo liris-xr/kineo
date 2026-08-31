@@ -1,5 +1,5 @@
 output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/h36m_runtime_rtmpose_short_video"
-cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/mmlab-moge-fp32_32eb4f0e"
+cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/h36m_mmlab-moge-fp32_32eb4f0e"
 use_cache: False
 batch_size: 1
 use_half_precision: False

@@ -1,5 +1,5 @@
 output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/h36m_runtime_nlf_long_video"
-cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/mmdet-moge-nlfh36m17-fp32_073bbde7"
+cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/h36m_mmdet-moge-nlfh36m17-fp32_073bbde7"
 use_cache: False
 batch_size: 1
 use_half_precision: False

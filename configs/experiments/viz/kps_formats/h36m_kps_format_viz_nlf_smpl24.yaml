@@ -1,5 +1,5 @@
 output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/h36m_kps_format_viz_nlf_smpl24"
-cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/moge-nlfsmpl24-fp16_132688f5"
+cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/h36m_moge-nlfsmpl24-fp16_132688f5"
 use_cache: True
 batch_size: 32
 use_half_precision: True

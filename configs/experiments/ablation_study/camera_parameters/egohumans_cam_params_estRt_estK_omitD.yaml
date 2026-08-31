@@ -4,7 +4,7 @@
 # d:      Omitted
 # scale:  GT
 output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/egohumans_cam_params_estRt_estK_omitD"
-cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/moge-fp32_7094cec3"
+cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/egohumans_moge-fp32_7094cec3"
 use_cache: False
 batch_size: 32
 use_half_precision: False

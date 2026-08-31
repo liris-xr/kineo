@@ -1,5 +1,5 @@
 output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/h36m_kps_format_viz_rtmpose"
-cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/mmpose-moge-fp16_1c04de7d"
+cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/h36m_mmpose-moge-fp16_1c04de7d"
 use_cache: True
 batch_size: 32
 use_half_precision: True

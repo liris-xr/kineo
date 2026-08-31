@@ -1,5 +1,5 @@
 output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/egohumans_benchmark_dwpose_estRt_estK_estD"
-cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/mmpose-moge-fp32_f2b218b6"
+cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/egohumans_mmpose-moge-fp32_f2b218b6"
 use_cache: False
 batch_size: 32
 # Don't use faces and hands in the pipeline (body only), except when triangulating the final result.

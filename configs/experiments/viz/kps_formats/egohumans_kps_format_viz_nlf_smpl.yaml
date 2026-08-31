@@ -1,5 +1,5 @@
 output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/egohumans_kps_format_viz_nlf_smpl"
-cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/moge-nlfsmplx-fp16_a6ac6e77"
+cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/egohumans_moge-nlfsmplx-fp16_a6ac6e77"
 use_cache: True
 batch_size: 32
 use_half_precision: True

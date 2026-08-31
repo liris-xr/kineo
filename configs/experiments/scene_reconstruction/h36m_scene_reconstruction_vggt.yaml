@@ -1,5 +1,5 @@
 output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/h36m_scene_reconstruction_vggt"
-cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/moge-nlfh36m17-fp32_4624733b"
+cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/h36m_moge-nlfh36m17-fp32_4624733b"
 use_cache: False
 batch_size: 32
 use_half_precision: False
