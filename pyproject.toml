@@ -52,28 +52,26 @@ platforms = ["linux-64", "win-64"]
 
 [tool.pixi.pypi-dependencies]
 kineo = { path = ".", editable = true }
-# Pinned: MoGe-3 (main) forces torch through its own cu130 index, which
-# conflicts with the cu128 pin below and makes the solve fail.
-moge = { git = "https://github.com/microsoft/MoGe.git", rev = "925b8ed835a7a9cdb7578ba15c658a0afc969030" }
+# Every git dependency is pinned to the revision the lock resolved and the
+# environment actually holds. Left floating, each follows its branch and a
+# re-solve silently swaps the code a benchmark ran on -- for MoGe that means
+# MoGe-3, which is a different model and pulls torch from its own cu130 index.
+moge = { git = "https://github.com/microsoft/MoGe.git", rev = "07444410f1e33f402353b99d6ccd26bd31e469e8" }
 
 torch = { version = "==2.10.*", index = "https://download.pytorch.org/whl/cu128" }
-torchvision = { version = ">=0.22.0", index = "https://download.pytorch.org/whl/cu128" }
+torchvision = { version = "==0.25.0", index = "https://download.pytorch.org/whl/cu128" }
 torchaudio = { version = "==2.10.*", index = "https://download.pytorch.org/whl/cu128" }
 onnxruntime-gpu = "*"
 soundfile = "*"
 cv2-enumerate-cameras = "*"
 
-sam2 = { git = "https://github.com/cjaverliat/sam2.git" }
+sam2 = { git = "https://github.com/cjaverliat/sam2.git", rev = "6f43c2eb3db1da4811a8165f64ac23616f16dd36" }
 
-mmpretrain = "*"
-mmengine = "*"
-mmcv = { git = "https://github.com/cjaverliat/mmcv.git" }
-mmpose = { git = "https://github.com/cjaverliat/mmpose.git" }
-mmdet = { git = "https://github.com/cjaverliat/mmdetection.git" }
-mmdeploy = "*"
 
 [tool.pixi.pypi-options]
-no-build-isolation = ["sam2", "chumpy"]
+# mmcv names its prebuilt wheel after the torch it can import at build time,
+# so an isolated build env names it after that env's throwaway CPU torch.
+no-build-isolation = ["sam2", "chumpy", "mmcv"]
 
 [tool.pixi.dependencies]
 python = "3.10.*"
@@ -96,6 +94,24 @@ ruff = "*"
 pytest = "*"
 pyrefly = "*"
 google-api-python-client = "*"
+
+# MMLab only reaches the four stages that actually run MMLab inference
+# (mmpose_keypoints_detection, mmdet_bbox_detection, mmlab_bbox_keypoints_detection,
+# sam2_semiauto_bbox_detection). Those are hydra `_target_`-loaded, so they import
+# lazily and a config that does not name them never touches this stack. Kept out
+# of the default environment because installing it means building mmcv from git
+# unless a prebuilt wheel matching the pinned torch exists.
+[tool.pixi.feature.mmlab]
+platforms = ["linux-64", "win-64"]
+channels = ["conda-forge", "nvidia"]
+
+[tool.pixi.feature.mmlab.pypi-dependencies]
+mmpretrain = "*"
+mmengine = "*"
+mmcv = { git = "https://github.com/cjaverliat/mmcv.git", rev = "d24e8a7814fb46409f2c3a20b522bc642883d0c2" }
+mmpose = { git = "https://github.com/cjaverliat/mmpose.git", rev = "111d9b3a1e15d417925e5bf66211fe1b4517ae6c" }
+mmdet = { git = "https://github.com/cjaverliat/mmdetection.git", rev = "2c6c427aad632694494c9bb17d6239f163e4ab04" }
+mmdeploy = "*"
 
 [tool.pixi.feature.cuda128]
 platforms = ["linux-64", "win-64"]
@@ -121,6 +137,9 @@ solve-group = "default"
 [tool.pixi.environments.dev]
 features = ["dev", "cuda128"]
 solve-group = "default"
+
+[tool.pixi.environments.mmlab]
+features = ["mmlab", "cuda128"]
 
 [tool.pixi.tasks]
 _download-smpl = { cmd = "test -f body_models/smpl/SMPL_NEUTRAL.pkl || python scripts/download_smpl.py" }
