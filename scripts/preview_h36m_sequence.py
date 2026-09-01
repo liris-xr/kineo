@@ -1,9 +1,12 @@
 import argparse
 import os
 
+import orjson
+
 from kineo.datasets.h36m.h36m_dataset import H36MSequenceDataset
 from kineo.visualization.sequence_preview import (
     DEFAULT_DOWNSCALE_FACTOR,
+    find_sequence,
     preview_sequence,
 )
 
@@ -27,7 +30,8 @@ if __name__ == "__main__":
         type=str,
         choices=["train", "val"],
         default="val",
-        help="Split the sequence is taken from",
+        help="Split the sequence is taken from. Protocol 1 evaluates on S9 "
+        "and S11, and holds S1, S5, S6, S7 and S8 in the train split",
     )
     parser.add_argument(
         "--sequence",
@@ -64,21 +68,40 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    dataset = H36MSequenceDataset(
-        os.path.join(
-            args.dataset_dir, f"h36m_{args.protocol}_sequences.json"
-        ),
-        split=args.split,
+    sequences_file = os.path.join(
+        args.dataset_dir, f"h36m_{args.protocol}_sequences.json"
     )
 
-    names = [sequence["sequence_name"] for sequence in dataset.sequences]
-    if args.sequence and args.sequence not in names:
+    # Names come from the listing rather than the dataset, which opens a
+    # reader per view of every sequence as it is built.
+    with open(sequences_file, "rb") as f:
+        names_by_split: dict[str, list[str]] = {}
+        for entry in orjson.loads(f.read()):
+            names_by_split.setdefault(entry["split"], []).append(
+                entry["sequence_name"]
+            )
+
+    names = names_by_split.get(args.split, [])
+
+    try:
+        index = find_sequence(names, args.sequence)
+    except LookupError as error:
+        # A subject sits in one split only, so a name missing here is usually
+        # a name that lives in the other one.
+        other_split = "train" if args.split == "val" else "val"
+        other_names = names_by_split.get(other_split, [])
+
+        try:
+            found = other_names[find_sequence(other_names, args.sequence)]
+        except LookupError:
+            parser.error(str(error))
+
         parser.error(
-            f"unknown sequence '{args.sequence}'. The listing holds "
-            f"{len(names)}, such as {', '.join(names[:3])}"
+            f"{error}. '{found}' is in the {other_split} split, reachable "
+            f"with --split {other_split}"
         )
 
-    index = names.index(args.sequence) if args.sequence else 0
+    dataset = H36MSequenceDataset(sequences_file, split=args.split)
 
     preview_sequence(
         dataset[index],

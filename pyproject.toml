@@ -242,16 +242,18 @@ cmd = "python experiments/chime6_audio_sync_eval.py {{ dataset_dir }} {{ output_
 [tool.pixi.tasks.preview-aistpp]
 args = [
     { "arg" = "sequence", "default" = "" },
+    { "arg" = "variant", "default" = "raw" },
     { "arg" = "dataset_dir", "default" = "$KINEO_DATASETS_DIR/AIST++" },
 ]
-cmd = 'python scripts/preview_aistpp_sequence.py {{ dataset_dir }} --sequence "{{ sequence }}"'
+cmd = 'python scripts/preview_aistpp_sequence.py {{ dataset_dir }} --sequence "{{ sequence }}" --variant {{ variant }}'
 
 [tool.pixi.tasks.preview-h36m]
 args = [
     { "arg" = "sequence", "default" = "" },
+    { "arg" = "split", "default" = "val" },
     { "arg" = "dataset_dir", "default" = "$KINEO_DATASETS_DIR/H3.6M" },
 ]
-cmd = 'python scripts/preview_h36m_sequence.py {{ dataset_dir }} --sequence "{{ sequence }}"'
+cmd = 'python scripts/preview_h36m_sequence.py {{ dataset_dir }} --sequence "{{ sequence }}" --split {{ split }}'
 
 [tool.pixi.tasks.preview-egohumans]
 args = [

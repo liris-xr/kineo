@@ -4,6 +4,7 @@ import os
 from kineo.datasets.egohumans.egohumans_dataset import EgoHumansSequenceDataset
 from kineo.visualization.sequence_preview import (
     DEFAULT_DOWNSCALE_FACTOR,
+    find_sequence,
     preview_sequence,
 )
 
@@ -56,13 +57,11 @@ if __name__ == "__main__":
     )
 
     names = [sequence["sequence_name"] for sequence in dataset.sequences_data]
-    if args.sequence and args.sequence not in names:
-        parser.error(
-            f"unknown sequence '{args.sequence}'. The listing holds "
-            f"{len(names)}, such as {', '.join(names[:3])}"
-        )
 
-    index = names.index(args.sequence) if args.sequence else 0
+    try:
+        index = find_sequence(names, args.sequence)
+    except LookupError as error:
+        parser.error(str(error))
 
     preview_sequence(
         dataset[index],

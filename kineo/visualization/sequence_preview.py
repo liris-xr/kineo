@@ -89,6 +89,52 @@ class PreviewTimeline:
     local_by_step: dict[str, torch.Tensor]
 
 
+def find_sequence(names: list[str], query: str | None) -> int:
+    """Picks the sequence a name, or a fragment of one, refers to.
+
+    Sequence names carry their own structure -- a subject and an action, a
+    genre and a choreography -- so a fragment is usually how someone knows the
+    one they want. An exact name always wins over a fragment, so a name that
+    is also the start of longer ones stays reachable.
+
+    Args:
+        names: Sequence names of the listing, in order.
+        query: Name or fragment to look for, or None for the first sequence.
+
+    Returns:
+        Index of the sequence in `names`.
+
+    Raises:
+        LookupError: If the query matches no sequence, or several.
+    """
+    if not query:
+        return 0
+
+    if query in names:
+        return names.index(query)
+
+    matches = [
+        index
+        for index, name in enumerate(names)
+        if query.lower() in name.lower()
+    ]
+
+    if len(matches) == 1:
+        return matches[0]
+
+    if not matches:
+        raise LookupError(
+            f"no sequence matches '{query}'. The listing holds "
+            f"{len(names)}, such as {', '.join(names[:3])}"
+        )
+
+    raise LookupError(
+        f"'{query}' matches {len(matches)} sequences: "
+        f"{', '.join(names[index] for index in matches[:4])}"
+        + (", ..." if len(matches) > 4 else "")
+    )
+
+
 def sequence_fps(views_inputs: list[ViewInput]) -> float:
     """Rate the views were recorded at, read off their own frames.
 

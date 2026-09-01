@@ -201,7 +201,14 @@ views, which is an evaluation decision rather than a loading one.
 One script per dataset, each taking the directory the dataset was
 preprocessed into and finding its own listing there, so a look at a sequence
 costs its name: `--sequence`, plus `--save`, `--max-frames` and
-`--downscale-factor`. Each carries the defaults its dataset wants — AIST++
+`--downscale-factor`. `find_sequence` takes an exact name or a fragment of
+one, since names carry their own structure — `S9_Directions` for a subject
+and an action, `d06_mBR2_ch03` for a dancer, a piece and a choreography. An
+exact name wins over a fragment, so `S9_Directions` still reaches itself
+rather than `S9_Directions 1`, and a fragment matching several sequences is
+answered with the ones it matched. Human3.6M additionally says when a name
+lives in the other split, which is where a subject not in the protocol's
+evaluation set will be. Each carries the defaults its dataset wants — AIST++
 the `pose_test` split, the `raw` variant and a Y-up world; Human3.6M
 `protocol1`, the `val` split and Z-up; EgoHumans Z-up — which is where the
 dataset knowledge lives, leaving the preview itself agnostic. An unknown
