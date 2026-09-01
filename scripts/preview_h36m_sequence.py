@@ -1,4 +1,5 @@
 import argparse
+import os
 
 from kineo.datasets.h36m.h36m_dataset import H36MSequenceDataset
 from kineo.visualization.sequence_preview import (
@@ -6,16 +7,20 @@ from kineo.visualization.sequence_preview import (
     preview_sequence,
 )
 
-# Human3.6M was captured at 50 Hz and its listings do not carry the rate.
-VIDEO_FPS = 50.0
-
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description="Preview a Human3.6M sequence and its ground truth in rerun"
+    )
     parser.add_argument(
-        "sequences_file",
+        "dataset_dir",
         type=str,
-        help="Path to an h36m_<protocol>_sequences.json file written by the "
-        "preprocessing",
+        help="Path to the directory the dataset was preprocessed into",
+    )
+    parser.add_argument(
+        "--protocol",
+        type=str,
+        default="protocol1",
+        help="Evaluation protocol whose sequence listing is read",
     )
     parser.add_argument(
         "--split",
@@ -59,13 +64,24 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    dataset = H36MSequenceDataset(args.sequences_file, split=args.split)
+    dataset = H36MSequenceDataset(
+        os.path.join(
+            args.dataset_dir, f"h36m_{args.protocol}_sequences.json"
+        ),
+        split=args.split,
+    )
+
     names = [sequence["sequence_name"] for sequence in dataset.sequences]
+    if args.sequence and args.sequence not in names:
+        parser.error(
+            f"unknown sequence '{args.sequence}'. The listing holds "
+            f"{len(names)}, such as {', '.join(names[:3])}"
+        )
+
     index = names.index(args.sequence) if args.sequence else 0
 
     preview_sequence(
         dataset[index],
-        fps=VIDEO_FPS,
         output_path=args.save,
         max_frames=args.max_frames,
         downscale_factor=args.downscale_factor,

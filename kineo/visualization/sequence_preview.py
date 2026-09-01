@@ -89,6 +89,22 @@ class PreviewTimeline:
     local_by_step: dict[str, torch.Tensor]
 
 
+def sequence_fps(views_inputs: list[ViewInput]) -> float:
+    """Rate the views were recorded at, read off their own frames.
+
+    Args:
+        views_inputs: Views of the sequence, read for their frame timestamps.
+
+    Returns:
+        Frames per second, from the median gap between consecutive frames of
+        the first view. The median ignores the odd long gap a dropped frame
+        leaves behind.
+    """
+    timestamps = views_inputs[0]["frame_loader"].frame_timestamps_local
+
+    return 1 / float(torch.diff(timestamps).median())
+
+
 def build_timeline(
     views_inputs: list[ViewInput],
     time_reference: GlobalTimeReferenceAnnotation | None,
@@ -367,7 +383,7 @@ def take_first_frames(
 
 def preview_sequence(
     sequence: KeypointsSequence,
-    fps: float,
+    fps: float | None = None,
     output_path: str | None = None,
     max_frames: int | None = None,
     downscale_factor: int = DEFAULT_DOWNSCALE_FACTOR,
@@ -380,7 +396,9 @@ def preview_sequence(
 
     Args:
         sequence: Sequence to preview, as a dataset yields it.
-        fps: Rate the timeline steps are turned into timestamps with.
+        fps: Rate the timeline steps are turned into timestamps with, read
+            off the recordings when None so a preview replays at the speed it
+            was filmed at.
         output_path: `.rrd` file to write the recording to. The viewer is
             spawned instead when None.
         max_frames: Number of timeline steps to log, all of them when None.
@@ -409,6 +427,9 @@ def preview_sequence(
             f"Unknown up axis '{up_axis}', expected any of "
             f"{list(UP_AXIS_COORDINATES)}."
         )
+
+    if fps is None:
+        fps = sequence_fps(sequence["views_inputs"])
 
     scale = 1 / downscale_factor
     annotations = scale_pixel_space(sequence["annotations"] or {}, scale)

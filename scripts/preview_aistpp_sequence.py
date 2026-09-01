@@ -1,21 +1,35 @@
 import argparse
+import os
 
-from kineo.datasets.aistpp.aistpp_dataset import (
-    VIDEO_FPS,
-    AISTPPSequenceDataset,
-)
+from kineo.datasets.aistpp.aistpp_dataset import AISTPPSequenceDataset
+from kineo.datasets.aistpp.aistpp_download import AISTPP_SPLITS, VIDEO_VARIANTS
 from kineo.visualization.sequence_preview import (
     DEFAULT_DOWNSCALE_FACTOR,
     preview_sequence,
 )
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description="Preview an AIST++ sequence and its ground truth in rerun"
+    )
     parser.add_argument(
-        "sequences_file",
+        "dataset_dir",
         type=str,
-        help="Path to an aistpp_<split>_<variant>_sequences.json file written "
-        "by the preprocessing",
+        help="Path to the directory the dataset was preprocessed into",
+    )
+    parser.add_argument(
+        "--split",
+        type=str,
+        choices=AISTPP_SPLITS,
+        default="pose_test",
+        help="Split the sequence is taken from",
+    )
+    parser.add_argument(
+        "--variant",
+        type=str,
+        choices=VIDEO_VARIANTS,
+        default="raw",
+        help="Video variant to read, the untrimmed recordings by default",
     )
     parser.add_argument(
         "--sequence",
@@ -52,13 +66,24 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    dataset = AISTPPSequenceDataset(args.sequences_file)
+    dataset = AISTPPSequenceDataset(
+        os.path.join(
+            args.dataset_dir,
+            f"aistpp_{args.split}_{args.variant}_sequences.json",
+        )
+    )
+
     names = [sequence["sequence_name"] for sequence in dataset.sequences_data]
+    if args.sequence and args.sequence not in names:
+        parser.error(
+            f"unknown sequence '{args.sequence}'. The listing holds "
+            f"{len(names)}, such as {', '.join(names[:3])}"
+        )
+
     index = names.index(args.sequence) if args.sequence else 0
 
     preview_sequence(
         dataset[index],
-        fps=VIDEO_FPS,
         output_path=args.save,
         max_frames=args.max_frames,
         downscale_factor=args.downscale_factor,

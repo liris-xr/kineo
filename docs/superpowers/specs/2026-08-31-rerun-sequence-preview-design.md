@@ -198,12 +198,25 @@ views, which is an evaluation decision rather than a loading one.
 
 ### `scripts/preview_{aistpp,h36m,egohumans}_sequence.py` (new)
 
-One script per dataset, each roughly 40 lines: the sequences file to read,
-`--sequence` to pick one by name, `--save` to write an `.rrd` instead of
-spawning the viewer, `--max-frames` to shorten the timeline; build the
-dataset; call `preview_sequence`. The AIST++ variant is the listing the
-caller passes, `raw` or `refined`, and Human3.6M additionally takes
-`--split`.
+One script per dataset, each taking the directory the dataset was
+preprocessed into and finding its own listing there, so a look at a sequence
+costs its name: `--sequence`, plus `--save`, `--max-frames` and
+`--downscale-factor`. Each carries the defaults its dataset wants — AIST++
+the `pose_test` split, the `raw` variant and a Y-up world; Human3.6M
+`protocol1`, the `val` split and Z-up; EgoHumans Z-up — which is where the
+dataset knowledge lives, leaving the preview itself agnostic. An unknown
+sequence name is answered with how many the listing holds and a few of them.
+
+The pixi tasks `preview-aistpp`, `preview-h36m` and `preview-egohumans` wrap
+them, reading `$KINEO_DATASETS_DIR` for where the datasets live:
+`pixi run preview-egohumans tennis_001`.
+
+**Playback rate.** `sequence_fps` reads the rate off the recordings, as the
+median gap between a view's frame timestamps, rather than taking a dataset's
+word for it. That is what makes a preview replay at the speed it was filmed
+at: Human3.6M's protocol1 keeps every fifth frame, so its sequences run at
+10 Hz, not the 50 Hz its videos are stored at, and a hardcoded 50 played
+them five times too fast.
 
 ## Testing
 

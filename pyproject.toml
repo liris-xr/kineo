@@ -236,6 +236,30 @@ args = [
 ]
 cmd = "python experiments/chime6_audio_sync_eval.py {{ dataset_dir }} {{ output_dir }}"
 
+# Previews read $KINEO_DATASETS_DIR, the directory holding the preprocessed
+# datasets, so that a look at a sequence costs its name and nothing else:
+#   pixi run preview-egohumans tennis_001
+[tool.pixi.tasks.preview-aistpp]
+args = [
+    { "arg" = "sequence", "default" = "" },
+    { "arg" = "dataset_dir", "default" = "$KINEO_DATASETS_DIR/AIST++" },
+]
+cmd = 'python scripts/preview_aistpp_sequence.py {{ dataset_dir }} --sequence "{{ sequence }}"'
+
+[tool.pixi.tasks.preview-h36m]
+args = [
+    { "arg" = "sequence", "default" = "" },
+    { "arg" = "dataset_dir", "default" = "$KINEO_DATASETS_DIR/H3.6M" },
+]
+cmd = 'python scripts/preview_h36m_sequence.py {{ dataset_dir }} --sequence "{{ sequence }}"'
+
+[tool.pixi.tasks.preview-egohumans]
+args = [
+    { "arg" = "sequence", "default" = "" },
+    { "arg" = "dataset_dir", "default" = "$KINEO_DATASETS_DIR/EgoHumans" },
+]
+cmd = 'python scripts/preview_egohumans_sequence.py {{ dataset_dir }} --sequence "{{ sequence }}"'
+
 [tool.pixi.tasks.aistpp-download]
 args = ["dataset_dir"]
 cmd = "python scripts/download_aistpp_dataset.py {{ dataset_dir }}"
@@ -248,6 +272,6 @@ cmd = "python scripts/preprocess_aistpp_dataset.py {{ dataset_dir }}"
 depends-on = ["download-checkpoints"]
 args = [
     { "arg" = "dataset_dir" },
-    { "arg" = "config_file", "default" = "configs/experiments/benchmarks/aistpp_benchmark_nlf_estRt_estK_estDk1k2.yaml" },
+    { "arg" = "config_file", "default" = "configs/experiments/benchmarks/aistpp_benchmark_nlf_estRt_estK_estD.yaml" },
 ]
 cmd = "python experiments/aistpp_eval.py {{ dataset_dir }} --config-file {{config_file}}"

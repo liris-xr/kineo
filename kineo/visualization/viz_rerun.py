@@ -310,16 +310,17 @@ def log_skeletons_2d(
                     ),
                 )
 
-    clear_after(
-        (
-            f"{prefix}/cameras/{view_id}/skeletons_2d_{part}_{subject_id}"
-            for view_id in views_ids
-            for subject_id in keypoints_2d.subjects_ids
-            for part in ("joints", "bones")
-        ),
-        last_step + 1,
-        fps,
-    )
+    if frames:
+        clear_after(
+            (
+                f"{prefix}/cameras/{view_id}/skeletons_2d_{part}_{subject_id}"
+                for view_id in views_ids
+                for subject_id in keypoints_2d.subjects_ids
+                for part in ("joints", "bones")
+            ),
+            last_step + 1,
+            fps,
+        )
 
 
 def log_skeletons_3d(
@@ -412,15 +413,16 @@ def log_skeletons_3d(
                 ),
             )
 
-    clear_after(
-        (
-            f"{prefix}/skeletons_3d_{part}_{subject_id}"
-            for subject_id in keypoints_3d.subjects_ids
-            for part in ("joints", "bones")
-        ),
-        last_step + 1,
-        fps,
-    )
+    if frames:
+        clear_after(
+            (
+                f"{prefix}/skeletons_3d_{part}_{subject_id}"
+                for subject_id in keypoints_3d.subjects_ids
+                for part in ("joints", "bones")
+            ),
+            last_step + 1,
+            fps,
+        )
 
 
 def quality_to_crf(quality: int, min_crf: int = 18, max_crf: int = 30) -> int:
@@ -531,7 +533,8 @@ def log_bboxes_2d(
                 ),
             )
 
-    clear_after(entity_paths, max(bboxes_2d.frames) + 1, fps)
+    if entity_paths:
+        clear_after(entity_paths, max(bboxes_2d.frames) + 1, fps)
 def log_video_asset(
     video_path: str,
     view_id: str,

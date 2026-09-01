@@ -1,4 +1,5 @@
 import argparse
+import os
 
 from kineo.datasets.egohumans.egohumans_dataset import EgoHumansSequenceDataset
 from kineo.visualization.sequence_preview import (
@@ -7,12 +8,13 @@ from kineo.visualization.sequence_preview import (
 )
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description="Preview an EgoHumans sequence and its ground truth in rerun"
+    )
     parser.add_argument(
-        "sequences_file",
+        "dataset_dir",
         type=str,
-        help="Path to the egohumans_sequences.json file written by the "
-        "preprocessing",
+        help="Path to the directory the dataset was preprocessed into",
     )
     parser.add_argument(
         "--sequence",
@@ -49,16 +51,21 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    dataset = EgoHumansSequenceDataset(args.sequences_file)
-    names = [sequence["sequence_name"] for sequence in dataset.sequences_data]
-    index = names.index(args.sequence) if args.sequence else 0
+    dataset = EgoHumansSequenceDataset(
+        os.path.join(args.dataset_dir, "egohumans_sequences.json")
+    )
 
-    views = dataset.sequences_data[index]["views"]
-    fps = next(iter(views.values()))["fps"]
+    names = [sequence["sequence_name"] for sequence in dataset.sequences_data]
+    if args.sequence and args.sequence not in names:
+        parser.error(
+            f"unknown sequence '{args.sequence}'. The listing holds "
+            f"{len(names)}, such as {', '.join(names[:3])}"
+        )
+
+    index = names.index(args.sequence) if args.sequence else 0
 
     preview_sequence(
         dataset[index],
-        fps=fps,
         output_path=args.save,
         max_frames=args.max_frames,
         downscale_factor=args.downscale_factor,
