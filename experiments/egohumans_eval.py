@@ -21,7 +21,6 @@ from kineo.datasets.egohumans.egohumans_dataset import EgoHumansSequenceDataset
 from tqdm import tqdm
 import argparse
 import traceback
-import json
 
 torch.use_deterministic_algorithms(True)
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -38,52 +37,6 @@ def print_system_info(device: torch.device):
         print(f"GPU Name: {torch.cuda.get_device_name(device)}")
         print(
             f"GPU Memory: {torch.cuda.get_device_properties(device).total_memory / 1024**3:.2f} GB"
-        )
-
-
-def print_statistics(
-    cam_metrics_stats: dict[str, float],
-    human_metrics_stats: dict[str, float],
-    failed_sequences: list[str],
-):
-    print("\n=== Statistics Report ===\n")
-    print("📷 Camera Metrics:")
-    for metric_name, metric_stats in cam_metrics_stats.items():
-        print(f"- {metric_name}:")
-        for key, value in metric_stats.items():
-            print(f"\t- {key:<10}: {value:.4f}")
-
-    print("\n🧑 Human Metrics:")
-    for metric_name, metric_stats in human_metrics_stats.items():
-        print(f"- {metric_name}:")
-        for key, value in metric_stats.items():
-            print(f"\t- {key:<10}: {value:.4f}")
-
-    if failed_sequences:
-        print("\n❌ Failed Sequences:")
-        for seq in failed_sequences:
-            print(f"  - {seq}")
-
-    print("\n=========================\n")
-
-
-def export_statistics(
-    output_path: str,
-    cam_metrics_stats: dict[str, dict[str, float]],
-    human_metrics_stats: dict[str, dict[str, float]],
-    failed_sequences: list[str],
-):
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-
-    with open(output_path, "w") as f:
-        json.dump(
-            {
-                "camera_metrics": cam_metrics_stats,
-                "human_metrics": human_metrics_stats,
-                "failed_sequences": failed_sequences,
-            },
-            f,
-            indent=2,
         )
 
 
