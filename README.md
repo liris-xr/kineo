@@ -110,23 +110,12 @@ pixi run preview-aistpp mBR2_ch01
 pixi run preview-h36m S9_Directions
 ```
 
-A sequence is picked by name or by any fragment naming exactly one, so
-`mBR2_ch01` reaches `gBR_sBM_cAll_d06_mBR2_ch01`; a fragment matching several
-lists them instead of guessing. Omit the name for the first sequence of the
-listing.
-
-The second argument selects the AIST++ video variant (`raw` or `refined`) and
-the Human3.6M split (`val` or `train`), and the third the dataset directory if
-`KINEO_DATASETS_DIR` is not set:
+A sequence is picked by name, or by any fragment naming exactly one.
 
 ```sh
-pixi run preview-aistpp mBR2_ch01 refined
-pixi run preview-h36m "S1_Directions 1" train
+pixi run preview-aistpp mBR2_ch01 refined       # AIST++ variant: raw or refined
+pixi run preview-h36m "S1_Directions 1" train   # H3.6M split: val or train
 ```
-
-Footage is re-encoded once beside the dataset, shrunk four-fold, with the
-annotations resized with it. Call `scripts/preview_<dataset>_sequence.py`
-directly for `--downscale-factor` and `--up-axis`.
 
 ## 🤝 Contributing
 
