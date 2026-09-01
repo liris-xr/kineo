@@ -1057,7 +1057,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/55/e9/4e2deb2c904e1d0bde3fa49c054160c2f56ffee5d327dc65fe41bb360613/mat4py-0.6.0-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/fc/b7/d8bcec2626c35f96972bff656299fef4578113ea6193c8fdad324710410c/matplotlib-3.10.9-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/b3/38/89ba8ad64ae25be8de66a6d463314cf1eb366222074cfda9ee839c56a4b4/mdurl-0.1.2-py3-none-any.whl
-      - pypi: git+https://github.com/cjaverliat/mmcv.git?rev=d24e8a7814fb46409f2c3a20b522bc642883d0c2#d24e8a7814fb46409f2c3a20b522bc642883d0c2
+      - pypi: git+https://github.com/cjaverliat/mmcv.git?rev=d2ac7cfdd53bca611be00630e1ec84f18565e2a4#d2ac7cfdd53bca611be00630e1ec84f18565e2a4
       - pypi: https://files.pythonhosted.org/packages/b8/d5/53cf543b9960ca64ec1ace521e6235acd721efcf8366cf8852def7e248cc/mmdeploy-1.3.1-py3-none-manylinux2014_x86_64.whl
       - pypi: git+https://github.com/cjaverliat/mmdetection.git?rev=2c6c427aad632694494c9bb17d6239f163e4ab04#2c6c427aad632694494c9bb17d6239f163e4ab04
       - pypi: https://files.pythonhosted.org/packages/98/8e/f98332248aad102511bea4ae19c0ddacd2f0a994f3ca4c82b7a369e0af8b/mmengine-0.10.7-py3-none-any.whl
@@ -1290,7 +1290,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/55/e9/4e2deb2c904e1d0bde3fa49c054160c2f56ffee5d327dc65fe41bb360613/mat4py-0.6.0-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/75/77/5acecfe672ba0fa1b8c0454f69ce155d1e6fc5852fa7206bf9afaf767121/matplotlib-3.10.9-cp310-cp310-win_amd64.whl
       - pypi: https://files.pythonhosted.org/packages/b3/38/89ba8ad64ae25be8de66a6d463314cf1eb366222074cfda9ee839c56a4b4/mdurl-0.1.2-py3-none-any.whl
-      - pypi: git+https://github.com/cjaverliat/mmcv.git?rev=d24e8a7814fb46409f2c3a20b522bc642883d0c2#d24e8a7814fb46409f2c3a20b522bc642883d0c2
+      - pypi: git+https://github.com/cjaverliat/mmcv.git?rev=d2ac7cfdd53bca611be00630e1ec84f18565e2a4#d2ac7cfdd53bca611be00630e1ec84f18565e2a4
       - pypi: https://files.pythonhosted.org/packages/fb/55/b86087eef140a82d3aab6f7990843d33595ac4ed4673eae9914e50d4c6c2/mmdeploy-1.3.1-py3-none-win_amd64.whl
       - pypi: git+https://github.com/cjaverliat/mmdetection.git?rev=2c6c427aad632694494c9bb17d6239f163e4ab04#2c6c427aad632694494c9bb17d6239f163e4ab04
       - pypi: https://files.pythonhosted.org/packages/98/8e/f98332248aad102511bea4ae19c0ddacd2f0a994f3ca4c82b7a369e0af8b/mmengine-0.10.7-py3-none-any.whl
@@ -4314,7 +4314,7 @@ packages:
 - pypi: ./
   name: kineo
   version: 0.1.0
-  sha256: 01e79db2febf91a4f5c78aca1a7fe9f7862725b3abddd7bb655c72ff00917f99
+  sha256: 761606688adb7e5cd64a51b50a4bf69591065790d35fa71031105236abf87f27
   requires_dist:
   - numpy
   - onnxruntime-gpu
@@ -5482,9 +5482,9 @@ packages:
   - pkg:pypi/mdurl?source=hash-mapping
   size: 14465
   timestamp: 1733255681319
-- pypi: git+https://github.com/cjaverliat/mmcv.git?rev=d24e8a7814fb46409f2c3a20b522bc642883d0c2#d24e8a7814fb46409f2c3a20b522bc642883d0c2
+- pypi: git+https://github.com/cjaverliat/mmcv.git?rev=d2ac7cfdd53bca611be00630e1ec84f18565e2a4#d2ac7cfdd53bca611be00630e1ec84f18565e2a4
   name: mmcv
-  version: 2.3.0
+  version: 2.3.1
   requires_dist:
   - addict
   - mmengine>=0.3.0

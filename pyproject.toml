@@ -108,7 +108,7 @@ channels = ["conda-forge", "nvidia"]
 [tool.pixi.feature.mmlab.pypi-dependencies]
 mmpretrain = "*"
 mmengine = "*"
-mmcv = { git = "https://github.com/cjaverliat/mmcv.git", rev = "d24e8a7814fb46409f2c3a20b522bc642883d0c2" }
+mmcv = { git = "https://github.com/cjaverliat/mmcv.git", rev = "d2ac7cfdd53bca611be00630e1ec84f18565e2a4" }
 mmpose = { git = "https://github.com/cjaverliat/mmpose.git", rev = "111d9b3a1e15d417925e5bf66211fe1b4517ae6c" }
 mmdet = { git = "https://github.com/cjaverliat/mmdetection.git", rev = "2c6c427aad632694494c9bb17d6239f163e4ab04" }
 mmdeploy = "*"
