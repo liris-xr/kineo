@@ -106,6 +106,14 @@ frame. `output_path` of
 `max_frames` shortens the timeline and the annotations on it — not the
 footage, which is embedded whole.
 
+**Layout.** `sequence_blueprint` sends a blueprint alongside the recording:
+the 3D scene on the left holding the skeletons and the camera frustums, and a
+grid on the right holding one 2D view per camera, each with that camera's
+footage and the annotations over it. Rerun's automatic layout gives every
+entity a view of its own, which for a nine-camera sequence buries the footage
+under a view per skeleton. The footage is excluded from the 3D view, where
+drawing every camera's frames onto its image plane only costs.
+
 **Timeline.** Steps are indices into the sequence's `global_time_reference`
 annotation when it carries one, and plain frame indices otherwise, which
 `local_frame_indices` resolves per view.

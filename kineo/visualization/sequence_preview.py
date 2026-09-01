@@ -21,6 +21,7 @@ import os
 from typing import Any, TypeVar
 
 import rerun as rr
+import rerun.blueprint as rrb
 import torch
 
 from kineo.annotations.annotations import Annotations
@@ -73,6 +74,44 @@ def local_frame_indices(
         return torch.arange(n_frames)
 
     return time_reference.closest_local_frame_idx[view_id]
+
+
+def sequence_blueprint(view_ids: list[str]) -> rrb.Blueprint:
+    """Lays a preview out: the scene beside the views that recorded it.
+
+    Rerun's own layout gives every entity its own view, which for a
+    nine-camera sequence buries the footage under a view per skeleton. Here
+    the 3D scene keeps the skeletons and the camera frustums, and each camera
+    gets one 2D view holding its footage and the annotations drawn over it.
+
+    Args:
+        view_ids: Cameras of the sequence, in the order they are shown.
+
+    Returns:
+        The blueprint to send alongside the recording.
+    """
+    scene = rrb.Spatial3DView(
+        name="Scene",
+        origin=GROUND_TRUTH_PREFIX,
+        # The footage belongs in the 2D views; drawing every camera's frames
+        # onto its image plane as well only costs.
+        contents=["+ $origin/**", "- $origin/cameras/*/rgb"],
+    )
+
+    cameras = rrb.Grid(
+        contents=[
+            rrb.Spatial2DView(
+                name=view_id,
+                origin=f"{GROUND_TRUTH_PREFIX}/cameras/{view_id}",
+            )
+            for view_id in view_ids
+        ]
+    )
+
+    return rrb.Blueprint(
+        rrb.Horizontal(scene, cameras, column_shares=[2, 3]),
+        collapse_panels=True,
+    )
 
 
 def scale_pixel_space(
@@ -252,6 +291,12 @@ def preview_sequence(
     rr.init(sequence["sequence_name"], spawn=output_path is None)
     if output_path is not None:
         rr.save(output_path)
+
+    rr.send_blueprint(
+        sequence_blueprint(
+            [view_input["view_id"] for view_input in sequence["views_inputs"]]
+        )
+    )
 
     cameras_intrinsics = annotations.get("cameras_intrinsics")
     cameras_extrinsics = annotations.get("cameras_extrinsics")
