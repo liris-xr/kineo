@@ -14,7 +14,7 @@ Each function logs one kind of structured data under the entity path its kind
 owns, so a recording is composed by calling the ones a caller has data for.
 """
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 
 import numpy as np
 import rerun as rr
@@ -35,6 +35,25 @@ try:
     import av
 except ImportError:
     av = None
+
+
+def clear_after(entity_paths: Iterable[str], step: int, fps: float):
+    """Ends entities at a step, so nothing outlives the data it came from.
+
+    Rerun holds the last value logged to an entity until something replaces
+    it, which for annotations covering part of a sequence means the final
+    pose hanging over every later frame.
+
+    Args:
+        entity_paths: Entities to end.
+        step: Timeline step they stop at.
+        fps: Rate the steps are turned into timestamps with.
+    """
+    rr.set_time("frame_idx", sequence=step)
+    rr.set_time("time", timestamp=step / fps)
+
+    for entity_path in entity_paths:
+        rr.log(entity_path, rr.Clear(recursive=False))
 
 
 def log_cameras(
@@ -229,6 +248,8 @@ def log_skeletons_2d(
     connected_joints_indices = set(i for i, j in kps_connectivity) | set(j for i, j in kps_connectivity)
     connected_joints_indices = torch.tensor(list(connected_joints_indices))
 
+    last_step = 0
+
     for og_frame_idx in tqdm(frames, desc="Logging skeleton 2D", leave=False):
         if og_frame_idx < start_frame_idx or (end_frame_idx != -1 and og_frame_idx > end_frame_idx):
             continue
@@ -246,6 +267,7 @@ def log_skeletons_2d(
             kps_xy[view_idx, subject_idx] = annotation.xy
             kps_2d_scores[view_idx, subject_idx] = annotation.scores
 
+        last_step = frame_idx
         rr.set_time("frame_idx", sequence=frame_idx)
         rr.set_time("time", timestamp=frame_timestamp)
 
@@ -288,6 +310,17 @@ def log_skeletons_2d(
                     ),
                 )
 
+    clear_after(
+        (
+            f"{prefix}/cameras/{view_id}/skeletons_2d_{part}_{subject_id}"
+            for view_id in views_ids
+            for subject_id in keypoints_2d.subjects_ids
+            for part in ("joints", "bones")
+        ),
+        last_step + 1,
+        fps,
+    )
+
 
 def log_skeletons_3d(
         keypoints_3d: Keypoints3DAnnotations,
@@ -317,6 +350,8 @@ def log_skeletons_3d(
     connected_joints_indices = set(i for i, j in kps_connectivity) | set(j for i, j in kps_connectivity)
     connected_joints_indices = torch.tensor(list(connected_joints_indices))
 
+    last_step = 0
+
     for og_frame_idx in tqdm(frames, desc="Logging skeleton 3D", leave=False):
         if og_frame_idx < start_frame_idx or (end_frame_idx != -1 and og_frame_idx > end_frame_idx):
             continue
@@ -335,6 +370,7 @@ def log_skeletons_3d(
             kps_xyz[subject_idx] = annotation.xyz
             kps_3d_scores[subject_idx] = annotation.scores
 
+        last_step = frame_idx
         rr.set_time("frame_idx", sequence=frame_idx)
         rr.set_time("time", timestamp=frame_timestamp)
 
@@ -375,6 +411,16 @@ def log_skeletons_3d(
                     radii=bones_thickness,
                 ),
             )
+
+    clear_after(
+        (
+            f"{prefix}/skeletons_3d_{part}_{subject_id}"
+            for subject_id in keypoints_3d.subjects_ids
+            for part in ("joints", "bones")
+        ),
+        last_step + 1,
+        fps,
+    )
 
 
 def quality_to_crf(quality: int, min_crf: int = 18, max_crf: int = 30) -> int:
@@ -463,21 +509,29 @@ def log_bboxes_2d(
         prefix: Root entity path the boxes are logged under.
         fps: Rate the frame indices are turned into timestamps with.
     """
+    entity_paths = set()
+
     for frame_idx in bboxes_2d.frames:
         rr.set_time("frame_idx", sequence=frame_idx)
         rr.set_time("time", timestamp=frame_idx / fps)
 
         for annotation in bboxes_2d.filter_by_frame_idx(frame_idx):
             color = get_subject_color_rgba(annotation.subject_id)
-            rr.log(
+            entity_path = (
                 f"{prefix}/cameras/{annotation.view_id}"
-                f"/bboxes_2d_{annotation.subject_id}",
+                f"/bboxes_2d_{annotation.subject_id}"
+            )
+            entity_paths.add(entity_path)
+            rr.log(
+                entity_path,
                 rr.Boxes2D(
                     array=annotation.xyxy.cpu().numpy(),
                     array_format=rr.Box2DFormat.XYXY,
                     colors=[int(c * 255) for c in color],
                 ),
             )
+
+    clear_after(entity_paths, max(bboxes_2d.frames) + 1, fps)
 def log_video_asset(
     video_path: str,
     view_id: str,
@@ -505,10 +559,13 @@ def log_video_asset(
 
     frame_timestamps_ns = video.read_frame_timestamps_nanos()
 
+    last_step = 0
+
     for frame_idx, local_frame_idx in enumerate(local_frame_indices):
         if local_frame_idx < 0:
             continue
 
+        last_step = frame_idx
         rr.set_time("frame_idx", sequence=frame_idx)
         rr.set_time("time", timestamp=frame_idx / fps)
         rr.log(
@@ -517,3 +574,5 @@ def log_video_asset(
                 nanoseconds=frame_timestamps_ns[local_frame_idx]
             ),
         )
+
+    clear_after([entity_path], last_step + 1, fps)

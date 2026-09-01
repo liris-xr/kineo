@@ -50,6 +50,13 @@ if __name__ == "__main__":
         help="How much smaller than the dataset's the footage is shown, the "
         "annotations resized with it. Pass 1 to keep the dataset's own size",
     )
+    parser.add_argument(
+        "--up-axis",
+        type=str,
+        choices=["x", "y", "z"],
+        default="z",
+        help="Axis pointing up in the dataset's world",
+    )
     args = parser.parse_args()
 
     dataset = H36MSequenceDataset(args.sequences_file, split=args.split)
@@ -62,4 +69,5 @@ if __name__ == "__main__":
         output_path=args.save,
         max_frames=args.max_frames,
         downscale_factor=args.downscale_factor,
+        up_axis=args.up_axis,
     )

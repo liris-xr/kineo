@@ -37,6 +37,16 @@ from kineo.io.frame_sequence_loader import ImagesLoader, VideoLoader
 from kineo.visualization import viz_rerun
 
 GROUND_TRUTH_PREFIX = "ground_truth"
+
+# Which way is up in a dataset's world, which rerun reads as Z when nothing
+# says otherwise. Declaring it turns the scene the right way up rather than
+# rewriting every coordinate.
+UP_AXIS_COORDINATES = {
+    "x": rr.ViewCoordinates.RIGHT_HAND_X_UP,
+    "y": rr.ViewCoordinates.RIGHT_HAND_Y_UP,
+    "z": rr.ViewCoordinates.RIGHT_HAND_Z_UP,
+}
+DEFAULT_UP_AXIS = "z"
 RECORDINGS_PREFIX = "recordings"
 
 # States a view's lane on the timeline is in, and the colours they read as.
@@ -361,6 +371,7 @@ def preview_sequence(
     output_path: str | None = None,
     max_frames: int | None = None,
     downscale_factor: int = DEFAULT_DOWNSCALE_FACTOR,
+    up_axis: str = DEFAULT_UP_AXIS,
 ):
     """Logs a sequence and its ground truth to rerun.
 
@@ -379,15 +390,24 @@ def preview_sequence(
             shown, 1 for its own size. The annotations are resized with it, so
             they keep marking what they marked, in the preview's pixels rather
             than the dataset's.
+        up_axis: Axis pointing up in the dataset's world, one of
+            `UP_AXIS_COORDINATES`.
 
     Raises:
         TypeError: If a view is backed by an unsupported frame loader.
-        ValueError: If `downscale_factor` is below 1.
+        ValueError: If `downscale_factor` is below 1, or `up_axis` is not an
+            axis.
     """
     if downscale_factor < 1:
         raise ValueError(
             f"A preview cannot be larger than the dataset: downscale_factor "
             f"is {downscale_factor}."
+        )
+
+    if up_axis not in UP_AXIS_COORDINATES:
+        raise ValueError(
+            f"Unknown up axis '{up_axis}', expected any of "
+            f"{list(UP_AXIS_COORDINATES)}."
         )
 
     scale = 1 / downscale_factor
@@ -408,6 +428,8 @@ def preview_sequence(
             [view_input["view_id"] for view_input in sequence["views_inputs"]]
         )
     )
+
+    rr.log(GROUND_TRUTH_PREFIX, UP_AXIS_COORDINATES[up_axis], static=True)
 
     cameras_intrinsics = annotations.get("cameras_intrinsics")
     cameras_extrinsics = annotations.get("cameras_extrinsics")

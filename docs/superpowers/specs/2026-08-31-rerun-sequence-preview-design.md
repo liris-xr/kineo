@@ -149,6 +149,22 @@ made for so a preview at another size cannot pick it up:
 Both live in `kineo/io/ffmpeg.py` as `encode_images_to_video`,
 `get_video_codec` and `transcode_video_to_h264`.
 
+**Which way is up.** A dataset's world has its own up axis, and rerun reads
+an undeclared one as Z. `up_axis` names it and the preview logs the matching
+`rr.ViewCoordinates` on the ground-truth root, which turns the scene the
+right way up without rewriting a single coordinate. Measured from the ground
+truth, as the vector from the ankles to the head: AIST++ is Y-up, EgoHumans
+and Human3.6M are Z-up, all three confirmed in the viewer. Camera frames are
+a separate matter and need nothing: they are OpenCV, which is what rerun's
+`Pinhole` already assumes.
+
+**Nothing outlives its data.** Rerun holds the last value logged to an entity
+until something replaces it, so annotations covering part of a sequence would
+hang over every later frame, and a view's last video frame would freeze on
+screen once its recording ended. Each logging function ends the entities it
+wrote, one step past its last, through `clear_after`. That applies to the
+pipeline's exports too, which had the same staleness.
+
 **Resizing the pixel space.** A 2D view's coordinates are the image's pixel
 grid, and rerun does not stretch a child image onto the pinhole's rectangle:
 `resolution` is "pixel resolution of child image space". So resized footage
