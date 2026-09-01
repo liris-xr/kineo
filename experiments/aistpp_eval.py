@@ -30,11 +30,6 @@ from omegaconf import OmegaConf
 from tqdm import tqdm
 
 from kineo.annotations.camera_temporal import CameraTemporalAnnotations
-from kineo.annotations.global_time_reference import (
-    GlobalTimeReferenceAnnotation,
-    GlobalTimeReferenceAnnotations,
-    GlobalTimeReferenceAnnotationsMetadata,
-)
 from kineo.datasets.aistpp.aistpp_dataset import VIDEO_FPS, AISTPPSequenceDataset
 from kineo.datasets.aistpp.aistpp_download import VIDEO_VARIANTS
 from kineo.eval.dataset_metrics import (
@@ -61,6 +56,7 @@ GT_ANNOTATION_KEYS = (
     "cameras_intrinsics",
     "cameras_extrinsics",
     "cameras_temporal",
+    "global_time_reference",
 )
 
 
@@ -196,25 +192,6 @@ def print_time_offset_statistics(statistics_summary: dict[str, float]):
     )
 
 
-def build_gt_time_reference(
-    n_frames: int, fps: float
-) -> GlobalTimeReferenceAnnotations:
-    """Timeline the ground-truth frame indices sit on.
-
-    Lets the metrics align a resampled prediction by timestamp. Only the
-    timestamps are read, so the per-view frame mapping is left empty.
-    """
-    return GlobalTimeReferenceAnnotations(
-        metadata=GlobalTimeReferenceAnnotationsMetadata(),
-        annotations=[
-            GlobalTimeReferenceAnnotation(
-                timestamps=torch.arange(n_frames, dtype=torch.float64) / fps,
-                closest_local_frame_idx={},
-            )
-        ],
-    )
-
-
 def main(
     dataset_dir: str,
     config_file: str,
@@ -264,11 +241,6 @@ def main(
             for key in GT_ANNOTATION_KEYS
             if key in sequence["annotations"]
         }
-        sequence_data = dataset.sequences_data[index]
-        gt_annotations["global_time_reference"] = build_gt_time_reference(
-            sequence_data["n_frames"], sequence_data["fps"]
-        )
-
         try:
             predictions = pipeline.run(
                 sequence_name=sequence_name,
