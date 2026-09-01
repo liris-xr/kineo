@@ -52,26 +52,19 @@ platforms = ["linux-64", "win-64"]
 
 [tool.pixi.pypi-dependencies]
 kineo = { path = ".", editable = true }
-moge = { git = "https://github.com/microsoft/MoGe.git" }
+moge = { git = "https://github.com/microsoft/MoGe.git", rev = "07444410f1e33f402353b99d6ccd26bd31e469e8" }
 
 torch = { version = "==2.10.*", index = "https://download.pytorch.org/whl/cu128" }
-torchvision = { version = ">=0.22.0", index = "https://download.pytorch.org/whl/cu128" }
+torchvision = { version = "==0.25.0", index = "https://download.pytorch.org/whl/cu128" }
 torchaudio = { version = "==2.10.*", index = "https://download.pytorch.org/whl/cu128" }
 onnxruntime-gpu = "*"
 soundfile = "*"
 cv2-enumerate-cameras = "*"
 
-sam2 = { git = "https://github.com/cjaverliat/sam2.git" }
-
-mmpretrain = "*"
-mmengine = "*"
-mmcv = { git = "https://github.com/cjaverliat/mmcv.git" }
-mmpose = { git = "https://github.com/cjaverliat/mmpose.git" }
-mmdet = { git = "https://github.com/cjaverliat/mmdetection.git" }
-mmdeploy = "*"
+sam2 = { git = "https://github.com/cjaverliat/sam2.git", rev = "6f43c2eb3db1da4811a8165f64ac23616f16dd36" }
 
 [tool.pixi.pypi-options]
-no-build-isolation = ["sam2", "chumpy"]
+no-build-isolation = ["sam2", "chumpy", "mmcv"]
 
 [tool.pixi.dependencies]
 python = "3.10.*"
@@ -94,6 +87,18 @@ ruff = "*"
 pytest = "*"
 pyrefly = "*"
 google-api-python-client = "*"
+
+[tool.pixi.feature.mmlab]
+platforms = ["linux-64", "win-64"]
+channels = ["conda-forge", "nvidia"]
+
+[tool.pixi.feature.mmlab.pypi-dependencies]
+mmpretrain = "*"
+mmengine = "*"
+mmcv = { git = "https://github.com/cjaverliat/mmcv.git", rev = "d2ac7cfdd53bca611be00630e1ec84f18565e2a4" }
+mmpose = { git = "https://github.com/cjaverliat/mmpose.git", rev = "111d9b3a1e15d417925e5bf66211fe1b4517ae6c" }
+mmdet = { git = "https://github.com/cjaverliat/mmdetection.git", rev = "2c6c427aad632694494c9bb17d6239f163e4ab04" }
+mmdeploy = "*"
 
 [tool.pixi.feature.cuda128]
 platforms = ["linux-64", "win-64"]
@@ -119,6 +124,9 @@ solve-group = "default"
 [tool.pixi.environments.dev]
 features = ["dev", "cuda128"]
 solve-group = "default"
+
+[tool.pixi.environments.mmlab]
+features = ["mmlab", "cuda128"]
 
 [tool.pixi.tasks]
 _download-smpl = { cmd = "test -f body_models/smpl/SMPL_NEUTRAL.pkl || python scripts/download_smpl.py" }
