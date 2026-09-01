@@ -494,7 +494,8 @@ def log_video_asset(
     Args:
         video_path: Video file, decoded by the viewer rather than here.
         view_id: View the video belongs to.
-        local_frame_indices: Frame of the video each timeline step shows.
+        local_frame_indices: Frame of the video each timeline step shows, -1
+            for a step the recording does not cover.
         prefix: Root entity path the video is logged under.
         fps: Rate the timeline steps are turned into timestamps with.
     """
@@ -505,6 +506,9 @@ def log_video_asset(
     frame_timestamps_ns = video.read_frame_timestamps_nanos()
 
     for frame_idx, local_frame_idx in enumerate(local_frame_indices):
+        if local_frame_idx < 0:
+            continue
+
         rr.set_time("frame_idx", sequence=frame_idx)
         rr.set_time("time", timestamp=frame_idx / fps)
         rr.log(

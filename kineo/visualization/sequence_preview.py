@@ -37,6 +37,12 @@ from kineo.io.frame_sequence_loader import ImagesLoader, VideoLoader
 from kineo.visualization import viz_rerun
 
 GROUND_TRUTH_PREFIX = "ground_truth"
+RECORDINGS_PREFIX = "recordings"
+
+# States a view's lane on the timeline is in, and the colours they read as.
+ROLLING_STATE = "rolling"
+ANNOTATED_STATE = "annotated"
+STATE_COLORS = [(120, 120, 130), (60, 180, 110)]
 
 # How much a preview's footage is shrunk by default. Full-resolution frames
 # cost two orders of magnitude more than a preview needs to answer whether the
@@ -54,26 +60,122 @@ MIN_KEYPOINTS_RADIUS = 2.0
 AnnotationsT = TypeVar("AnnotationsT", bound=Annotations)
 
 
-def local_frame_indices(
-    view_id: str,
-    n_frames: int,
+@dataclasses.dataclass(frozen=True)
+class PreviewTimeline:
+    """Placement of every view's recording on the timeline they share.
+
+    Attributes:
+        n_steps: Length of the timeline, covering every recording end to end.
+        lead_in: Step the annotated window starts at, which is how much of the
+            earliest recording runs before any annotation applies.
+        window_length: Length of the annotated window, in steps.
+        local_by_step: Frame of each view's own recording shown at each step,
+            -1 where that view was not recording yet, or no longer.
+    """
+
+    n_steps: int
+    lead_in: int
+    window_length: int
+    local_by_step: dict[str, torch.Tensor]
+
+
+def build_timeline(
+    views_inputs: list[ViewInput],
     time_reference: GlobalTimeReferenceAnnotation | None,
-) -> torch.Tensor:
-    """Frame of a view's own recording each timeline step shows.
+) -> PreviewTimeline:
+    """Places whole recordings on one timeline, pre-roll included.
+
+    The annotated window is the part of a sequence the ground truth covers,
+    but a raw recording also holds what the camera filmed before and after it.
+    Showing only the window hides the very thing the offsets describe, so the
+    timeline is stretched to hold every recording, each shifted by its own cut
+    point. A view that was not rolling yet simply shows nothing.
 
     Args:
-        view_id: View the steps are resolved for.
-        n_frames: Length of the view's recording, in frames.
+        views_inputs: Views of the sequence, read for their lengths.
         time_reference: Sequence's time reference, or None if its views are
-            frame-aligned.
+            frame-aligned and no window is singled out.
 
     Returns:
-        One local frame index per timeline step.
+        Where every view sits on the shared timeline.
     """
-    if time_reference is None:
-        return torch.arange(n_frames)
+    n_frames = {
+        view_input["view_id"]: len(view_input["frame_loader"])
+        for view_input in views_inputs
+    }
 
-    return time_reference.closest_local_frame_idx[view_id]
+    if time_reference is None:
+        cut_points = {view_id: 0 for view_id in n_frames}
+        window_length = max(n_frames.values())
+    else:
+        cut_points = {
+            view_id: int(local_indices[0])
+            for view_id, local_indices in (
+                time_reference.closest_local_frame_idx.items()
+            )
+        }
+        window_length = len(time_reference.timestamps)
+
+    # The camera that started earliest is the one with the most frames before
+    # the window, and it sets where the window falls for everyone.
+    lead_in = max(cut_points.values())
+    starts = {
+        view_id: lead_in - cut_point for view_id, cut_point in cut_points.items()
+    }
+    n_steps = max(start + n_frames[view_id] for view_id, start in starts.items())
+
+    local_by_step = {}
+    for view_id, start in starts.items():
+        local = torch.arange(n_steps) - start
+        local[local < 0] = -1
+        local[local >= n_frames[view_id]] = -1
+        local_by_step[view_id] = local
+
+    return PreviewTimeline(
+        n_steps=n_steps,
+        lead_in=lead_in,
+        window_length=window_length,
+        local_by_step=local_by_step,
+    )
+
+
+def log_recording_states(timeline: PreviewTimeline, fps: float):
+    """Draws one lane per view saying when it was rolling and when annotated.
+
+    Args:
+        timeline: Placement of the recordings on the shared timeline.
+        fps: Rate the steps are turned into timestamps with.
+    """
+    window_end = timeline.lead_in + timeline.window_length
+
+    for view_id, local in timeline.local_by_step.items():
+        entity_path = f"{RECORDINGS_PREFIX}/{view_id}"
+        rr.log(
+            entity_path,
+            rr.StateConfiguration(
+                values=[ROLLING_STATE, ANNOTATED_STATE], colors=STATE_COLORS
+            ),
+            static=True,
+        )
+
+        rolling = (local >= 0).nonzero().flatten()
+        states = {
+            int(rolling[0]): ROLLING_STATE,
+            timeline.lead_in: ANNOTATED_STATE,
+            window_end: ROLLING_STATE,
+        }
+
+        for step, state in sorted(states.items()):
+            rr.set_time("frame_idx", sequence=step)
+            rr.set_time("time", timestamp=step / fps)
+            rr.log(entity_path, rr.StateChange(state=state))
+
+        # The lane ends where the recording does, rather than running on to
+        # the end of the longest one.
+        last_step = int(rolling[-1]) + 1
+        rr.set_time("frame_idx", sequence=last_step)
+        rr.set_time("time", timestamp=last_step / fps)
+        rr.log(entity_path, rr.Clear(recursive=False))
 
 
 def sequence_blueprint(view_ids: list[str]) -> rrb.Blueprint:
@@ -81,8 +183,10 @@ def sequence_blueprint(view_ids: list[str]) -> rrb.Blueprint:
 
     Rerun's own layout gives every entity its own view, which for a
     nine-camera sequence buries the footage under a view per skeleton. Here
-    the 3D scene keeps the skeletons and the camera frustums, and each camera
-    gets one 2D view holding its footage and the annotations drawn over it.
+    the 3D scene keeps the skeletons and the camera frustums, each camera gets
+    one 2D view holding its footage and the annotations drawn over it, and a
+    lane per camera underneath says when it was rolling and which part of it
+    the ground truth covers.
 
     Args:
         view_ids: Cameras of the sequence, in the order they are shown.
@@ -108,8 +212,16 @@ def sequence_blueprint(view_ids: list[str]) -> rrb.Blueprint:
         ]
     )
 
+    recordings = rrb.StateTimelineView(
+        name="Recordings", origin=RECORDINGS_PREFIX
+    )
+
     return rrb.Blueprint(
-        rrb.Horizontal(scene, cameras, column_shares=[2, 3]),
+        rrb.Vertical(
+            rrb.Horizontal(scene, cameras, column_shares=[2, 3]),
+            recordings,
+            row_shares=[4, 1],
+        ),
         collapse_panels=True,
     )
 
@@ -191,7 +303,7 @@ def keypoints_radius(cameras_intrinsics: CameraIntrinsicsAnnotations) -> float:
 
 def rebase_on_global_frames(
     annotations: AnnotationsT,
-    time_reference: GlobalTimeReferenceAnnotation,
+    timeline: PreviewTimeline,
 ) -> AnnotationsT:
     """Re-indexes per-view annotations onto the timeline shared by the views.
 
@@ -202,22 +314,19 @@ def rebase_on_global_frames(
 
     Args:
         annotations: Annotations carrying a `view_id` and a local `frame_idx`.
-        time_reference: Sequence's time reference.
+        timeline: Placement of the recordings on the shared timeline.
 
     Returns:
-        The same annotations, indexed by timeline step. Ones falling outside
-        the window the time reference covers are dropped.
+        The same annotations, indexed by timeline step. Ones on a frame the
+        timeline does not reach are dropped.
     """
     global_frames = {
         view_id: {
-            local_frame_idx: global_frame_idx
-            for global_frame_idx, local_frame_idx in enumerate(
-                local_indices.tolist()
-            )
+            local_frame_idx: step
+            for step, local_frame_idx in enumerate(local.tolist())
+            if local_frame_idx >= 0
         }
-        for view_id, local_indices in (
-            time_reference.closest_local_frame_idx.items()
-        )
+        for view_id, local in timeline.local_by_step.items()
     }
 
     rebased = [
@@ -288,6 +397,8 @@ def preview_sequence(
     if time_reference is not None:
         time_reference = time_reference.first_or_default()
 
+    timeline = build_timeline(sequence["views_inputs"], time_reference)
+
     rr.init(sequence["sequence_name"], spawn=output_path is None)
     if output_path is not None:
         rr.save(output_path)
@@ -309,6 +420,12 @@ def preview_sequence(
 
     keypoints_3d = annotations.get("keypoints_3d")
     if keypoints_3d is not None:
+        # The 3D ground truth is numbered from the start of the annotated
+        # window, which the pre-roll pushed down the timeline.
+        keypoints_3d = _replace_fields(
+            keypoints_3d, {"frame_idx": lambda idx: idx + timeline.lead_in}
+        )
+
         if max_frames is not None:
             keypoints_3d = take_first_frames(keypoints_3d, max_frames)
 
@@ -318,8 +435,7 @@ def preview_sequence(
 
     keypoints_2d = annotations.get("keypoints_2d")
     if keypoints_2d is not None:
-        if time_reference is not None:
-            keypoints_2d = rebase_on_global_frames(keypoints_2d, time_reference)
+        keypoints_2d = rebase_on_global_frames(keypoints_2d, timeline)
 
         if max_frames is not None:
             keypoints_2d = take_first_frames(keypoints_2d, max_frames)
@@ -339,8 +455,7 @@ def preview_sequence(
 
     bboxes_2d = annotations.get("bboxes_2d")
     if bboxes_2d is not None:
-        if time_reference is not None:
-            bboxes_2d = rebase_on_global_frames(bboxes_2d, time_reference)
+        bboxes_2d = rebase_on_global_frames(bboxes_2d, timeline)
 
         if max_frames is not None:
             bboxes_2d = take_first_frames(bboxes_2d, max_frames)
@@ -349,15 +464,17 @@ def preview_sequence(
             bboxes_2d=bboxes_2d, prefix=GROUND_TRUTH_PREFIX, fps=fps
         )
 
+    log_recording_states(timeline, fps)
+
     for view_input in sequence["views_inputs"]:
         _log_view_frames(
-            view_input, time_reference, fps, max_frames, downscale_factor
+            view_input, timeline, fps, max_frames, downscale_factor
         )
 
 
 def _log_view_frames(
     view_input: ViewInput,
-    time_reference: GlobalTimeReferenceAnnotation | None,
+    timeline: PreviewTimeline,
     fps: float,
     max_frames: int | None,
     downscale_factor: int,
@@ -365,13 +482,16 @@ def _log_view_frames(
     """Logs a view's footage, embedding the files rather than decoding them."""
     view_id = view_input["view_id"]
     frame_loader = view_input["frame_loader"]
-    frame_indices = local_frame_indices(
-        view_id, len(frame_loader), time_reference
-    )[:max_frames]
+    frame_indices = timeline.local_by_step[view_id][:max_frames]
 
     if isinstance(frame_loader, VideoLoader):
         if frame_loader.selected_frames is not None:
-            frame_indices = frame_loader.selected_frames[frame_indices]
+            rolling = frame_indices >= 0
+            frame_indices = torch.where(
+                rolling,
+                frame_loader.selected_frames[frame_indices.clamp(min=0)],
+                -1,
+            )
 
         video_path = _viewable_video(frame_loader.video_path, downscale_factor)
     elif isinstance(frame_loader, ImagesLoader):

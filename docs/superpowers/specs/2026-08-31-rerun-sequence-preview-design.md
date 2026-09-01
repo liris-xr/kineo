@@ -114,13 +114,22 @@ entity a view of its own, which for a nine-camera sequence buries the footage
 under a view per skeleton. The footage is excluded from the 3D view, where
 drawing every camera's frames onto its image plane only costs.
 
-**Timeline.** Steps are indices into the sequence's `global_time_reference`
-annotation when it carries one, and plain frame indices otherwise, which
-`local_frame_indices` resolves per view.
+**Timeline.** `build_timeline` places every recording end to end on one
+timeline, pre-roll included: a view starts where its own cut point says, so
+the camera that started earliest opens the timeline and the others join it
+later, showing nothing until they do. The annotated window is the stretch the
+ground truth covers, `lead_in` steps in. A sequence with no time reference is
+read as frame-aligned and the window is the whole of it.
+
+`log_recording_states` draws that as one `rr.StateChange` lane per view —
+grey while rolling, green over the annotated window — shown in a
+`StateTimelineView` under the camera grid. It is how a viewer sees the
+offsets rather than infers them.
 
 Annotations carrying a `view_id` are numbered from the start of *their own
 view's* recording, so `rebase_on_global_frames` re-indexes them onto the
-timeline before they are logged. Without it an AIST++ *raw* sequence puts
+timeline before they are logged, and the 3D ground truth, numbered from the
+window, is shifted by `lead_in`. Without it an AIST++ *raw* sequence puts
 its 3D keypoints on steps 0-574 and its 2D keypoints on steps 775-1362,
 spread differently across the nine views: measured, then fixed, then pinned
 by a test. Human3.6M and EgoHumans are frame-aligned and the mapping is the
