@@ -143,6 +143,15 @@ features = ["mmlab", "cuda128"]
 
 [tool.pixi.tasks]
 _download-smpl = { cmd = "test -f body_models/smpl/SMPL_NEUTRAL.pkl || python scripts/download_smpl.py" }
+
+# The published SMPL pickle holds chumpy arrays and a pre-1.8 scipy sparse
+# path, so smplx cannot load it on numpy 2. Every config asks for the
+# rewritten one, which nothing produced until it was part of the download.
+_clean-smpl = { cmd = "test -f body_models/smpl/SMPL_NEUTRAL_clean.pkl || python scripts/clean_smpl_pkl.py body_models/smpl/SMPL_NEUTRAL.pkl body_models/smpl/SMPL_NEUTRAL_clean.pkl", depends-on = [
+    "_download-smpl",
+], outputs = [
+    "body_models/smpl/SMPL_NEUTRAL_clean.pkl",
+], description = "Rewrite the SMPL model without chumpy objects" }
 _download-smplx = { cmd = "(test -f body_models/smplx/SMPLX_NEUTRAL.pkl && test -f body_models/smplx/SMPLX_NEUTRAL.npz) || python scripts/download_smplx.py" }
 
 _download_nlf = { cmd = "test -f checkpoints/nlf_l_multi_0.3.2.torchscript || (mkdir -p checkpoints && curl -L https://github.com/isarandi/nlf/releases/download/v0.3.2/nlf_l_multi_0.3.2.torchscript -o checkpoints/nlf_l_multi_0.3.2.torchscript)", outputs = [
@@ -171,7 +180,7 @@ download-checkpoints = { depends-on = [
     "_download_efficienttam_weights",
     "_download_moge",
     "_download_yolox",
-    "_download-smpl",
+    "_clean-smpl",
     "_download-smplx"
 ], description = "Download all checkpoints" }
 
