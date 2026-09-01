@@ -91,9 +91,9 @@ The composition function, plus the pure re-indexing the timeline needs:
 ```python
 def preview_sequence(
     sequence: KeypointsSequence,
-    fps: float,
-    output_path: str | None = None,
-    max_frames: int | None = None,
+    fps: float | None = None,
+    downscale_factor: int = DEFAULT_DOWNSCALE_FACTOR,
+    up_axis: str = DEFAULT_UP_AXIS,
 ) -> None:
 ```
 
@@ -101,10 +101,7 @@ It logs the ground-truth cameras and 3D skeletons, then, per view, the
 footage followed by that view's 2D skeleton and boxes. Joint radii and bone
 thicknesses are read in pixels by a 2D view, so they are scaled to the view's
 height: the logging defaults are hundredths of a pixel, invisible on a 4K
-frame. `output_path` of
-`None` spawns the viewer; otherwise the recording is written to that `.rrd`.
-`max_frames` shortens the timeline and the annotations on it — not the
-footage, which is embedded whole.
+frame. The viewer opens on the result.
 
 **Layout.** `sequence_blueprint` sends a blueprint alongside the recording:
 the 3D scene on the left holding the skeletons and the camera frustums, and a
@@ -200,8 +197,7 @@ views, which is an evaluation decision rather than a loading one.
 
 One script per dataset, each taking the directory the dataset was
 preprocessed into and finding its own listing there, so a look at a sequence
-costs its name: `--sequence`, plus `--save`, `--max-frames` and
-`--downscale-factor`. `find_sequence` takes an exact name or a fragment of
+costs its name: `--sequence` and `--downscale-factor`. `find_sequence` takes an exact name or a fragment of
 one, since names carry their own structure — `S9_Directions` for a subject
 and an action, `d06_mBR2_ch03` for a dancer, a piece and a choreography. An
 exact name wins over a fragment, so `S9_Directions` still reaches itself
@@ -252,4 +248,4 @@ skeletons sit on the subjects and the boxes on the people.
   views of one EgoHumans sequence, four files for one Human3.6M sequence.
   They are reused on later runs and are safe to delete.
 - A recording holds every view's footage in full, so previewing a many-view
-  sequence costs hundreds of megabytes even with `max_frames` set.
+  sequence costs what its videos cost, which is what the downscaling is for.

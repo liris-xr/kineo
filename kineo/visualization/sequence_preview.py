@@ -413,43 +413,19 @@ def rebase_on_global_frames(
     return type(annotations)(metadata=annotations.metadata, annotations=rebased)
 
 
-def take_first_frames(
-    annotations: AnnotationsT, n_frames: int
-) -> AnnotationsT:
-    """Keeps the annotations of the first `n_frames` timeline steps."""
-    return type(annotations)(
-        metadata=annotations.metadata,
-        annotations=[
-            annotation
-            for annotation in annotations
-            if annotation.frame_idx < n_frames
-        ],
-    )
-
-
 def preview_sequence(
     sequence: KeypointsSequence,
     fps: float | None = None,
-    output_path: str | None = None,
-    max_frames: int | None = None,
     downscale_factor: int = DEFAULT_DOWNSCALE_FACTOR,
     up_axis: str = DEFAULT_UP_AXIS,
 ):
-    """Logs a sequence and its ground truth to rerun.
-
-    Each view's footage is carried into the recording whole, so a recording
-    costs what the videos behind it cost, whatever `max_frames` says.
+    """Shows a sequence and its ground truth in the rerun viewer.
 
     Args:
         sequence: Sequence to preview, as a dataset yields it.
         fps: Rate the timeline steps are turned into timestamps with, read
             off the recordings when None so a preview replays at the speed it
             was filmed at.
-        output_path: `.rrd` file to write the recording to. The viewer is
-            spawned instead when None.
-        max_frames: Number of timeline steps to log, all of them when None.
-            This shortens the timeline and the annotations on it, not the
-            footage.
         downscale_factor: How much smaller than the dataset's the footage is
             shown, 1 for its own size. The annotations are resized with it, so
             they keep marking what they marked, in the preview's pixels rather
@@ -486,9 +462,7 @@ def preview_sequence(
 
     timeline = build_timeline(sequence["views_inputs"], time_reference)
 
-    rr.init(sequence["sequence_name"], spawn=output_path is None)
-    if output_path is not None:
-        rr.save(output_path)
+    rr.init(sequence["sequence_name"], spawn=True)
 
     rr.send_blueprint(
         sequence_blueprint(
@@ -515,9 +489,6 @@ def preview_sequence(
             keypoints_3d, {"frame_idx": lambda idx: idx + timeline.lead_in}
         )
 
-        if max_frames is not None:
-            keypoints_3d = take_first_frames(keypoints_3d, max_frames)
-
         viz_rerun.log_skeletons_3d(
             keypoints_3d=keypoints_3d, prefix=GROUND_TRUTH_PREFIX, fps=fps
         )
@@ -525,9 +496,6 @@ def preview_sequence(
     keypoints_2d = annotations.get("keypoints_2d")
     if keypoints_2d is not None:
         keypoints_2d = rebase_on_global_frames(keypoints_2d, timeline)
-
-        if max_frames is not None:
-            keypoints_2d = take_first_frames(keypoints_2d, max_frames)
 
         radius = (
             keypoints_radius(cameras_intrinsics)
@@ -546,9 +514,6 @@ def preview_sequence(
     if bboxes_2d is not None:
         bboxes_2d = rebase_on_global_frames(bboxes_2d, timeline)
 
-        if max_frames is not None:
-            bboxes_2d = take_first_frames(bboxes_2d, max_frames)
-
         viz_rerun.log_bboxes_2d(
             bboxes_2d=bboxes_2d, prefix=GROUND_TRUTH_PREFIX, fps=fps
         )
@@ -556,22 +521,19 @@ def preview_sequence(
     log_recording_states(timeline, fps)
 
     for view_input in sequence["views_inputs"]:
-        _log_view_frames(
-            view_input, timeline, fps, max_frames, downscale_factor
-        )
+        _log_view_frames(view_input, timeline, fps, downscale_factor)
 
 
 def _log_view_frames(
     view_input: ViewInput,
     timeline: PreviewTimeline,
     fps: float,
-    max_frames: int | None,
     downscale_factor: int,
 ):
     """Logs a view's footage, embedding the files rather than decoding them."""
     view_id = view_input["view_id"]
     frame_loader = view_input["frame_loader"]
-    frame_indices = timeline.local_by_step[view_id][:max_frames]
+    frame_indices = timeline.local_by_step[view_id]
 
     if isinstance(frame_loader, VideoLoader):
         if frame_loader.selected_frames is not None:

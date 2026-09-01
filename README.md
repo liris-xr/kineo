@@ -126,8 +126,7 @@ pixi run preview-h36m "S1_Directions 1" train
 
 Footage is re-encoded once beside the dataset, shrunk four-fold, with the
 annotations resized with it. Call `scripts/preview_<dataset>_sequence.py`
-directly for `--downscale-factor`, `--max-frames`, `--up-axis`, and `--save` to
-write an `.rrd` file instead of opening the viewer.
+directly for `--downscale-factor` and `--up-axis`.
 
 ## 🤝 Contributing
 

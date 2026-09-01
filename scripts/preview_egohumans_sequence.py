@@ -24,19 +24,6 @@ if __name__ == "__main__":
         help="Name of the sequence to preview, the first one by default",
     )
     parser.add_argument(
-        "--save",
-        type=str,
-        default=None,
-        help="Write the recording to this .rrd file instead of spawning the "
-        "viewer",
-    )
-    parser.add_argument(
-        "--max-frames",
-        type=int,
-        default=None,
-        help="Number of frames to log, the whole sequence by default",
-    )
-    parser.add_argument(
         "--downscale-factor",
         type=int,
         default=DEFAULT_DOWNSCALE_FACTOR,
@@ -65,8 +52,6 @@ if __name__ == "__main__":
 
     preview_sequence(
         dataset[index],
-        output_path=args.save,
-        max_frames=args.max_frames,
         downscale_factor=args.downscale_factor,
         up_axis=args.up_axis,
     )
