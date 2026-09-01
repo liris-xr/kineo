@@ -1,5 +1,5 @@
 output_root_dir: "./outputs/realtime_demo_calibration"
-cache_root_dir: "./cache/realtime_demo_calibration"
+cache_root_dir: "./cache/moge-rtmlib-fp16_fe84dda0"
 batch_size: 32
 use_half_precision: True
 shared_intrinsics: False
@@ -33,7 +33,7 @@ pipeline:
         _target_: kineo.pipeline.stages.rtmlib.rtmlib_bbox_keypoints_detection.RtmlibBboxKeypointsDetectionRuntimeConfig
         use_cache: False
         best_bbox_only: True
-        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
+        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}/{view_id}.pkl"
         show: False
         frame_step: ${rtmlib_bbox_keypoints_detection_frame_step}
 
@@ -47,7 +47,7 @@ pipeline:
         _target_: kineo.pipeline.stages.moge_intrinsics_estimation.MoGeIntrinsicsEstimationRuntimeConfig
         use_cache: False
         use_half_precision: ${use_half_precision}
-        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
+        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}/{view_id}.pkl"
 
     global_time_resampling:
       _target_: kineo.pipeline.stages.global_time_resampling.GlobalTimeResamplingStage
