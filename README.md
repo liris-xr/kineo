@@ -96,6 +96,39 @@ pixi run egohumans-benchmark <path-to-egohumans-dataset> [path-to-config.yaml]
 If no `path-to-config.yaml` is not given, uses `configs/experiments/benchmarks/*_benchmark_nlf_estRt_estK_estD.yaml` by default.
 All configurations used in the paper are available in the `configs` directory.
 
+## 👁️ Previewing a dataset
+
+Check a preprocessed sequence and its ground truth in [rerun](https://rerun.io):
+3D skeletons and cameras, 2D skeletons and boxes over the footage, and a lane
+per view showing when it was recording and which part is annotated.
+
+```sh
+export KINEO_DATASETS_DIR=<path-to-datasets>   # parent of AIST++, H3.6M, EgoHumans
+
+pixi run preview-egohumans tennis_001
+pixi run preview-aistpp mBR2_ch01
+pixi run preview-h36m S9_Directions
+```
+
+A sequence is picked by name or by any fragment naming exactly one, so
+`mBR2_ch01` reaches `gBR_sBM_cAll_d06_mBR2_ch01`; a fragment matching several
+lists them instead of guessing. Omit the name for the first sequence of the
+listing.
+
+The second argument selects the AIST++ video variant (`raw` or `refined`) and
+the Human3.6M split (`val` or `train`), and the third the dataset directory if
+`KINEO_DATASETS_DIR` is not set:
+
+```sh
+pixi run preview-aistpp mBR2_ch01 refined
+pixi run preview-h36m "S1_Directions 1" train
+```
+
+Footage is re-encoded once beside the dataset, shrunk four-fold, with the
+annotations resized with it. Call `scripts/preview_<dataset>_sequence.py`
+directly for `--downscale-factor`, `--max-frames`, `--up-axis`, and `--save` to
+write an `.rrd` file instead of opening the viewer.
+
 ## 🤝 Contributing
 
 The pipeline is modular and can easily be extended by changing the stages defined in the configuration files. Example of configuration files are available in the `configs` directory. If you want to integrate your own work in Kineo, feel free to fork the repository and modify the code to suit your needs.
