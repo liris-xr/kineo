@@ -1,6 +1,6 @@
 output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/aistpp_benchmark_nlf_estRt_estK_estDk1k2"
 cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/aistpp_moge-nlfcoco19-fp32_90dde7c7"
-use_cache: False
+use_cache: True
 batch_size: 32
 use_half_precision: False
 shared_intrinsics: True

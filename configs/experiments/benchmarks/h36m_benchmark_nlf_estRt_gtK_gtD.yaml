@@ -1,6 +1,6 @@
 output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/h36m_benchmark_nlf_estRt_gtK_gtD"
 cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/h36m_nlfh36m17-fp32_491df61d"
-use_cache: False
+use_cache: True
 batch_size: 32
 use_half_precision: False
 

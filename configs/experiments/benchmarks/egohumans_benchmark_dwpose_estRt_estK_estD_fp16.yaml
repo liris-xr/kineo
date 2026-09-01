@@ -1,6 +1,6 @@
 output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/egohumans_benchmark_dwpose_estRt_estK_estD_fp16"
 cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/egohumans_mmpose-moge-fp16_f88c24bc"
-use_cache: False
+use_cache: True
 batch_size: 32
 # Don't use faces and hands in the pipeline (body only), except when triangulating the final result.
 # This is because hands and faces are often noisy, yet their score is anormaly high giving false positives.
