@@ -260,16 +260,38 @@ def decode_video_to_grayscale(video_path: str, width: int, height: int) -> torch
     )
 
 
-def encode_images_to_video(image_paths: list[str], output_path: str, fps: float):
-    """Encodes an image sequence into a video at the images' own resolution.
+def scale_filter_args(scale: float) -> list[str]:
+    """Builds the ffmpeg arguments resizing frames by `scale`.
 
-    The resolution is left alone so that annotations expressed in image pixels
-    still land where they belong.
+    Sides are rounded to even numbers, which the 4:2:0 chroma subsampling the
+    encoders use requires.
+
+    Args:
+        scale: Factor the frames are resized by.
+
+    Returns:
+        The arguments, empty when the frames are left alone.
+    """
+    if scale == 1.0:
+        return []
+
+    return ["-vf", f"scale=trunc(iw*{scale}/2)*2:trunc(ih*{scale}/2)*2"]
+
+
+def encode_images_to_video(
+    image_paths: list[str],
+    output_path: str,
+    fps: float,
+    scale: float = 1.0,
+):
+    """Encodes an image sequence into a video.
 
     Args:
         image_paths: Images to encode, in the order they are shown.
         output_path: Video file to write.
         fps: Rate the images are played back at.
+        scale: Factor the images are resized by. Anything expressed in their
+            pixels has to be resized with them.
 
     Raises:
         ValueError: If ffmpeg fails.
@@ -296,6 +318,7 @@ def encode_images_to_video(image_paths: list[str], output_path: str, fps: float)
         str(fps),
         "-i",
         list_file.name,
+        *scale_filter_args(scale),
         "-c:v",
         "libx264",
         "-preset",
@@ -360,7 +383,9 @@ def get_video_codec(video_path: str) -> str:
     return codec_name
 
 
-def transcode_video_to_h264(video_path: str, output_path: str):
+def transcode_video_to_h264(
+    video_path: str, output_path: str, scale: float = 1.0
+):
     """Re-encodes a video to H.264, frame for frame.
 
     Frames are passed through rather than resampled, so an index into the
@@ -369,6 +394,8 @@ def transcode_video_to_h264(video_path: str, output_path: str):
     Args:
         video_path: Video to re-encode.
         output_path: Video file to write.
+        scale: Factor the frames are resized by. Anything expressed in their
+            pixels has to be resized with them.
 
     Raises:
         ValueError: If ffmpeg fails.
@@ -381,6 +408,7 @@ def transcode_video_to_h264(video_path: str, output_path: str):
         "-y",
         "-i",
         video_path,
+        *scale_filter_args(scale),
         "-fps_mode",
         "passthrough",
         "-c:v",

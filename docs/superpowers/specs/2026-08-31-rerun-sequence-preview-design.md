@@ -118,19 +118,36 @@ spread differently across the nine views: measured, then fixed, then pinned
 by a test. Human3.6M and EgoHumans are frame-aligned and the mapping is the
 identity.
 
-**Making the footage viewable.** Two shapes of view do not go straight into
-`rr.AssetVideo`, and each is converted once and cached beside its source:
+**Making the footage viewable.** Footage is resized so its longest side is
+`MAX_PREVIEW_SIDE` (480) and converted once, cached beside its source as
+`preview_480.mp4` — named after the size it was made for so a preview at
+another size cannot pick it up:
 
-- An image sequence (EgoHumans) is encoded into `preview.mp4` next to the
-  images, at their own resolution so the 2D annotations still land on the
-  pixels they were measured on. 601 4K frames take 11 s and 62 MB.
-- A video the viewer cannot decode is transcoded to `<name>_preview.mp4`
-  beside the original, frames passed through so an index still means the
-  same frame. Human3.6M needs this: it ships MPEG-4 Part 2, and rerun
-  decodes only H.264, H.265, AV1 and VP9.
+- An image sequence (EgoHumans) is encoded from its JPEGs.
+- A video is transcoded, frames passed through so an index still means the
+  same frame. Human3.6M needs this even at full size: it ships MPEG-4
+  Part 2, and rerun decodes only H.264, H.265, AV1 and VP9. A video the
+  viewer can already decode, shown at its own size, is used as it lies.
 
 Both live in `kineo/io/ffmpeg.py` as `encode_images_to_video`,
 `get_video_codec` and `transcode_video_to_h264`.
+
+**Resizing the pixel space.** A 2D view's coordinates are the image's pixel
+grid, and rerun does not stretch a child image onto the pinhole's rectangle:
+`resolution` is "pixel resolution of child image space". So resized footage
+alone would leave the keypoints, boxes and intrinsics marking coordinates the
+frame no longer has.
+
+`scale_pixel_space` converts all three in one pass, at the one point the
+annotations enter the preview, so nothing downstream carries a scale:
+`rebase_on_global_frames` works on frame indices, `keypoints_radius` reads
+the resized `resolution_hw` and shrinks the dots by itself, and the logging
+functions never learn a scale exists. A factor of 1 returns the mapping
+untouched. The cost is that the coordinates read in the viewer are the
+preview's pixels, not the dataset's.
+
+Measured over a whole sequence, against the same recording at full size:
+EgoHumans 759 MB -> 34 MB, AIST++ 278 MB -> 5 MB, Human3.6M -> 3 MB.
 
 ### `kineo/datasets/egohumans/egohumans_dataset.py` (new)
 

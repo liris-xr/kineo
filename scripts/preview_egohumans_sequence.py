@@ -1,7 +1,10 @@
 import argparse
 
 from kineo.datasets.egohumans.egohumans_dataset import EgoHumansSequenceDataset
-from kineo.visualization.sequence_preview import preview_sequence
+from kineo.visualization.sequence_preview import (
+    MAX_PREVIEW_SIDE,
+    preview_sequence,
+)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -30,6 +33,13 @@ if __name__ == "__main__":
         default=None,
         help="Number of frames to log, the whole sequence by default",
     )
+    parser.add_argument(
+        "--max-side",
+        type=int,
+        default=MAX_PREVIEW_SIDE,
+        help="Longest side the footage is resized to, the annotations resized "
+        "with it. Pass a value above the source size to keep it native",
+    )
     args = parser.parse_args()
 
     dataset = EgoHumansSequenceDataset(args.sequences_file)
@@ -44,4 +54,5 @@ if __name__ == "__main__":
         fps=fps,
         output_path=args.save,
         max_frames=args.max_frames,
+        max_side=args.max_side,
     )

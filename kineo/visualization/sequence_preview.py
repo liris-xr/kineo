@@ -18,7 +18,7 @@ which is what a dataset with no offsets between its cameras means.
 
 import dataclasses
 import os
-from typing import TypeVar
+from typing import Any, TypeVar
 
 import rerun as rr
 import torch
@@ -37,7 +37,10 @@ from kineo.visualization import viz_rerun
 
 GROUND_TRUTH_PREFIX = "ground_truth"
 
-PREVIEW_VIDEO_NAME = "preview.mp4"
+# Longest side a preview's footage is resized to. Full-resolution frames cost
+# two orders of magnitude more than a preview needs to answer whether the
+# annotations sit on the subject.
+MAX_PREVIEW_SIDE = 480
 
 # What rerun's viewer can decode. Anything else is transcoded first.
 VIEWABLE_CODECS = frozenset({"h264", "hevc", "av1", "vp9"})
@@ -70,6 +73,86 @@ def local_frame_indices(
         return torch.arange(n_frames)
 
     return time_reference.closest_local_frame_idx[view_id]
+
+
+def preview_scale(views_inputs: list[ViewInput], max_side: int) -> float:
+    """Factor bringing the widest view down to `max_side` pixels.
+
+    One factor covers the whole sequence rather than one per view, so that a
+    view is resized the same way its annotations are wherever they are read.
+
+    Args:
+        views_inputs: Views of the sequence, read for their resolutions.
+        max_side: Longest side any view is resized to.
+
+    Returns:
+        The factor, never above 1: a view smaller than `max_side` is left
+        alone rather than blown up.
+    """
+    widest = max(
+        max(view_input["frame_loader"].resolution_hw)
+        for view_input in views_inputs
+    )
+
+    return min(1.0, max_side / widest)
+
+
+def scale_pixel_space(
+    annotations: dict[str, Any], scale: float
+) -> dict[str, Any]:
+    """Moves everything measured in image pixels onto a resized image.
+
+    A preview shows smaller footage than the dataset holds, and the keypoints,
+    the boxes and the intrinsics all count pixels of the full-size image. They
+    only keep marking what they marked if they are resized with it.
+
+    Args:
+        annotations: Annotations of a sequence, keyed by kind.
+        scale: Factor the footage is resized by.
+
+    Returns:
+        The same mapping, with the kinds living in image pixels resized.
+    """
+    if scale == 1.0:
+        return annotations
+
+    resized = dict(annotations)
+
+    for kind, fields in (
+        ("keypoints_2d", {"xy": lambda xy: xy * scale}),
+        ("bboxes_2d", {"xyxy": lambda xyxy: xyxy * scale}),
+        (
+            "cameras_intrinsics",
+            {
+                "K": lambda K: K * torch.tensor([[scale], [scale], [1.0]]),
+                "resolution_hw": lambda hw: (
+                    round(hw[0] * scale),
+                    round(hw[1] * scale),
+                ),
+            },
+        ),
+    ):
+        if kind in resized:
+            resized[kind] = _replace_fields(resized[kind], fields)
+
+    return resized
+
+
+def _replace_fields(annotations: AnnotationsT, fields: dict) -> AnnotationsT:
+    """Rebuilds annotations with each named field passed through its map."""
+    return type(annotations)(
+        metadata=annotations.metadata,
+        annotations=[
+            dataclasses.replace(
+                annotation,
+                **{
+                    name: transform(getattr(annotation, name))
+                    for name, transform in fields.items()
+                },
+            )
+            for annotation in annotations
+        ],
+    )
 
 
 def keypoints_radius(cameras_intrinsics: CameraIntrinsicsAnnotations) -> float:
@@ -151,6 +234,7 @@ def preview_sequence(
     fps: float,
     output_path: str | None = None,
     max_frames: int | None = None,
+    max_side: int = MAX_PREVIEW_SIDE,
 ):
     """Logs a sequence and its ground truth to rerun.
 
@@ -165,11 +249,15 @@ def preview_sequence(
         max_frames: Number of timeline steps to log, all of them when None.
             This shortens the timeline and the annotations on it, not the
             footage.
+        max_side: Longest side the footage is resized to. The annotations are
+            resized with it, so they keep marking what they marked, in the
+            preview's pixels rather than the dataset's.
 
     Raises:
         TypeError: If a view is backed by an unsupported frame loader.
     """
-    annotations = sequence["annotations"] or {}
+    scale = preview_scale(sequence["views_inputs"], max_side)
+    annotations = scale_pixel_space(sequence["annotations"] or {}, scale)
 
     time_reference = annotations.get("global_time_reference")
     if time_reference is not None:
@@ -231,7 +319,9 @@ def preview_sequence(
         )
 
     for view_input in sequence["views_inputs"]:
-        _log_view_frames(view_input, time_reference, fps, max_frames)
+        _log_view_frames(
+            view_input, time_reference, fps, max_frames, scale, max_side
+        )
 
 
 def _log_view_frames(
@@ -239,6 +329,8 @@ def _log_view_frames(
     time_reference: GlobalTimeReferenceAnnotation | None,
     fps: float,
     max_frames: int | None,
+    scale: float,
+    max_side: int,
 ):
     """Logs a view's footage, embedding the files rather than decoding them."""
     view_id = view_input["view_id"]
@@ -251,9 +343,9 @@ def _log_view_frames(
         if frame_loader.selected_frames is not None:
             frame_indices = frame_loader.selected_frames[frame_indices]
 
-        video_path = _viewable_video(frame_loader.video_path)
+        video_path = _viewable_video(frame_loader.video_path, scale, max_side)
     elif isinstance(frame_loader, ImagesLoader):
-        video_path = _encoded_images(frame_loader, fps)
+        video_path = _encoded_images(frame_loader, fps, scale, max_side)
     else:
         raise TypeError(
             f"View {view_id} is backed by {type(frame_loader).__name__}, which "
@@ -269,35 +361,48 @@ def _log_view_frames(
     )
 
 
-def _viewable_video(video_path: str) -> str:
-    """Transcodes a video the viewer cannot decode, once, beside the original.
+def _viewable_video(video_path: str, scale: float, max_side: int) -> str:
+    """Prepares a video for the viewer, once, beside the original.
 
-    Frames are passed through, so the frame a step points at is unchanged.
+    A video is left alone when the viewer can decode it as it is and the
+    preview shows it at its own size. Otherwise it is re-encoded, frames
+    passed through so the frame a step points at is unchanged.
     """
-    if get_video_codec(video_path) in VIEWABLE_CODECS:
+    if scale == 1.0 and get_video_codec(video_path) in VIEWABLE_CODECS:
         return video_path
 
-    transcoded_path = f"{os.path.splitext(video_path)[0]}_{PREVIEW_VIDEO_NAME}"
+    transcoded_path = (
+        f"{os.path.splitext(video_path)[0]}_{_preview_name(max_side)}"
+    )
 
     if not os.path.exists(transcoded_path):
-        transcode_video_to_h264(video_path, transcoded_path)
+        transcode_video_to_h264(video_path, transcoded_path, scale)
 
     return transcoded_path
 
 
-def _encoded_images(frame_loader: ImagesLoader, fps: float) -> str:
+def _preview_name(max_side: int) -> str:
+    """Names a preview file after the size it was made for, not to be reused
+    for another."""
+    return f"preview_{max_side}.mp4"
+
+
+def _encoded_images(
+    frame_loader: ImagesLoader, fps: float, scale: float, max_side: int
+) -> str:
     """Encodes a view's images into a video beside them, once.
 
     Rerun carries the frames it is shown into the recording, and a sequence of
     full-resolution JPEGs costs two orders of magnitude more there than the
-    same frames encoded. The video keeps the images' resolution, so the
-    annotations still land on the pixels they were measured on.
+    same frames encoded.
     """
     video_path = os.path.join(
-        os.path.dirname(frame_loader.img_paths[0]), PREVIEW_VIDEO_NAME
+        os.path.dirname(frame_loader.img_paths[0]), _preview_name(max_side)
     )
 
     if not os.path.exists(video_path):
-        encode_images_to_video(frame_loader.img_paths, video_path, fps)
+        encode_images_to_video(
+            frame_loader.img_paths, video_path, fps, scale
+        )
 
     return video_path
