@@ -37,10 +37,10 @@ from kineo.visualization import viz_rerun
 
 GROUND_TRUTH_PREFIX = "ground_truth"
 
-# Longest side a preview's footage is resized to. Full-resolution frames cost
-# two orders of magnitude more than a preview needs to answer whether the
+# How much a preview's footage is shrunk by default. Full-resolution frames
+# cost two orders of magnitude more than a preview needs to answer whether the
 # annotations sit on the subject.
-MAX_PREVIEW_SIDE = 480
+DEFAULT_DOWNSCALE_FACTOR = 4
 
 # What rerun's viewer can decode. Anything else is transcoded first.
 VIEWABLE_CODECS = frozenset({"h264", "hevc", "av1", "vp9"})
@@ -73,28 +73,6 @@ def local_frame_indices(
         return torch.arange(n_frames)
 
     return time_reference.closest_local_frame_idx[view_id]
-
-
-def preview_scale(views_inputs: list[ViewInput], max_side: int) -> float:
-    """Factor bringing the widest view down to `max_side` pixels.
-
-    One factor covers the whole sequence rather than one per view, so that a
-    view is resized the same way its annotations are wherever they are read.
-
-    Args:
-        views_inputs: Views of the sequence, read for their resolutions.
-        max_side: Longest side any view is resized to.
-
-    Returns:
-        The factor, never above 1: a view smaller than `max_side` is left
-        alone rather than blown up.
-    """
-    widest = max(
-        max(view_input["frame_loader"].resolution_hw)
-        for view_input in views_inputs
-    )
-
-    return min(1.0, max_side / widest)
 
 
 def scale_pixel_space(
@@ -234,7 +212,7 @@ def preview_sequence(
     fps: float,
     output_path: str | None = None,
     max_frames: int | None = None,
-    max_side: int = MAX_PREVIEW_SIDE,
+    downscale_factor: int = DEFAULT_DOWNSCALE_FACTOR,
 ):
     """Logs a sequence and its ground truth to rerun.
 
@@ -249,14 +227,22 @@ def preview_sequence(
         max_frames: Number of timeline steps to log, all of them when None.
             This shortens the timeline and the annotations on it, not the
             footage.
-        max_side: Longest side the footage is resized to. The annotations are
-            resized with it, so they keep marking what they marked, in the
-            preview's pixels rather than the dataset's.
+        downscale_factor: How much smaller than the dataset's the footage is
+            shown, 1 for its own size. The annotations are resized with it, so
+            they keep marking what they marked, in the preview's pixels rather
+            than the dataset's.
 
     Raises:
         TypeError: If a view is backed by an unsupported frame loader.
+        ValueError: If `downscale_factor` is below 1.
     """
-    scale = preview_scale(sequence["views_inputs"], max_side)
+    if downscale_factor < 1:
+        raise ValueError(
+            f"A preview cannot be larger than the dataset: downscale_factor "
+            f"is {downscale_factor}."
+        )
+
+    scale = 1 / downscale_factor
     annotations = scale_pixel_space(sequence["annotations"] or {}, scale)
 
     time_reference = annotations.get("global_time_reference")
@@ -320,7 +306,7 @@ def preview_sequence(
 
     for view_input in sequence["views_inputs"]:
         _log_view_frames(
-            view_input, time_reference, fps, max_frames, scale, max_side
+            view_input, time_reference, fps, max_frames, downscale_factor
         )
 
 
@@ -329,8 +315,7 @@ def _log_view_frames(
     time_reference: GlobalTimeReferenceAnnotation | None,
     fps: float,
     max_frames: int | None,
-    scale: float,
-    max_side: int,
+    downscale_factor: int,
 ):
     """Logs a view's footage, embedding the files rather than decoding them."""
     view_id = view_input["view_id"]
@@ -343,9 +328,9 @@ def _log_view_frames(
         if frame_loader.selected_frames is not None:
             frame_indices = frame_loader.selected_frames[frame_indices]
 
-        video_path = _viewable_video(frame_loader.video_path, scale, max_side)
+        video_path = _viewable_video(frame_loader.video_path, downscale_factor)
     elif isinstance(frame_loader, ImagesLoader):
-        video_path = _encoded_images(frame_loader, fps, scale, max_side)
+        video_path = _encoded_images(frame_loader, fps, downscale_factor)
     else:
         raise TypeError(
             f"View {view_id} is backed by {type(frame_loader).__name__}, which "
@@ -361,34 +346,36 @@ def _log_view_frames(
     )
 
 
-def _viewable_video(video_path: str, scale: float, max_side: int) -> str:
+def _viewable_video(video_path: str, downscale_factor: int) -> str:
     """Prepares a video for the viewer, once, beside the original.
 
     A video is left alone when the viewer can decode it as it is and the
     preview shows it at its own size. Otherwise it is re-encoded, frames
     passed through so the frame a step points at is unchanged.
     """
-    if scale == 1.0 and get_video_codec(video_path) in VIEWABLE_CODECS:
+    if downscale_factor == 1 and get_video_codec(video_path) in VIEWABLE_CODECS:
         return video_path
 
     transcoded_path = (
-        f"{os.path.splitext(video_path)[0]}_{_preview_name(max_side)}"
+        f"{os.path.splitext(video_path)[0]}_{_preview_name(downscale_factor)}"
     )
 
     if not os.path.exists(transcoded_path):
-        transcode_video_to_h264(video_path, transcoded_path, scale)
+        transcode_video_to_h264(
+            video_path, transcoded_path, 1 / downscale_factor
+        )
 
     return transcoded_path
 
 
-def _preview_name(max_side: int) -> str:
-    """Names a preview file after the size it was made for, not to be reused
-    for another."""
-    return f"preview_{max_side}.mp4"
+def _preview_name(downscale_factor: int) -> str:
+    """Names a preview file after the size it was made for, so that a preview
+    at another size cannot pick it up."""
+    return f"preview_downscale_{downscale_factor}.mp4"
 
 
 def _encoded_images(
-    frame_loader: ImagesLoader, fps: float, scale: float, max_side: int
+    frame_loader: ImagesLoader, fps: float, downscale_factor: int
 ) -> str:
     """Encodes a view's images into a video beside them, once.
 
@@ -397,12 +384,13 @@ def _encoded_images(
     same frames encoded.
     """
     video_path = os.path.join(
-        os.path.dirname(frame_loader.img_paths[0]), _preview_name(max_side)
+        os.path.dirname(frame_loader.img_paths[0]),
+        _preview_name(downscale_factor),
     )
 
     if not os.path.exists(video_path):
         encode_images_to_video(
-            frame_loader.img_paths, video_path, fps, scale
+            frame_loader.img_paths, video_path, fps, 1 / downscale_factor
         )
 
     return video_path

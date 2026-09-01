@@ -118,10 +118,10 @@ spread differently across the nine views: measured, then fixed, then pinned
 by a test. Human3.6M and EgoHumans are frame-aligned and the mapping is the
 identity.
 
-**Making the footage viewable.** Footage is resized so its longest side is
-`MAX_PREVIEW_SIDE` (480) and converted once, cached beside its source as
-`preview_480.mp4` — named after the size it was made for so a preview at
-another size cannot pick it up:
+**Making the footage viewable.** Footage is shrunk by `downscale_factor`
+(4 by default, 1 for the dataset's own size) and converted once, cached
+beside its source as `preview_downscale_4.mp4` — named after the size it was
+made for so a preview at another size cannot pick it up:
 
 - An image sequence (EgoHumans) is encoded from its JPEGs.
 - A video is transcoded, frames passed through so an index still means the
@@ -146,8 +146,9 @@ functions never learn a scale exists. A factor of 1 returns the mapping
 untouched. The cost is that the coordinates read in the viewer are the
 preview's pixels, not the dataset's.
 
-Measured over a whole sequence, against the same recording at full size:
-EgoHumans 759 MB -> 34 MB, AIST++ 278 MB -> 5 MB, Human3.6M -> 3 MB.
+Measured over a whole sequence at a factor of 4, against the same recording
+at full size: EgoHumans 759 MB -> 34 MB, AIST++ 278 MB -> 5 MB,
+Human3.6M -> 3 MB.
 
 ### `kineo/datasets/egohumans/egohumans_dataset.py` (new)
 

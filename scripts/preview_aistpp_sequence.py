@@ -5,7 +5,7 @@ from kineo.datasets.aistpp.aistpp_dataset import (
     AISTPPSequenceDataset,
 )
 from kineo.visualization.sequence_preview import (
-    MAX_PREVIEW_SIDE,
+    DEFAULT_DOWNSCALE_FACTOR,
     preview_sequence,
 )
 
@@ -37,11 +37,11 @@ if __name__ == "__main__":
         help="Number of frames to log, the whole sequence by default",
     )
     parser.add_argument(
-        "--max-side",
+        "--downscale-factor",
         type=int,
-        default=MAX_PREVIEW_SIDE,
-        help="Longest side the footage is resized to, the annotations resized "
-        "with it. Pass a value above the source size to keep it native",
+        default=DEFAULT_DOWNSCALE_FACTOR,
+        help="How much smaller than the dataset's the footage is shown, the "
+        "annotations resized with it. Pass 1 to keep the dataset's own size",
     )
     args = parser.parse_args()
 
@@ -54,5 +54,5 @@ if __name__ == "__main__":
         fps=VIDEO_FPS,
         output_path=args.save,
         max_frames=args.max_frames,
-        max_side=args.max_side,
+        downscale_factor=args.downscale_factor,
     )
