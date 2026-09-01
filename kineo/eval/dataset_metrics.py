@@ -9,7 +9,8 @@
 # -----------------------------------------------------------------------------
 
 import numpy as np
-from typing import Any
+import orjson
+from typing import Any, Sequence
 from collections import defaultdict
 from tqdm import tqdm
 
@@ -22,6 +23,21 @@ from kineo.eval.sequence_metrics import (
     compute_camera_metrics_over_sequence,
     compute_human_metrics_over_sequence,
 )
+
+
+def _summarize(values_by_name: dict[str, list]) -> dict[str, dict[str, Any]]:
+    """Mean, median, std, min and max of each named series, ignoring NaNs."""
+    return {
+        name: {
+            "mean": np.nanmean(values),
+            "median": np.nanmedian(values),
+            "std": np.nanstd(values),
+            "min": np.nanmin(values),
+            "max": np.nanmax(values),
+        }
+        for name, values in values_by_name.items()
+    }
+
 
 def compute_predictions_metrics(
     gt_keypoints_3d_annotations: dict[str, Keypoints3DAnnotations],
@@ -54,7 +70,9 @@ def compute_predictions_metrics(
     all_stage_timings = defaultdict(list)  # timings in seconds per frame
     n_total_frames = 0
 
-    for sequence_name in tqdm(sequences_names, desc="Computing sequence metrics", leave=False):
+    for sequence_name in tqdm(
+        sequences_names, desc="Computing sequence metrics", leave=False
+    ):
         if (
             sequence_name not in pred_keypoints_3d_annotations
             or sequence_name not in pred_cam_extrinsics_annotations
@@ -104,38 +122,11 @@ def compute_predictions_metrics(
                 )
                 n_total_frames += n_frames * n_views
 
-    all_human_metrics_stats = {
-        human_metric_name: {
-            "mean": np.nanmean(value),
-            "median": np.nanmedian(value),
-            "std": np.nanstd(value),
-            "min": np.nanmin(value),
-            "max": np.nanmax(value),
-        }
-        for human_metric_name, value in all_human_metrics.items()
-    }
+    all_human_metrics_stats = _summarize(all_human_metrics)
 
-    all_camera_metrics_stats = {
-        camera_metric_name: {
-            "mean": np.nanmean(value),
-            "median": np.nanmedian(value),
-            "std": np.nanstd(value),
-            "min": np.nanmin(value),
-            "max": np.nanmax(value),
-        }
-        for camera_metric_name, value in all_camera_metrics.items()
-    }
+    all_camera_metrics_stats = _summarize(all_camera_metrics)
 
-    all_stage_timings_stats = {
-        stage_name: {
-            "mean": np.nanmean(value),
-            "median": np.nanmedian(value),
-            "std": np.nanstd(value),
-            "min": np.nanmin(value),
-            "max": np.nanmax(value),
-        }
-        for stage_name, value in all_stage_timings.items()
-    }
+    all_stage_timings_stats = _summarize(all_stage_timings)
 
     return {
         "human_metrics": all_human_metrics_stats,
@@ -144,3 +135,74 @@ def compute_predictions_metrics(
         "n_total_frames": n_total_frames,
         "missing_sequences_predictions": missing_sequences_predictions,
     }
+
+
+def aggregate_sequence_metrics_files(
+    metrics_files: list[str],
+) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
+    """Aggregates per-sequence metrics files over a dataset.
+
+    Args:
+        metrics_files: Paths to the JSON files a metrics export stage wrote,
+            one per sequence.
+
+    Returns:
+        The camera and human statistics, each mapping a metric name to
+        statistics taken over the sequences' mean values.
+    """
+    camera: dict[str, list] = defaultdict(list)
+    human: dict[str, list] = defaultdict(list)
+
+    for filepath in metrics_files:
+        with open(filepath, "rb") as f:
+            sequence_metrics = orjson.loads(f.read())
+
+        for key, collected in (("cam_stats", camera), ("human_stats", human)):
+            for name, stats in sequence_metrics.get(key, {}).items():
+                collected[name].append(stats["mean"])
+
+    return _summarize(camera), _summarize(human)
+
+
+def print_metrics_statistics(
+    camera_stats: dict[str, dict[str, Any]],
+    human_stats: dict[str, dict[str, Any]],
+    failed_sequences: Sequence[str] = (),
+):
+    """Prints dataset-level statistics, and whatever failed to produce them."""
+    for title, stats in (("Camera", camera_stats), ("Human", human_stats)):
+        print()
+        print(f"{title} metrics")
+        for name, values in stats.items():
+            print(
+                f"  {name:<14} mean {values['mean']:<10.4f} "
+                f"median {values['median']:<10.4f} std {values['std']:<10.4f} "
+                f"[{values['min']:.4f}, {values['max']:.4f}]"
+            )
+
+    if failed_sequences:
+        print()
+        print(f"Failed sequences ({len(failed_sequences)}):")
+        for sequence_name in failed_sequences:
+            print(f"  {sequence_name}")
+
+
+def export_metrics_statistics(
+    filepath: str,
+    camera_stats: dict[str, dict[str, Any]],
+    human_stats: dict[str, dict[str, Any]],
+    failed_sequences: Sequence[str] = (),
+):
+    """Writes dataset-level statistics as JSON."""
+    with open(filepath, "wb") as f:
+        f.write(
+            orjson.dumps(
+                {
+                    "cam_stats": camera_stats,
+                    "human_stats": human_stats,
+                    "failed_sequences": list(failed_sequences),
+                },
+                default=float,
+                option=orjson.OPT_INDENT_2,
+            )
+        )
