@@ -138,15 +138,23 @@ def main():
     figure_filepath = os.path.join(args.output_dir, "distortion_error.png")
     save_summary_figure(figure_filepath, rows)
 
-    print(f"\nDistortion error (px), median over {len(rows)} views")
+    # AnyCalib reports the median over the dataset of each image's mean error;
+    # the per-view median is kept beside it because a fold or a failed
+    # calibration reaches the mean and not the median.
+    print(f"\nIntrinsics error (px) over {len(rows)} views")
+    print(f"  {'region':<12}{'RE':>10}{'median':>10}{'p95':>10}")
     for region in REGIONS:
-        median = np.median([row[f"{region}_median"] for row in rows])
-        p95 = np.median([row[f"{region}_p95"] for row in rows])
-        print(f"  {region:<12} median={median:8.3f}  p95={p95:8.3f}")
+        print(
+            f"  {region:<12}"
+            + "".join(
+                f"{np.median([row[f'{region}_{stat}'] for row in rows]):>10.3f}"
+                for stat in ("mean", "median", "p95")
+            )
+        )
     coverage = np.median([row["observed_coverage"] for row in rows])
     valid = np.median([row["valid_fraction"] for row in rows])
     print(f"  observed region covers {coverage * 100:.1f}% of the frame")
-    print(f"  visibility filter kept {valid * 100:.1f}% of the samples")
+    print(f"  both cameras called {valid * 100:.1f}% of the samples valid")
 
     failed = [
         row for row in rows if row["full_median"] > FAILED_CALIBRATION_PX
