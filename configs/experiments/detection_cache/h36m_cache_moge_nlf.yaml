@@ -1,0 +1,49 @@
+# Populates the detection cache, then stops.
+#
+# The stages are copied unchanged from the benchmark below, and the cache
+# key is the same, so the detections land where that benchmark reads them.
+# Detection is GPU bound and bundle adjustment is CPU bound, so filling the
+# cache up front lets a later benchmark run spend its time on the latter.
+#
+# Serves:
+#   h36m_benchmark_nlf_estRt_estK_estD.yaml
+#   h36m_benchmark_nlf_estRt_estK_omitD.yaml
+output_root_dir: ${oc.env:OUTPUT_ROOT_DIR,./outputs}/h36m_cache_moge_nlf
+cache_root_dir: ${oc.env:CACHE_ROOT_DIR,./cache}/h36m_moge-nlfh36m17-fp32_4624733b
+use_cache: true
+batch_size: 32
+use_half_precision: false
+shared_intrinsics: true
+pipeline:
+  seed: 19
+  stages:
+    transfer_gt_annotations:
+      _target_: kineo.pipeline.stages.transfer_gt_annotations.TransferGroundTruthAnnotationsStage
+      name: Transfer GT Bboxes 2D
+      order: 0
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.transfer_gt_annotations.TransferGroundTruthAnnotationsRuntimeConfig
+        annotations_keys:
+        - bboxes_2d
+    moge_intrinsics_estimation:
+      _target_: kineo.pipeline.stages.moge_intrinsics_estimation.MoGeIntrinsicsEstimationStage
+      name: MoGe Intrinsics Estimation
+      model_name_or_path: ./checkpoints/moge-2-vitl-normal.pt
+      order: 10
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.moge_intrinsics_estimation.MoGeIntrinsicsEstimationRuntimeConfig
+        use_cache: ${use_cache}
+        use_half_precision: ${use_half_precision}
+        cache_output_path_template: ${cache_root_dir}/{sequence_name}/{annotation_key}/{view_id}.pkl
+    nlf_skeleton_keypoints_detection:
+      _target_: kineo.pipeline.stages.nlf.skeleton_keypoints_detection.NLFSkeletonKeypointsDetectionStage
+      name: NLF Keypoints Detection
+      order: 20
+      torchscript_model_path: ./checkpoints/nlf_l_multi_0.3.2.torchscript
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.nlf.skeleton_keypoints_detection.NLFSkeletonKeypointsDetectionRuntimeConfig
+        batch_size: ${batch_size}
+        use_half_precision: ${use_half_precision}
+        use_cache: ${use_cache}
+        cache_output_path_template: ${cache_root_dir}/{sequence_name}/{annotation_key}/{view_id}.pkl
+        skeleton_name: h36m_17

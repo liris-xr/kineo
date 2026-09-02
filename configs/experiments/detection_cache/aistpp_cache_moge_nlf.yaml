@@ -1,0 +1,63 @@
+# Populates the detection cache, then stops.
+#
+# The stages are copied unchanged from the benchmark below, and the cache
+# key is the same, so the detections land where that benchmark reads them.
+# Detection is GPU bound and bundle adjustment is CPU bound, so filling the
+# cache up front lets a later benchmark run spend its time on the latter.
+#
+# Serves:
+#   aistpp_benchmark_nlf_estRt_estK_estD.yaml
+#   aistpp_benchmark_nlf_estRt_estK_estDk1k2.yaml
+output_root_dir: ${oc.env:OUTPUT_ROOT_DIR,./outputs}/aistpp_cache_moge_nlf
+cache_root_dir: ${oc.env:CACHE_ROOT_DIR,./cache}/aistpp_moge-nlfcoco19-fp32_90dde7c7
+use_cache: true
+batch_size: 32
+use_half_precision: false
+shared_intrinsics: true
+pipeline:
+  seed: 19
+  stages:
+    transfer_gt_annotations:
+      _target_: kineo.pipeline.stages.transfer_gt_annotations.TransferGroundTruthAnnotationsStage
+      name: Transfer GT Bboxes 2D
+      order: 0
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.transfer_gt_annotations.TransferGroundTruthAnnotationsRuntimeConfig
+        annotations_keys:
+        - bboxes_2d
+    mfcc_temporal_calibration:
+      _target_: kineo.pipeline.stages.mfcc_temporal_calibration.MFCCTemporalCalibrationStage
+      name: MFCC Temporal Calibration
+      order: 5
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.mfcc_temporal_calibration.TemporalCalibrationRuntimeConfig
+        ref_idx: 0
+    global_time_reference:
+      _target_: kineo.pipeline.stages.global_time_reference.GlobalTimeReferenceStage
+      name: Global Time Reference
+      order: 6
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.global_time_reference.GlobalTimeReferenceRuntimeConfig
+        target_fps: 20
+    moge_intrinsics_estimation:
+      _target_: kineo.pipeline.stages.moge_intrinsics_estimation.MoGeIntrinsicsEstimationStage
+      name: MoGe Intrinsics Estimation
+      model_name_or_path: ./checkpoints/moge-2-vitl-normal.pt
+      order: 10
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.moge_intrinsics_estimation.MoGeIntrinsicsEstimationRuntimeConfig
+        use_cache: ${use_cache}
+        use_half_precision: ${use_half_precision}
+        cache_output_path_template: ${cache_root_dir}/{sequence_name}/{annotation_key}/{view_id}.pkl
+    nlf_skeleton_keypoints_detection:
+      _target_: kineo.pipeline.stages.nlf.skeleton_keypoints_detection.NLFSkeletonKeypointsDetectionStage
+      name: NLF Keypoints Detection
+      order: 20
+      torchscript_model_path: ./checkpoints/nlf_l_multi_0.3.2.torchscript
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.nlf.skeleton_keypoints_detection.NLFSkeletonKeypointsDetectionRuntimeConfig
+        batch_size: ${batch_size}
+        use_half_precision: ${use_half_precision}
+        use_cache: ${use_cache}
+        cache_output_path_template: ${cache_root_dir}/{sequence_name}/{annotation_key}/{view_id}.pkl
+        skeleton_name: coco_19
