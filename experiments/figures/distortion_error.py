@@ -35,23 +35,25 @@ from kineo.annotations.camera_intrinsics import (
 from kineo.annotations.keypoints_2d import Keypoints2DAnnotations
 from kineo.geometry.transformations import distort_points, undistort_points
 
-# Error maps and masks are rasterized at this resolution. The error itself stays
-# expressed in full-resolution pixels, whatever the grid.
+# Maps are rasterized at this resolution; errors stay in full-resolution pixels.
 GRID_HW = (540, 960)
 
-# A ray this far off-axis is at the horizon of the ground-truth camera; no
-# lens images it, and the models diverge there whatever their coefficients.
+# Beyond this the ray is at the camera's horizon, which no lens images.
 MAX_FIELD_ANGLE_DEG = 89.0
 
 REGIONS = ("observed", "background", "full")
 STATS = ("mean", "median", "p95", "max")
+
+# Runs predating the pluralized annotation key carry the singular name, and the
+# published benchmarks are among them.
+INTRINSICS_FILENAMES = ("cameras_intrinsics.pkl", "camera_intrinsics.pkl")
 
 MaskSource = Literal["bundle_adjustment", "detections"]
 
 
 @dataclass(frozen=True)
 class ViewDistortionError:
-    """The distortion error of one view, and where that view saw people."""
+    """One view's error map and the region it observed people in."""
 
     sequence_name: str
     view_id: str
@@ -66,32 +68,19 @@ def _radial_map_is_monotonic(
     """Whether a distortion model still grows with radius at each sample.
 
     Past the radius where the derivative turns negative the polynomial folds
-    back on itself and stops being a projection at all, so the displacement it
-    reports there is meaningless rather than large.
-
-    Args:
-        radius: Normalized radial distance of each ray, (N,).
-        D: Distortion coefficients of the model.
-        distortion_model: Name of the model the coefficients belong to.
-
-    Returns:
-        A boolean tensor of the shape of `radius`.
+    back on itself and stops being a projection, so what it reports there is
+    meaningless rather than large.
     """
     if distortion_model == "brown_conrady":
-        k1, k2, k3 = D[0], D[1], D[4]
-        r2 = radius**2
-        return 1 + 3 * k1 * r2 + 5 * k2 * r2**2 + 7 * k3 * r2**3 > 0
+        variable, coefficients = radius, (D[0], D[1], D[4])
+    else:
+        variable, coefficients = torch.atan(radius), (D[0], D[1], D[2], D[3])
 
-    theta2 = torch.atan(radius) ** 2
-    k1, k2, k3, k4 = D[0], D[1], D[2], D[3]
-    return (
-        1
-        + 3 * k1 * theta2
-        + 5 * k2 * theta2**2
-        + 7 * k3 * theta2**3
-        + 9 * k4 * theta2**4
-        > 0
-    )
+    derivative = torch.ones_like(variable)
+    for order, coefficient in enumerate(coefficients):
+        derivative += (2 * order + 3) * coefficient * variable ** (2 * order + 2)
+
+    return derivative > 0
 
 
 def distortion_error_map(
@@ -99,27 +88,19 @@ def distortion_error_map(
     pred_intrinsics: CameraIntrinsicsAnnotation,
     grid_hw: tuple[int, int] = GRID_HW,
 ) -> np.ndarray:
-    """Pixel displacement between the ground-truth and predicted distortions.
+    """Pixel displacement between the ground-truth and predicted projections.
 
-    Args:
-        gt_intrinsics: Ground-truth intrinsics, whose resolution defines the
-            image frame the error is measured in.
-        pred_intrinsics: Intrinsics the pipeline estimated, K included.
-        grid_hw: Resolution the error is sampled at.
-
-    Returns:
-        The error magnitude in pixels, shape `grid_hw`, NaN at the samples no
-        lens images or the predicted model has folded over.
+    Sampled over the ground-truth image, NaN where the ray is past
+    `MAX_FIELD_ANGLE_DEG` or the predicted model has folded over.
     """
     image_h, image_w = gt_intrinsics.resolution_hw
-    grid_h, grid_w = grid_hw
     K_gt, K_pred = gt_intrinsics.K, pred_intrinsics.K
     D_pred = pred_intrinsics.distortion_coefficients
     model_pred = pred_intrinsics.distortion_model.value
 
     ys, xs = torch.meshgrid(
-        torch.linspace(0, image_h - 1, grid_h),
-        torch.linspace(0, image_w - 1, grid_w),
+        torch.linspace(0, image_h - 1, grid_hw[0]),
+        torch.linspace(0, image_w - 1, grid_hw[1]),
         indexing="ij",
     )
     points = torch.stack([xs.reshape(-1), ys.reshape(-1)], dim=-1)
@@ -130,24 +111,11 @@ def distortion_error_map(
         D=gt_intrinsics.distortion_coefficients,
         distortion_model=gt_intrinsics.distortion_model.value,
     )
-    # The ray the ground-truth camera sees at this pixel. Both projections must
-    # start from it, so the predicted one is fed the pixel that ray falls on in
-    # its own frame rather than in the ground truth's.
-    rays = torch.stack(
-        [
-            (undistorted[..., 0] - K_gt[0, 2]) / K_gt[0, 0],
-            (undistorted[..., 1] - K_gt[1, 2]) / K_gt[1, 1],
-        ],
-        dim=-1,
-    )
+    # Both projections must start from the same ray, so the predicted camera is
+    # fed the pixel that ray falls on in its own frame, not the ground truth's.
+    rays = (undistorted - K_gt[:2, 2]) / K_gt.diagonal()[:2]
     predicted = distort_points(
-        torch.stack(
-            [
-                rays[..., 0] * K_pred[0, 0] + K_pred[0, 2],
-                rays[..., 1] * K_pred[1, 1] + K_pred[1, 2],
-            ],
-            dim=-1,
-        ),
+        rays * K_pred.diagonal()[:2] + K_pred[:2, 2],
         K=K_pred,
         D=D_pred,
         distortion_model=model_pred,
@@ -159,7 +127,7 @@ def distortion_error_map(
 
     error = torch.linalg.norm(points - predicted, dim=-1)
     error = torch.where(visible, error, torch.nan)
-    return error.reshape(grid_h, grid_w).numpy().astype(np.float32)
+    return error.reshape(grid_hw).numpy().astype(np.float32)
 
 
 def keypoints_mask(
@@ -172,21 +140,10 @@ def keypoints_mask(
 ) -> np.ndarray:
     """Union of discs around the keypoints a view observed.
 
-    Args:
-        xy: Keypoint pixel coordinates in the full-resolution frame, (N, 2).
-        scores: Confidence of each keypoint, (N,).
-        image_hw: Resolution `xy` is expressed in.
-        grid_hw: Resolution the mask is rasterized at.
-        radius: Disc radius, in full-resolution pixels.
-        score_threshold: Keypoints at or below this score are ignored.
-
-    Returns:
-        A boolean mask of shape `grid_hw`.
+    `xy` and `radius` are in the full-resolution frame `image_hw`; the mask is
+    rasterized at `grid_hw`.
     """
-    scale_y = grid_hw[0] / image_hw[0]
-    scale_x = grid_hw[1] / image_hw[1]
-    scale = np.array([scale_x, scale_y])
-
+    scale = np.array([grid_hw[1] / image_hw[1], grid_hw[0] / image_hw[0]])
     kept = (scores > score_threshold) & np.isfinite(xy).all(axis=-1)
     mask = np.zeros(grid_hw, dtype=np.uint8)
 
@@ -201,14 +158,8 @@ def keypoints_mask(
 def error_stats(error: np.ndarray, observed: np.ndarray) -> dict[str, float]:
     """Statistics of an error map, inside, outside and over the whole frame.
 
-    Args:
-        error: Error map in pixels.
-        observed: Mask of the region where keypoints were observed.
-
-    Returns:
-        One entry per region and statistic, the mask coverage, and the fraction
-        of samples that were scored at all, the rest being the ones the
-        visibility filter rejected.
+    Also reports the mask coverage and the share of samples that survived the
+    visibility filter, so an exclusion never passes for full coverage.
     """
     values_by_region = {
         "observed": error[observed],
@@ -242,19 +193,10 @@ def overlay_error(
 ) -> np.ndarray:
     """Blends an error map over a frame and outlines the observed region.
 
-    Args:
-        frame_rgb: Frame to draw on, resized to the error's resolution.
-        error: Error map in pixels.
-        observed: Mask of the region where keypoints were observed.
-        vmax: Error the color scale saturates at, in pixels.
-        alpha: Opacity of the colormap over the frame.
-
-    Returns:
-        An RGB uint8 image of the error map's shape.
+    The frame is resized to the error's resolution, and `vmax` is the error the
+    color scale saturates at.
     """
-    grid_h, grid_w = error.shape
-    frame = cv2.resize(frame_rgb, (grid_w, grid_h))
-
+    frame = cv2.resize(frame_rgb, (error.shape[1], error.shape[0]))
     normalized = np.clip(np.nan_to_num(error, nan=vmax, posinf=vmax) / vmax, 0, 1)
     color = cv2.applyColorMap(
         (normalized * 255).astype(np.uint8), cv2.COLORMAP_TURBO
@@ -283,38 +225,26 @@ def load_middle_frame(dataset_dir: str, images_dir: str) -> np.ndarray:
     return cv2.cvtColor(cv2.imread(paths[len(paths) // 2]), cv2.COLOR_BGR2RGB)
 
 
+def prediction_intrinsics_path(predictions_dir: str) -> str:
+    """Path to a run's exported intrinsics, under either name it was written.
+
+    Raises:
+        FileNotFoundError: If neither name is present.
+    """
+    for filename in INTRINSICS_FILENAMES:
+        path = os.path.join(predictions_dir, filename)
+        if os.path.exists(path):
+            return path
+    names = " or ".join(INTRINSICS_FILENAMES)
+    raise FileNotFoundError(f"No {names} in {predictions_dir}")
+
+
 def _load_gt_intrinsics(
     dataset_dir: str, sequence: dict
 ) -> CameraIntrinsicsAnnotations:
     path = os.path.join(dataset_dir, sequence["annotations"]["cameras_intrinsics"])
     with open(path, "rb") as f:
         return CameraIntrinsicsAnnotations.from_dict(orjson.loads(f.read()))
-
-
-# Runs made before the exported annotation key was pluralized carry the
-# singular name, and the published benchmarks are among them.
-_INTRINSICS_FILENAMES = ("cameras_intrinsics.pkl", "camera_intrinsics.pkl")
-
-
-def prediction_intrinsics_path(predictions_dir: str) -> str:
-    """Path to a run's exported intrinsics, under either name it was written.
-
-    Args:
-        predictions_dir: Directory holding one sequence's exported annotations.
-
-    Returns:
-        The path that exists.
-
-    Raises:
-        FileNotFoundError: If neither name is present.
-    """
-    for filename in _INTRINSICS_FILENAMES:
-        path = os.path.join(predictions_dir, filename)
-        if os.path.exists(path):
-            return path
-    raise FileNotFoundError(
-        f"No {' or '.join(_INTRINSICS_FILENAMES)} in {predictions_dir}"
-    )
 
 
 def _load_prediction(path: str, annotations_class):
@@ -328,8 +258,7 @@ def _observed_keypoints(
     """Keypoints each view observed, as (xy, scores) arrays per view id.
 
     The bundle-adjustment source holds the points that actually constrained the
-    calibration; the detection source holds every 2D detection, constraining or
-    not.
+    calibration, the detection source every 2D detection whether it did or not.
     """
     if mask_source == "bundle_adjustment":
         keypoints = _load_prediction(
@@ -368,21 +297,10 @@ def iter_view_errors(
     radius: int = 25,
     score_threshold: float = 0.0,
 ) -> Iterator[ViewDistortionError]:
-    """Yields the distortion error of every predicted view.
+    """Yields the error of every predicted view, one sequence at a time.
 
-    Args:
-        dataset_dir: Directory holding the preprocessed EgoHumans dataset.
-        pred_annotations_dir: Directory holding one subdirectory of exported
-            annotations per sequence.
-        sequences: Sequences to walk, as read by `load_sequences`.
-        mask_source: Which keypoints stand for the observed region.
-        views: (sequence name, view id) pairs to keep, or None for all of them.
-        radius: Disc radius around each keypoint, in full-resolution pixels.
-        score_threshold: Keypoints at or below this score are ignored.
-
-    Yields:
-        One `ViewDistortionError` per view. Sequences whose predictions are
-        missing are reported and skipped.
+    `views` keeps only the given (sequence name, view id) pairs, or all of them
+    when None. Sequences whose predictions are missing are reported and skipped.
     """
     for sequence in sequences:
         sequence_name = sequence["sequence_name"]
