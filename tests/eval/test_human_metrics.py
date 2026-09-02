@@ -60,6 +60,71 @@ def _extrinsics(view_ids: list[str]) -> CameraExtrinsicsAnnotations:
     )
 
 
+def _crowd(xyz_by_subject: dict[str, torch.Tensor]) -> Keypoints3DAnnotations:
+    return Keypoints3DAnnotations(
+        metadata=Keypoints3DAnnotationsMetadata(formats=[COCO_17_KEYPOINTS_FORMAT]),
+        annotations=[
+            Keypoints3DAnnotation(
+                frame_idx=0,
+                subject_id=subject_id,
+                xyz=xyz,
+                scores=torch.ones(N_KEYPOINTS),
+                format=COCO_17_KEYPOINTS_FORMAT.name,
+            )
+            for subject_id, xyz in xyz_by_subject.items()
+        ],
+    )
+
+
+def test_ga_mpjpe_ignores_a_similarity_shared_by_every_subject():
+    torch.manual_seed(0)
+    gt = {
+        "a": torch.rand(N_KEYPOINTS, 3),
+        "b": torch.rand(N_KEYPOINTS, 3) + torch.tensor([2.0, 0.0, 0.0]),
+    }
+    # A rotation about z, a scaling and a translation of the whole group.
+    R = torch.tensor([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]])
+    pred = {
+        subject_id: 3.0 * xyz @ R.T + torch.tensor([5.0, -1.0, 2.0])
+        for subject_id, xyz in gt.items()
+    }
+
+    views = ["cam01", "cam02"]
+    metrics = compute_human_metrics(
+        gt_keypoints_3d_annotations=_crowd(gt),
+        gt_cam_extrinsics_annotations=_extrinsics(views),
+        pred_keypoints_3d_annotations=_crowd(pred),
+        pred_cam_extrinsics_annotations=_extrinsics(views),
+    )
+
+    flattened = flatten_human_metrics(metrics)
+    assert max(flattened["ga-mpjpe"]) < 1e-4
+    assert max(flattened["w-mpjpe"]) > 1.0
+
+
+def test_ga_mpjpe_scores_where_a_subject_stands_relative_to_the_others():
+    torch.manual_seed(0)
+    gt = {
+        "a": torch.rand(N_KEYPOINTS, 3),
+        "b": torch.rand(N_KEYPOINTS, 3) + torch.tensor([2.0, 0.0, 0.0]),
+    }
+    pred = dict(gt)
+    pred["b"] = pred["b"] + torch.tensor([1.0, 0.0, 0.0])
+
+    views = ["cam01", "cam02"]
+    metrics = compute_human_metrics(
+        gt_keypoints_3d_annotations=_crowd(gt),
+        gt_cam_extrinsics_annotations=_extrinsics(views),
+        pred_keypoints_3d_annotations=_crowd(pred),
+        pred_cam_extrinsics_annotations=_extrinsics(views),
+    )
+
+    flattened = flatten_human_metrics(metrics)
+    assert max(flattened["ga-mpjpe"]) > 0.1
+    # PA-MPJPE fits each subject on its own, so the displacement is absorbed.
+    assert max(flattened["pa-mpjpe"]) < 1e-4
+
+
 def test_a_frame_no_prediction_answers_for_is_not_scored():
     views = ["cam01", "cam02"]
     metrics = compute_human_metrics(
