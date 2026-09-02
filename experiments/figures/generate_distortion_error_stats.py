@@ -28,7 +28,7 @@ from distortion_error import (
     load_sequences,
 )
 
-CSV_FIELDS = ["sequence", "view", "observed_coverage"] + [
+CSV_FIELDS = ["sequence", "view", "observed_coverage", "valid_fraction"] + [
     f"{region}_{stat}" for region in REGIONS for stat in STATS
 ]
 
@@ -144,7 +144,9 @@ def main():
         p95 = np.median([row[f"{region}_p95"] for row in rows])
         print(f"  {region:<12} median={median:8.3f}  p95={p95:8.3f}")
     coverage = np.median([row["observed_coverage"] for row in rows])
+    valid = np.median([row["valid_fraction"] for row in rows])
     print(f"  observed region covers {coverage * 100:.1f}% of the frame")
+    print(f"  visibility filter kept {valid * 100:.1f}% of the samples")
 
     failed = [
         row for row in rows if row["full_median"] > FAILED_CALIBRATION_PX

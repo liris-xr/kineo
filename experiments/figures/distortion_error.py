@@ -1,4 +1,4 @@
-"""Distortion error of estimated intrinsics against the EgoHumans ground truth.
+"""Intrinsics error of the predictions against the EgoHumans ground truth.
 
 The ground truth uses OpenCV's fisheye model and the pipeline estimates a
 Brown-Conrady one, so their coefficients are not comparable term by term. What
@@ -6,9 +6,10 @@ is comparable is the mapping they induce: undistorting a pixel with the ground
 truth model and re-distorting it with the predicted one lands somewhere else,
 and the displacement between the two, in pixels, is the error.
 
-Both projections use the ground-truth K, so the error is the one of the
-distortion coefficients alone; the focal and principal point are reported
-separately as vfov_error.
+Each side projects under its own K, which is how single-view calibration work
+reports intrinsic accuracy: the parameters are partially coupled, so the
+displacement of the whole map is the meaningful quantity and the estimated
+focal cannot be held out of it.
 """
 
 from __future__ import annotations
@@ -38,6 +39,10 @@ from kineo.geometry.transformations import distort_points, undistort_points
 # expressed in full-resolution pixels, whatever the grid.
 GRID_HW = (540, 960)
 
+# A ray this far off-axis is at the horizon of the ground-truth camera; no
+# lens images it, and the models diverge there whatever their coefficients.
+MAX_FIELD_ANGLE_DEG = 89.0
+
 REGIONS = ("observed", "background", "full")
 STATS = ("mean", "median", "p95", "max")
 
@@ -55,6 +60,40 @@ class ViewDistortionError:
     observed: np.ndarray  # (GRID_HW), bool
 
 
+def _radial_map_is_monotonic(
+    radius: torch.Tensor, D: torch.Tensor, distortion_model: str
+) -> torch.Tensor:
+    """Whether a distortion model still grows with radius at each sample.
+
+    Past the radius where the derivative turns negative the polynomial folds
+    back on itself and stops being a projection at all, so the displacement it
+    reports there is meaningless rather than large.
+
+    Args:
+        radius: Normalized radial distance of each ray, (N,).
+        D: Distortion coefficients of the model.
+        distortion_model: Name of the model the coefficients belong to.
+
+    Returns:
+        A boolean tensor of the shape of `radius`.
+    """
+    if distortion_model == "brown_conrady":
+        k1, k2, k3 = D[0], D[1], D[4]
+        r2 = radius**2
+        return 1 + 3 * k1 * r2 + 5 * k2 * r2**2 + 7 * k3 * r2**3 > 0
+
+    theta2 = torch.atan(radius) ** 2
+    k1, k2, k3, k4 = D[0], D[1], D[2], D[3]
+    return (
+        1
+        + 3 * k1 * theta2
+        + 5 * k2 * theta2**2
+        + 7 * k3 * theta2**3
+        + 9 * k4 * theta2**4
+        > 0
+    )
+
+
 def distortion_error_map(
     gt_intrinsics: CameraIntrinsicsAnnotation,
     pred_intrinsics: CameraIntrinsicsAnnotation,
@@ -63,17 +102,20 @@ def distortion_error_map(
     """Pixel displacement between the ground-truth and predicted distortions.
 
     Args:
-        gt_intrinsics: Ground-truth intrinsics, whose K and resolution define
-            the image frame the error is measured in.
-        pred_intrinsics: Intrinsics the pipeline estimated, of which only the
-            distortion coefficients and model are read.
+        gt_intrinsics: Ground-truth intrinsics, whose resolution defines the
+            image frame the error is measured in.
+        pred_intrinsics: Intrinsics the pipeline estimated, K included.
         grid_hw: Resolution the error is sampled at.
 
     Returns:
-        The error magnitude in pixels, shape `grid_hw`.
+        The error magnitude in pixels, shape `grid_hw`, NaN at the samples no
+        lens images or the predicted model has folded over.
     """
     image_h, image_w = gt_intrinsics.resolution_hw
     grid_h, grid_w = grid_hw
+    K_gt, K_pred = gt_intrinsics.K, pred_intrinsics.K
+    D_pred = pred_intrinsics.distortion_coefficients
+    model_pred = pred_intrinsics.distortion_model.value
 
     ys, xs = torch.meshgrid(
         torch.linspace(0, image_h - 1, grid_h),
@@ -82,21 +124,41 @@ def distortion_error_map(
     )
     points = torch.stack([xs.reshape(-1), ys.reshape(-1)], dim=-1)
 
-    K = gt_intrinsics.K
-    rays = undistort_points(
+    undistorted = undistort_points(
         points,
-        K=K,
+        K=K_gt,
         D=gt_intrinsics.distortion_coefficients,
         distortion_model=gt_intrinsics.distortion_model.value,
     )
+    # The ray the ground-truth camera sees at this pixel. Both projections must
+    # start from it, so the predicted one is fed the pixel that ray falls on in
+    # its own frame rather than in the ground truth's.
+    rays = torch.stack(
+        [
+            (undistorted[..., 0] - K_gt[0, 2]) / K_gt[0, 0],
+            (undistorted[..., 1] - K_gt[1, 2]) / K_gt[1, 1],
+        ],
+        dim=-1,
+    )
     predicted = distort_points(
-        rays,
-        K=K,
-        D=pred_intrinsics.distortion_coefficients,
-        distortion_model=pred_intrinsics.distortion_model.value,
+        torch.stack(
+            [
+                rays[..., 0] * K_pred[0, 0] + K_pred[0, 2],
+                rays[..., 1] * K_pred[1, 1] + K_pred[1, 2],
+            ],
+            dim=-1,
+        ),
+        K=K_pred,
+        D=D_pred,
+        distortion_model=model_pred,
     )
 
+    radius = torch.linalg.norm(rays, dim=-1)
+    visible = torch.rad2deg(torch.atan(radius)) <= MAX_FIELD_ANGLE_DEG
+    visible &= _radial_map_is_monotonic(radius, D_pred, model_pred)
+
     error = torch.linalg.norm(points - predicted, dim=-1)
+    error = torch.where(visible, error, torch.nan)
     return error.reshape(grid_h, grid_w).numpy().astype(np.float32)
 
 
@@ -144,15 +206,19 @@ def error_stats(error: np.ndarray, observed: np.ndarray) -> dict[str, float]:
         observed: Mask of the region where keypoints were observed.
 
     Returns:
-        One entry per region and statistic, plus the mask coverage. Pixels
-        where undistortion diverges are dropped rather than averaged in.
+        One entry per region and statistic, the mask coverage, and the fraction
+        of samples that were scored at all, the rest being the ones the
+        visibility filter rejected.
     """
     values_by_region = {
         "observed": error[observed],
         "background": error[~observed],
         "full": error.reshape(-1),
     }
-    stats = {"observed_coverage": float(observed.mean())}
+    stats = {
+        "observed_coverage": float(observed.mean()),
+        "valid_fraction": float(np.isfinite(error).mean()),
+    }
 
     for region, values in values_by_region.items():
         finite = values[np.isfinite(values)]
