@@ -172,17 +172,16 @@ def _project(
 def distortion_error_map(
     gt_intrinsics: CameraIntrinsicsAnnotation,
     pred_intrinsics: CameraIntrinsicsAnnotation,
-    grid_hw: tuple[int, int] = GRID_HW,
 ) -> np.ndarray:
     """Pixel displacement between the ground-truth and predicted projections.
 
-    Sampled at the centres of a uniform grid over the ground-truth image, NaN
-    at the samples either camera rejects.
+    Sampled at the centres of a uniform `GRID_HW` grid over the ground-truth
+    image, NaN at the samples either camera rejects.
     """
     image_h, image_w = gt_intrinsics.resolution_hw
     ys, xs = torch.meshgrid(
-        (torch.arange(grid_hw[0]) + 0.5) * image_h / grid_hw[0],
-        (torch.arange(grid_hw[1]) + 0.5) * image_w / grid_hw[1],
+        (torch.arange(GRID_HW[0]) + 0.5) * image_h / GRID_HW[0],
+        (torch.arange(GRID_HW[1]) + 0.5) * image_w / GRID_HW[1],
         indexing="ij",
     )
     points = torch.stack([xs.reshape(-1), ys.reshape(-1)], dim=-1)
@@ -192,25 +191,24 @@ def distortion_error_map(
 
     error = torch.linalg.norm(points - predicted, dim=-1)
     error = torch.where(unprojected & projected, error, torch.nan)
-    return error.reshape(grid_hw).numpy().astype(np.float32)
+    return error.reshape(GRID_HW).numpy().astype(np.float32)
 
 
 def keypoints_mask(
     xy: np.ndarray,
     scores: np.ndarray,
     image_hw: tuple[int, int],
-    grid_hw: tuple[int, int] = GRID_HW,
     radius: int = 25,
     score_threshold: float = 0.0,
 ) -> np.ndarray:
     """Union of discs around the keypoints a view observed.
 
     `xy` and `radius` are in the full-resolution frame `image_hw`; the mask is
-    rasterized at `grid_hw`.
+    rasterized at `GRID_HW`.
     """
-    scale = np.array([grid_hw[1] / image_hw[1], grid_hw[0] / image_hw[0]])
+    scale = np.array([GRID_HW[1] / image_hw[1], GRID_HW[0] / image_hw[0]])
     kept = (scores > score_threshold) & np.isfinite(xy).all(axis=-1)
-    mask = np.zeros(grid_hw, dtype=np.uint8)
+    mask = np.zeros(GRID_HW, dtype=np.uint8)
 
     for x, y in np.round(xy[kept] * scale).astype(int):
         cv2.circle(
