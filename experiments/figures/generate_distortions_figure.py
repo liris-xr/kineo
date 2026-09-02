@@ -11,6 +11,8 @@ from kineo.annotations.camera_intrinsics import CameraIntrinsicsAnnotations
 from kineo.datasets.keypoints_sequence_dataset import ViewInput
 from kineo.io.frame_sequence_loader import ImagesLoader
 
+from distortion_error import prediction_intrinsics_path
+
 import numpy as np
 
 
@@ -33,10 +35,8 @@ def load_pred_camera_intrinsics(
     pred_annotations_dir: str,
     sequence: dict,
 ) -> CameraIntrinsicsAnnotations:
-    camera_intrinsics_file = os.path.join(
-        pred_annotations_dir,
-        sequence["sequence_name"],
-        "camera_intrinsics.pkl",
+    camera_intrinsics_file = prediction_intrinsics_path(
+        os.path.join(pred_annotations_dir, sequence["sequence_name"])
     )
     with open(camera_intrinsics_file, "rb") as f:
         pred_camera_intrinsics = CameraIntrinsicsAnnotations.from_dict(pickle.load(f))

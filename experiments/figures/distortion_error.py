@@ -225,6 +225,32 @@ def _load_gt_intrinsics(
         return CameraIntrinsicsAnnotations.from_dict(orjson.loads(f.read()))
 
 
+# Runs made before the exported annotation key was pluralized carry the
+# singular name, and the published benchmarks are among them.
+_INTRINSICS_FILENAMES = ("cameras_intrinsics.pkl", "camera_intrinsics.pkl")
+
+
+def prediction_intrinsics_path(predictions_dir: str) -> str:
+    """Path to a run's exported intrinsics, under either name it was written.
+
+    Args:
+        predictions_dir: Directory holding one sequence's exported annotations.
+
+    Returns:
+        The path that exists.
+
+    Raises:
+        FileNotFoundError: If neither name is present.
+    """
+    for filename in _INTRINSICS_FILENAMES:
+        path = os.path.join(predictions_dir, filename)
+        if os.path.exists(path):
+            return path
+    raise FileNotFoundError(
+        f"No {' or '.join(_INTRINSICS_FILENAMES)} in {predictions_dir}"
+    )
+
+
 def _load_prediction(path: str, annotations_class):
     with open(path, "rb") as f:
         return annotations_class.from_dict(pickle.load(f))
@@ -299,7 +325,7 @@ def iter_view_errors(
         try:
             gt_intrinsics = _load_gt_intrinsics(dataset_dir, sequence)
             pred_intrinsics = _load_prediction(
-                os.path.join(predictions_dir, "cameras_intrinsics.pkl"),
+                prediction_intrinsics_path(predictions_dir),
                 CameraIntrinsicsAnnotations,
             )
             observed_keypoints = _observed_keypoints(predictions_dir, mask_source)
