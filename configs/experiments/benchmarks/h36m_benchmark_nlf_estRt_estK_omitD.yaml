@@ -88,6 +88,7 @@ pipeline:
       order: 60
       runtime_cfg:
         _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentRuntimeConfig
+        device: cpu
         n_iters: 300
         use_lbfgs: True
         optimize_distortion_coefficients: False
@@ -104,6 +105,7 @@ pipeline:
       order: 70
       runtime_cfg:
         _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentRuntimeConfig
+        device: cpu
         n_iters: 300
         use_lbfgs: True
         optimize_distortion_coefficients: False
