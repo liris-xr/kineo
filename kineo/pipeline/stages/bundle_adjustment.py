@@ -63,6 +63,7 @@ class BundleAdjustmentRuntimeConfig:
     dist_coeffs_regularization_weight: float = 1.0
     use_lbfgs: bool = True
     lr: float = 1.0
+    device: str = "cpu"
 
 class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
     """
@@ -100,7 +101,7 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
         # scalability for large-scale multi-view setups.
         # -------------------------------------------------------------------------
 
-        device = pipeline.device
+        device = torch.device(runtime_cfg.device)
 
         cameras_intrinsics: CameraIntrinsicsAnnotations = annotations[
             "cameras_intrinsics"
