@@ -81,6 +81,9 @@ def triangulate_points(
 
     X = X.reshape(-1, n_pairs * 4, 4)
 
+    if not torch.isfinite(X).all():
+        raise ValueError("non-finite entries in triangulation system")
+
     if use_eigendecomposition:
         XtX = X.transpose(-2, -1) @ X
         _, eigvecs = torch.linalg.eigh(XtX)
