@@ -301,12 +301,15 @@ class SMPLGlobalScaleEstimationStage(
 
             prev_losses.append(loss.detach())
 
+        global_scale = log_global_scale.detach().exp()
+
+        if not global_scale.isfinite():
+            raise ValueError("non-finite global scale after optimization")
+
         global_scale_annotations = GlobalScaleAnnotations(
             metadata=GlobalScaleAnnotationsMetadata(),
             annotations=[
-                GlobalScaleAnnotation(
-                    frame_idx=0, scale=log_global_scale.detach().exp().item()
-                )
+                GlobalScaleAnnotation(frame_idx=0, scale=global_scale.item())
             ],
         )
 
