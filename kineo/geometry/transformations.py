@@ -73,6 +73,9 @@ def compute_similarity_transform(
     # Compute the covariance between the point sets Xc, Yc.
     XY_cov = torch.bmm(Xc.transpose(2, 1), Yc)
 
+    if not torch.isfinite(XY_cov).all():
+        raise ValueError("non-finite entries in covariance matrix")
+
     # Decompose the covariance matrix.
     U, S, V = torch.svd(XY_cov)
 
@@ -181,6 +184,9 @@ def compute_weighted_similarity_transform(
     # Since weights are normalized, we can compute: sum_i w_i * Xc_i^T * Yc_i
     Xc_weighted = Xc * w  # (B, P, 3)
     XY_cov = torch.bmm(Xc_weighted.transpose(2, 1), Yc)  # (B, 3, 3)
+
+    if not torch.isfinite(XY_cov).all():
+        raise ValueError("non-finite entries in covariance matrix")
 
     # Decompose the covariance matrix.
     U, S, V = torch.svd(XY_cov)

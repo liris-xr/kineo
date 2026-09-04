@@ -365,10 +365,10 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
                 dist_coeffs_regularization = (dist_coeffs ** 2).mean()
                 total_loss += dist_coeffs_regularization_weight * dist_coeffs_regularization
 
-            total_loss.backward()
-
-            if torch.isnan(total_loss) or torch.isinf(total_loss):
+            if not torch.isfinite(total_loss):
                 raise ValueError("Loss is NaN or inf")
+
+            total_loss.backward()
 
             return total_loss
 

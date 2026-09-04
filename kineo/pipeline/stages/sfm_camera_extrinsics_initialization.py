@@ -407,6 +407,9 @@ def _refine_camera_extrinsics(
 
     Rts = torch.cat([origin_camera_extrinsics.Rt, other_cameras_extrinsics.Rt], dim=0)
 
+    if not torch.isfinite(Rts).all():
+        raise ValueError("non-finite camera extrinsics after refinement")
+
     # Update the graph
     for view_idx in range(n_views):
         graph.nodes[view_idx]["Rt"] = Rts[view_idx].detach()
@@ -934,6 +937,9 @@ def _compute_relative_scale_factors(
     pbar.close()
 
     lmb = torch.exp(log_lmb.detach())
+
+    if not torch.isfinite(lmb).all():
+        raise ValueError("non-finite relative scale factors")
 
     for pair_idx, (view_i, view_j) in enumerate(pairs):
         graph[view_i][view_j]["scale"] = lmb[pair_idx]
