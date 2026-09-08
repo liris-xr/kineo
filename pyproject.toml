@@ -205,6 +205,29 @@ args = [
 ]
 cmd = "python experiments/egohumans_eval.py {{ dataset_dir }} --config-file {{config_file}}"
 
+[tool.pixi.tasks.preview-aistpp]
+args = [
+    { "arg" = "sequence", "default" = "" },
+    { "arg" = "variant", "default" = "raw" },
+    { "arg" = "dataset_dir", "default" = "" },
+]
+cmd = 'python scripts/preview_aistpp_sequence.py --sequence "{{ sequence }}" --variant {{ variant }}{% if dataset_dir %} --dataset-dir "{{ dataset_dir }}"{% endif %}'
+
+[tool.pixi.tasks.preview-h36m]
+args = [
+    { "arg" = "sequence", "default" = "" },
+    { "arg" = "split", "default" = "val" },
+    { "arg" = "dataset_dir", "default" = "" },
+]
+cmd = 'python scripts/preview_h36m_sequence.py --sequence "{{ sequence }}" --split {{ split }}{% if dataset_dir %} --dataset-dir "{{ dataset_dir }}"{% endif %}'
+
+[tool.pixi.tasks.preview-egohumans]
+args = [
+    { "arg" = "sequence", "default" = "" },
+    { "arg" = "dataset_dir", "default" = "" },
+]
+cmd = 'python scripts/preview_egohumans_sequence.py --sequence "{{ sequence }}"{% if dataset_dir %} --dataset-dir "{{ dataset_dir }}"{% endif %}'
+
 [tool.pixi.tasks.aistpp-download]
 args = ["dataset_dir"]
 cmd = "python scripts/download_aistpp_dataset.py {{ dataset_dir }}"
