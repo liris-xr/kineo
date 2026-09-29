@@ -14,7 +14,8 @@ import torch
 from tqdm import tqdm
 import tempfile
 import os
-import torchaudio
+
+from kineo.io.audio_file import load_waveform
 
 def get_audio_stream_info(video_path: str, stream_idx: int = 0) -> Dict[str, Any]:
     ffprobe_cmd = [
@@ -83,8 +84,6 @@ def extract_audio(
         "-vn",
         "-acodec",
         "pcm_s16le",
-        "-vsync",
-        "0",
         output_path,
     ]
 
@@ -123,7 +122,7 @@ def extract_audio(
     if p.returncode != 0:
         raise Exception("ffmpeg command failed.")
 
-    audio, sample_rate = torchaudio.load(output_path)
+    audio, sample_rate = load_waveform(output_path)
 
     # Remove temporary file
     os.remove(output_path)
@@ -200,3 +199,42 @@ def get_video_duration(video_path: str) -> float:
 
     output = ffprobe_cmd_stdout.strip()
     return float(output)
+
+def decode_video_to_grayscale(video_path: str, width: int, height: int) -> torch.Tensor:
+    if not os.path.exists(video_path):
+        raise FileNotFoundError(f"Video file {video_path} not found")
+
+    decode_cmd = [
+        "ffmpeg",
+        "-hide_banner",
+        "-v",
+        "error",
+        "-i",
+        video_path,
+        "-vf",
+        f"scale={width}:{height}",
+        "-pix_fmt",
+        "gray",
+        "-f",
+        "rawvideo",
+        "pipe:1",
+    ]
+
+    result = subprocess.run(decode_cmd, capture_output=True)
+
+    if result.returncode != 0:
+        raise ValueError(
+            f"Failed to decode {video_path}: {result.stderr.decode().strip()}"
+        )
+
+    frame_size = width * height
+
+    if len(result.stdout) % frame_size != 0:
+        raise ValueError(
+            f"Decoding {video_path} yielded {len(result.stdout)} bytes, "
+            f"not a multiple of the {frame_size} B frame size."
+        )
+
+    return torch.frombuffer(bytearray(result.stdout), dtype=torch.uint8).reshape(
+        -1, frame_size
+    )

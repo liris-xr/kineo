@@ -135,7 +135,7 @@ def estimate_time_offsets(
     n_mels: int = 128,
     mel_scale: Literal["htk", "slaney"] = "htk",
     compute_device: torch.device = torch.device(
-        "cpu" if torch.cuda.is_available() else "cuda"
+        "cuda" if torch.cuda.is_available() else "cpu"
     ),
     shift_offsets: bool = False,
 ) -> torch.Tensor:
@@ -177,6 +177,61 @@ def estimate_time_offsets(
     return time_offsets
 
 
+def _to_mono_f64(waveform: torch.Tensor) -> torch.Tensor:
+    waveform = waveform.to(torch.float64)
+    if waveform.ndim > 1:
+        waveform = waveform.mean(dim=0) if waveform.shape[0] > 1 else waveform.squeeze(0)
+    return waveform
+
+
+def _mfcc_cross_correlate(ref: torch.Tensor, sub: torch.Tensor) -> torch.Tensor:
+    # Standardize each coefficient, or c0 dominates the peak
+    ref_c = ref - ref.mean(dim=1, keepdim=True)
+    sub_c = sub - sub.mean(dim=1, keepdim=True)
+    ref_n = ref_c / ref_c.std(dim=1, keepdim=True).clamp(min=1e-8)
+    sub_rev = sub_c.flip(dims=[1]) / sub_c.std(dim=1, keepdim=True).clamp(min=1e-8)
+
+    valid_len = ref.shape[1] + sub.shape[1] - 1
+    fft_size = 1
+    while fft_size < valid_len:
+        fft_size <<= 1
+
+    ref_f = torch.fft.rfft(ref_n, n=fft_size, dim=1)
+    sub_f = torch.fft.rfft(sub_rev, n=fft_size, dim=1)
+
+    corr_f = (ref_f * sub_f).sum(dim=0)
+    corr = torch.fft.irfft(corr_f, n=fft_size)[:valid_len]
+    return corr
+
+
+def _mfcc_in_chunks(
+    mfcc_fn: MFCC,
+    waveform: torch.Tensor,
+    hop_length: int,
+    n_fft: int,
+    chunk_frames: int = 30000,
+) -> torch.Tensor:
+    n_samples = waveform.shape[-1]
+    chunk = chunk_frames * hop_length
+    if n_samples <= chunk:
+        return mfcc_fn(waveform).squeeze(0)
+
+    # Pad in whole hops to stay on the frame grid
+    pad = -(-(n_fft // 2) // hop_length) * hop_length
+    pieces = []
+    for start in range(0, n_samples, chunk):
+        stop = min(start + chunk, n_samples)
+        lo, hi = max(0, start - pad), min(n_samples, stop + pad)
+        out = mfcc_fn(waveform[..., lo:hi]).squeeze(0)
+        skip = (start - lo) // hop_length
+        if stop == n_samples:
+            pieces.append(out[:, skip:])
+        else:
+            pieces.append(out[:, skip : skip + (stop - start) // hop_length])
+
+    return torch.cat(pieces, dim=1)[:, : n_samples // hop_length + 1]
+
+
 def _estimate_pairwise_time_offset(
     audio_waveform: torch.Tensor,
     audio_sample_rate: int,
@@ -189,26 +244,28 @@ def _estimate_pairwise_time_offset(
     n_mels: int = 128,
     mel_scale: Literal["htk", "slaney"] = "htk",
     compute_device: torch.device = torch.device(
-        "cpu" if torch.cuda.is_available() else "cuda"
+        "cuda" if torch.cuda.is_available() else "cpu"
     ),
 ) -> torch.Tensor:
     """
     Estimates the time offset between two audio waveforms using MFCC cross-correlation.
+
+    Returns the signed offset in seconds following the convention
+    ``time_offset = t_ref - t_target`` for the same physical event, so that
+    ``local_timestamps + time_offset`` maps a view onto the reference clock.
     """
-    min_sample_rate = min(audio_sample_rate, ref_sample_rate)
+    if audio_sample_rate != ref_sample_rate:
+        audio_waveform = resample(audio_waveform, audio_sample_rate, ref_sample_rate)
 
-    audio_waveform = resample(audio_waveform, audio_sample_rate, min_sample_rate)
-    ref_waveform = resample(ref_waveform, ref_sample_rate, min_sample_rate)
+    ref_mono = _to_mono_f64(ref_waveform).to(compute_device)
+    target_mono = _to_mono_f64(audio_waveform).to(compute_device)
 
-    audio_waveform = audio_waveform.to(compute_device)
-    ref_waveform = ref_waveform.to(compute_device)
-
-    hop_length = int(min_sample_rate * hop_duration)
-    win_length = int(min_sample_rate * win_duration)
+    hop_length = int(ref_sample_rate * hop_duration)
+    win_length = int(ref_sample_rate * win_duration)
 
     mfcc_fn = MFCC(
         n_mfcc=n_mfcc,
-        sample_rate=min_sample_rate,
+        sample_rate=ref_sample_rate,
         melkwargs={
             "n_fft": n_fft,
             "hop_length": hop_length,
@@ -218,19 +275,17 @@ def _estimate_pairwise_time_offset(
         },
     ).to(compute_device)
 
-    mfcc_ref = mfcc_fn(ref_waveform).mean(dim=0)
-    mfcc_target = mfcc_fn(audio_waveform).mean(dim=0)
+    mfcc_ref = _mfcc_in_chunks(
+        mfcc_fn, ref_mono.float().unsqueeze(0), hop_length, n_fft
+    )
+    mfcc_target = _mfcc_in_chunks(
+        mfcc_fn, target_mono.float().unsqueeze(0), hop_length, n_fft
+    )
 
-    padding_size = mfcc_ref.shape[1]
-    cross_correlation = torch.nn.functional.conv1d(
-        mfcc_target.unsqueeze(0),
-        mfcc_ref.unsqueeze(0),
-        padding=padding_size,
-        stride=1,
-    ).squeeze()
+    corr = _mfcc_cross_correlate(mfcc_ref, mfcc_target)
+    peak_idx = torch.argmax(corr)
 
-    max_corr_idx = torch.argmax(cross_correlation, dim=0)
-
-    hops_offset = max_corr_idx - padding_size
-    time_offset = hops_offset * hop_length / min_sample_rate
-    return time_offset
+    # Zero-lag is at index T_target - 1 (see _mfcc_cross_correlate docstring).
+    lag_hops = peak_idx - (mfcc_target.shape[1] - 1)
+    time_offset = lag_hops * hop_length / ref_sample_rate
+    return time_offset.cpu()
