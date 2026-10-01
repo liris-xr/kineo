@@ -26,6 +26,8 @@ dependencies = [
     "rerun-sdk",
     "cv2-enumerate-cameras",
     "smplx", "google-auth", "google-auth-oauthlib>=1.4.0,<2", "google-api-python-client",
+    "tensorrt-cu12==10.9.*",
+    "pynvvideocodec>=2.2",
 ]
 
 classifiers = [
@@ -154,6 +156,12 @@ _download_moge = { cmd = "test -f checkpoints/moge-2-vitl-normal.pt || (mkdir -p
     "checkpoints/moge-2-vitl-normal.pt",
 ], description = "Download MoGe model" }
 
+_download_yolox_person = { cmd = "test -f checkpoints/yolox_tiny_humanart_person.onnx || (mkdir -p checkpoints && hf download charlesjvt/rtmpose-l-h36m-384x288 yolox_tiny_humanart_person.onnx --repo-type model --local-dir checkpoints)", outputs = [
+    "checkpoints/yolox_tiny_humanart_person.onnx",
+], description = "Download the person-only YOLOX ONNX, exported without NMS so the batch axis is free" }
+_download_rtmpose_h36m = { cmd = "test -f checkpoints/rtmpose_h36m.onnx || (mkdir -p checkpoints && hf download charlesjvt/rtmpose-l-h36m-384x288 rtmpose_h36m.onnx --repo-type model --local-dir checkpoints)", outputs = [
+    "checkpoints/rtmpose_h36m.onnx",
+], description = "Download the h36m-finetuned RTMPose ONNX" }
 _download_yolox = { cmd = "python -c \"from kineo.pipeline.stages.rtmlib.tools.file import download_checkpoint; print(download_checkpoint('https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/yolox_tiny_8xb8-300e_humanart-6f3252f9.zip', dst_dir='checkpoints/', progress=True))\"", outputs = [
     "checkpoints/yolox_tiny_8xb8-300e_humanart-6f3252f9.onnx",
 ], description = "Prefetch YOLOX ONNX for rtmlib" }
@@ -164,6 +172,8 @@ download-checkpoints = { depends-on = [
     "_download_efficienttam_weights",
     "_download_moge",
     "_download_yolox",
+    "_download_rtmpose_h36m",
+    "_download_yolox_person",
     "_clean-smpl",
     "_download-smplx"
 ], description = "Download all checkpoints" }
