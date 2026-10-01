@@ -1,0 +1,27 @@
+output_root_dir: ${oc.env:OUTPUT_ROOT_DIR,./outputs}/aistpp_sync_mfcc_noPreroll_cafeteria_10dB
+pipeline:
+  seed: 19
+  stages:
+    mfcc_temporal_calibration:
+      _target_: kineo.pipeline.stages.mfcc_temporal_calibration.MFCCTemporalCalibrationStage
+      name: MFCC Temporal Calibration
+      order: 5
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.mfcc_temporal_calibration.TemporalCalibrationRuntimeConfig
+        ref_idx: 0
+        confidence_exclusion_duration: 0.1
+        drop_audio_before_gt_timeline_jitter_s: 1.0
+        noise_snr_db: 10.0
+        noise_source_dir: ${oc.env:DEMAND_DIR,./data/DEMAND}/PCAFETER
+        correlation_output_path_template: "${output_root_dir}/correlations/{sequence_name}/{view_id}.npz"
+    annotations_export:
+      _target_: kineo.pipeline.stages.annotations_export.AnnotationsExportStage
+      name: Annotations Export
+      order: 140
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.annotations_export.AnnotationsExportRuntimeConfig
+        annotations_keys:
+        - cameras_temporal
+        excluded_annotations_keys: []
+        not_found_error: true
+        output_path_template: "${output_root_dir}/annotations/{sequence_name}/{annotation_key}.pkl"
