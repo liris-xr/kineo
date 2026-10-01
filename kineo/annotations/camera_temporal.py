@@ -35,6 +35,8 @@ class CameraTemporalAnnotation:
     view_id: str
     frame_idx: int  # frame index in the video/image sequence (local time reference)
     time_offset: float  # time offset in seconds
+    # 1 - second-best / best correlation peak, in [0, 1]
+    confidence: float | None = None
 
     def __post_init__(self):
         self.check_validity()
@@ -44,12 +46,17 @@ class CameraTemporalAnnotation:
             raise ValueError(
                 f"Expected time_offset to be of type float, got {type(self.time_offset)}"
             )
+        if self.confidence is not None and not isinstance(self.confidence, float):
+            raise ValueError(
+                f"Expected confidence to be a float or None, got {type(self.confidence)}"
+            )
 
     def to_dict(self) -> dict:
         return {
             "view_id": self.view_id,
             "frame_idx": self.frame_idx,
             "time_offset": self.time_offset,
+            "confidence": self.confidence,
         }
 
     @staticmethod
