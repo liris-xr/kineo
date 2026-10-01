@@ -66,6 +66,16 @@ class SMPLGlobalScaleEstimationRuntimeConfig:
     use_lbfgs: bool = True
 
 
+def check_keypoints_format(expected: str | None, actual: str):
+    if expected is not None and actual != expected:
+        raise ValueError(
+            f"The joint regressor is for {expected} keypoints but the "
+            f"annotations are {actual}. Matching keypoint counts do not make "
+            f"two skeletons interchangeable, so the scale would be fitted to "
+            f"the wrong joints."
+        )
+
+
 class SMPLGlobalScaleEstimationStage(
     PipelineStage[SMPLGlobalScaleEstimationRuntimeConfig]
 ):
@@ -76,6 +86,7 @@ class SMPLGlobalScaleEstimationStage(
             smpl_model_path: str,
             joint_regressor_path: str,
             runtime_cfg: SMPLGlobalScaleEstimationRuntimeConfig,
+            expected_keypoints_format: str | None = None,
             dynamic_runtime_cfg: (
                     dict[str, SMPLGlobalScaleEstimationRuntimeConfig] | None
             ) = None,
@@ -86,6 +97,8 @@ class SMPLGlobalScaleEstimationStage(
             runtime_cfg=runtime_cfg,
             dynamic_runtime_cfg=dynamic_runtime_cfg,
         )
+        self.expected_keypoints_format = expected_keypoints_format
+
         self.smpl_layer = SMPLLayer(
             model_path=smpl_model_path, gender="neutral", num_betas=10
         )
@@ -148,6 +161,8 @@ class SMPLGlobalScaleEstimationStage(
         else:
             keypoints_indices = torch.arange(n_keypoints, device=device)
 
+        check_keypoints_format(self.expected_keypoints_format, kps_format_name)
+
         if len(self.smpl_joints_regressor) != len(keypoints_indices):
             raise ValueError(
                 f"The number of keypoints in the SMPL joints regressor "
@@ -155,7 +170,9 @@ class SMPLGlobalScaleEstimationStage(
                 f"of keypoints used from the annotations ({len(keypoints_indices)}). "
                 f"Either specify the keypoints_indices in config to match the "
                 f"ones from the joint regressor, or make sure your keypoints detector "
-                f"outputs the same format of keypoints as the SMPL joints regressor."
+                f"outputs the same format of keypoints as the SMPL joints regressor. "
+                f"Note that equal counts are not sufficient: declare "
+                f"expected_keypoints_format so a skeleton mismatch is caught too."
             )
 
         joints_connectivity = torch.as_tensor(
