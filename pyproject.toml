@@ -205,6 +205,14 @@ args = [
 ]
 cmd = "python experiments/egohumans_eval.py {{ dataset_dir }} --config-file {{config_file}}"
 
+[tool.pixi.tasks.demand-download]
+args = ["dataset_dir"]
+cmd = "python scripts/download_demand_dataset.py {{ dataset_dir }}"
+
+[tool.pixi.tasks.aistpp-sync-ablation-audio]
+args = ["dataset_dir", "demand_dir"]
+cmd = "python scripts/export_aistpp_sync_ablation_audio.py {{ dataset_dir }} {{ demand_dir }}"
+
 [tool.pixi.tasks.preview-aistpp]
 args = [
     { "arg" = "sequence", "default" = "" },
