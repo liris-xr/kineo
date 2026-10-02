@@ -199,6 +199,21 @@ args = [
 ]
 cmd = "python experiments/h36m_eval.py {{ dataset_dir }} --config-file {{config_file}}"
 
+[tool.pixi.tasks.h36m-online-benchmark]
+depends-on = ["download-checkpoints"]
+args = [
+    { "arg" = "dataset_dir" },
+    { "arg" = "config_file", "default" = "configs/experiments/online_vs_offline/h36m_online.yaml" },
+]
+cmd = "python experiments/h36m_online_eval.py {{ dataset_dir }} --config-file {{config_file}}"
+
+[tool.pixi.tasks.h36m-online-report]
+args = [
+    { "arg" = "benchmark_dir", "default" = "outputs/h36m_online" },
+    { "arg" = "arm", "default" = "h36m_trt_fp16" },
+]
+cmd = "python -m experiments.report_online_benchmark {{ benchmark_dir }} --arms {{ arm }}"
+
 [tool.pixi.tasks.egohumans-download]
 args = ["dataset_dir"]
 cmd = "python scripts/download_egohumans_dataset.py {{ dataset_dir }}"

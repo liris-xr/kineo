@@ -96,6 +96,39 @@ pixi run egohumans-benchmark <path-to-egohumans-dataset> [path-to-config.yaml]
 If no `path-to-config.yaml` is not given, uses `configs/experiments/benchmarks/*_benchmark_nlf_estRt_estK_estD.yaml` by default.
 All configurations used in the paper are available in the `configs` directory.
 
+### Online mode
+
+The online benchmark replays each H3.6M sequence as a stream: it calibrates on
+the first seconds only, never rewinds, and scores accuracy and latency over the
+same run. `OUTPUT_ROOT_DIR` decides where it lands.
+
+```sh
+export OUTPUT_ROOT_DIR=<path-to-results>
+
+pixi run h36m-online-benchmark <path-to-h36m-dataset> [path-to-config.yaml]
+pixi run h36m-online-report $OUTPUT_ROOT_DIR/h36m_online
+```
+
+If no `path-to-config.yaml` is given, uses
+`configs/experiments/online_vs_offline/h36m_online.yaml`. Its sibling
+`h36m_offline.yaml` is the same arm with the calibration allowed to read the
+whole sequence instead of the first 10 s, which is the one difference between
+online and offline mode; both reconstruct the same frames with the same models,
+so their metrics are directly comparable. Give each arm its own
+`OUTPUT_ROOT_DIR`.
+
+The report prints the camera and human metrics, the per-phase latency
+distribution and the throughput, and writes `metrics_summary.json`,
+`latency_summary.txt` and `environment.json` beside the run.
+
+Only the `h36m_trt_fp16` arm can be scored against H3.6M: the other arms run the
+stock estimator, which emits COCO wholebody. The calibration is solved with the
+backends pinned, so it reproduces exactly; the stream keeps the fast backends
+because it is the thing being timed.
+
+A frame covers every view at once, so `frames/s` is 3D poses per second and
+`view-frames/s` is that times the number of cameras.
+
 ## 👁️ Previewing a dataset
 
 Check a preprocessed sequence and its ground truth in [rerun](https://rerun.io):
