@@ -95,3 +95,74 @@ def triangulate_points(
     points3d, _ = convert_points_from_homogeneous(points3d_h)
     points3d = points3d.reshape((*batch_dims, N, 3))
     return points3d
+
+
+def triangulate_points_vectorized(
+    Ps: torch.Tensor,
+    points: torch.Tensor,
+    points_weights: torch.Tensor | None = None,
+    use_eigendecomposition: bool = False,
+) -> torch.Tensor:
+    """Same as `triangulate_points`, building all pair rows at once."""
+    check_shape(Ps, ["*", "C", "3", "4"])
+    C = Ps.shape[-3]
+    check_shape(points, ["*", C, "N", "2"])
+    N = points.shape[-2]
+
+    if points_weights is not None:
+        check_shape(points_weights, ["*", C, N])
+    else:
+        points_weights = torch.ones(
+            points.shape[:-1], dtype=points.dtype, device=points.device
+        )
+
+    pairs = torch.tensor(
+        list(itertools.combinations(range(C), 2)), device=points.device
+    )
+    first, second = pairs[:, 0], pairs[:, 1]
+    n_pairs = pairs.shape[0]
+
+    batch_dims = points.shape[:-3]
+
+    # (*, n_pairs, N, 2) and (*, n_pairs, 3, 4)
+    points1 = points.index_select(-3, first)
+    points2 = points.index_select(-3, second)
+    P1 = Ps.index_select(-3, first)
+    P2 = Ps.index_select(-3, second)
+    weights = torch.sqrt(
+        points_weights.index_select(-2, first)
+        * points_weights.index_select(-2, second)
+    ).unsqueeze(-1)
+
+    def rows(coords: torch.Tensor, P: torch.Tensor, axis: int) -> torch.Tensor:
+        return weights * (
+            coords[..., axis : axis + 1] * P[..., 2, :].unsqueeze(-2)
+            - P[..., axis, :].unsqueeze(-2)
+        )
+
+    X = torch.stack(
+        (
+            rows(points1, P1, 0),
+            rows(points1, P1, 1),
+            rows(points2, P2, 0),
+            rows(points2, P2, 1),
+        ),
+        dim=-2,
+    )
+
+    # (*, n_pairs, N, 4, 4) -> (*, N, n_pairs, 4, 4)
+    X = X.transpose(-4, -3).reshape(-1, n_pairs * 4, 4)
+
+    if not torch.isfinite(X).all():
+        raise ValueError("non-finite entries in triangulation system")
+
+    if use_eigendecomposition:
+        XtX = X.transpose(-2, -1) @ X
+        _, eigvecs = torch.linalg.eigh(XtX)
+        points3d_h = eigvecs[..., :, 0]
+    else:
+        _, _, V = torch.svd(X)
+        points3d_h = V[..., -1]
+
+    points3d, _ = convert_points_from_homogeneous(points3d_h)
+    return points3d.reshape((*batch_dims, N, 3))

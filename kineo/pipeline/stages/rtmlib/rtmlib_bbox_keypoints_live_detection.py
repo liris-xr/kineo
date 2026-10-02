@@ -10,6 +10,7 @@
 
 import torch
 import warnings
+from time import perf_counter
 
 from kineo.pipeline.pipeline import PipelineStage
 from kineo.datasets.keypoints_sequence_dataset import ViewInput
@@ -20,19 +21,28 @@ from kineo.annotations import (
     BBox2DAnnotation,
     Keypoints2DAnnotations,
     Keypoints2DAnnotation,
+    Keypoints3DAnnotations,
+    Keypoints3DAnnotation,
+    Keypoints3DAnnotationsMetadata,
     KeypointsFormat,
     Keypoints2DAnnotationsMetadata,
+)
+from kineo.annotations.frame_timing import FrameTiming, FrameTimingsAnnotations
+from kineo.pipeline.stages.rtmlib.keypoints_formats import (
+    NAMED_KEYPOINTS_FORMATS,
 )
 from kineo.pipeline.pipeline import Pipeline
 
 from dataclasses import dataclass
 
-from kineo.geometry.triangulation import triangulate_points
+from kineo.geometry.metrics import pairwise_visibility_score
+from kineo.geometry.triangulation import triangulate_points_vectorized
 from kineo.geometry.transformations import undistort_points
-from kineo.geometry.metrics import pairwise_reprojection_consensus_score
 import numpy as np
 
-from kineo.pipeline.stages.rtmlib.tools.object_detection.yolox import YOLOX
+from kineo.pipeline.stages.rtmlib.tools.object_detection.yolox_person import (
+    YOLOXPerson,
+)
 from kineo.pipeline.stages.rtmlib.tools.pose_estimation.rtmpose import RTMPose
 from kineo.pipeline.stages.rtmlib.skeleton.coco17 import coco17
 from kineo.pipeline.stages.rtmlib.skeleton.coco133 import coco133
@@ -75,10 +85,14 @@ class RtmlibBboxKeypointsLiveDetectionStage(
         runtime_cfg: RtmlibBboxKeypointsLiveDetectionRuntimeConfig,
         dynamic_runtime_cfg: dict[str, RtmlibBboxKeypointsLiveDetectionRuntimeConfig]
         | None = None,
-        bbox_model: str = "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/yolox_tiny_8xb8-300e_humanart-6f3252f9.zip",
+        bbox_model: str = "./checkpoints/yolox_tiny_humanart_person.onnx",
         bbox_model_input_shape_hw: tuple[int, int] = (416, 416),
         keypoints_model: str = "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-x_simcc-body7_pt-body7-halpe26_700e-384x288-7fb6e239_20230606.zip",
         keypoints_model_input_shape_hw: tuple[int, int] = (288, 384),
+        use_tensorrt: bool = False,
+        fp16: bool = False,
+        engine_cache_dir: str | None = None,
+        keypoints_format_name: str | None = None,
     ):
         super().__init__(
             name=name,
@@ -87,73 +101,54 @@ class RtmlibBboxKeypointsLiveDetectionStage(
             dynamic_runtime_cfg=dynamic_runtime_cfg,
         )
 
-        self.det_model = YOLOX(
+        self.det_model = YOLOXPerson(
             onnx_model=bbox_model,
             model_input_size=bbox_model_input_shape_hw,
+            score_thr=runtime_cfg.bbox_thr,
+            nms_thr=runtime_cfg.nms_iou_thr,
             device="cuda",
+            use_tensorrt=use_tensorrt,
+            fp16=fp16,
+            engine_cache_dir=engine_cache_dir,
+            strict_providers=True,
         )
         self.keypoints_model = RTMPose(
             onnx_model=keypoints_model,
             model_input_size=keypoints_model_input_shape_hw,
             device="cuda",
+            use_tensorrt=use_tensorrt,
+            fp16=fp16,
+            engine_cache_dir=engine_cache_dir,
+            strict_providers=True,
         )
 
         rr.init("live_rtmlib_bbox_keypoints_detection")
 
-        dummy_output, _ = self.keypoints_model(
-            np.random.randn(*keypoints_model_input_shape_hw, 3)
+        n_keypoints = self._warmup(bbox_model_input_shape_hw)
+
+        self.keypoints_format = resolve_keypoints_format(
+            keypoints_format_name, n_keypoints
         )
-
-        if dummy_output.ndim == 2:
-            dummy_output = dummy_output[None, ...]
-
-        n_keypoints = dummy_output.shape[1]
-        if n_keypoints == 17:
-            keypoints_format_name = "coco"
-            keypoint_info = coco17["keypoint_info"]
-            skeleton_info = coco17["skeleton_info"]
-        elif n_keypoints == 133:
-            keypoints_format_name = "coco-wholebody"
-            keypoint_info = coco133["keypoint_info"]
-            skeleton_info = coco133["skeleton_info"]
-        elif n_keypoints == 18:
-            keypoints_format_name = "openpose-wholebody"
-            keypoint_info = openpose18["keypoint_info"]
-            skeleton_info = openpose18["skeleton_info"]
-        elif n_keypoints == 134:
-            keypoints_format_name = "openpose-wholebody"
-            keypoint_info = openpose134["keypoint_info"]
-            skeleton_info = openpose134["skeleton_info"]
-        elif n_keypoints == 21:
-            keypoints_format_name = "hand21"
-            keypoint_info = hand21["keypoint_info"]
-            skeleton_info = hand21["skeleton_info"]
-        elif n_keypoints == 26:
-            keypoints_format_name = "halpe26"
-            keypoint_info = halpe26["keypoint_info"]
-            skeleton_info = halpe26["skeleton_info"]
-        else:
-            raise ValueError(f"Expected 17, 133, 18, 134, 21 or 26 keypoints, got {n_keypoints}")
-
-        keypoints_names = [keypoint_info[idx]["name"] for idx in range(n_keypoints)]
-        keypoints_connectivity = []
-
-        for link_idx in range(len(skeleton_info)):
-            bone1, bone2 = skeleton_info[link_idx]["link"]
-            bone1_idx = keypoints_names.index(bone1)
-            bone2_idx = keypoints_names.index(bone2)
-            keypoints_connectivity.append((bone1_idx, bone2_idx))
-
-        self.keypoints_format = KeypointsFormat(
-            name=keypoints_format_name,
-            n_keypoints=n_keypoints,
-            keypoints_names=keypoints_names,
-            keypoints_connectivity=keypoints_connectivity,
-        )
-
         self.keypoints_metadata = Keypoints2DAnnotationsMetadata(
             formats=[self.keypoints_format]
         )
+
+    def _warmup(self, bbox_model_input_shape_hw: tuple[int, int]) -> int:
+        frame = torch.zeros(
+            (3, *bbox_model_input_shape_hw), dtype=torch.uint8, device="cuda"
+        )
+        self.det_model.forward_gpu([frame])
+        box = torch.tensor(
+            [[0.0, 0.0, float(bbox_model_input_shape_hw[1]),
+              float(bbox_model_input_shape_hw[0])]],
+            dtype=torch.float32, device="cuda",
+        )
+        keypoints, _ = self.keypoints_model.forward_gpu_batch([frame], [box])[0]
+
+        if keypoints.ndim == 2:
+            keypoints = keypoints[None, ...]
+
+        return keypoints.shape[1]
 
     def forward(
         self,
@@ -171,7 +166,8 @@ class RtmlibBboxKeypointsLiveDetectionStage(
         skeleton_color = np.array([0, 255, 0, 255])
         world_points_score_threshold = 0.2
 
-        rr.spawn()
+        if runtime_cfg.show:
+            rr.spawn()
 
         camera_intrinsics: CameraIntrinsicsAnnotations = annotations["cameras_intrinsics"]
         camera_extrinsics: CameraExtrinsicsAnnotations = annotations["cameras_extrinsics"]
@@ -195,7 +191,7 @@ class RtmlibBboxKeypointsLiveDetectionStage(
         world_reconstructed_scene_annotations: WorldReconstructedSceneAnnotations = annotations.get(
             "world_reconstructed_scene", None)
 
-        if world_reconstructed_scene_annotations is not None:
+        if world_reconstructed_scene_annotations is not None and runtime_cfg.show:
             world_reconstructed_scene = world_reconstructed_scene_annotations.first_or_default()
             world_points_xyz = world_reconstructed_scene.points_xyz
             world_points_colors = world_reconstructed_scene.points_colors
@@ -209,7 +205,7 @@ class RtmlibBboxKeypointsLiveDetectionStage(
             rr.log("3d/world", rr.Points3D(positions=valid_world_points_xyz.cpu().numpy(),
                                            colors=valid_world_points_colors.cpu().numpy()))
 
-        self._infer_bboxes_and_keypoints(
+        keypoints_3d, frame_timings = self._infer_bboxes_and_keypoints(
             views=views,
             Ks=Ks,
             Rts=Rts,
@@ -231,6 +227,9 @@ class RtmlibBboxKeypointsLiveDetectionStage(
             device=device,
         )
 
+        annotations["keypoints_3d"] = keypoints_3d
+        annotations["frame_timings"] = frame_timings
+
     def _infer_bboxes_and_keypoints(
         self,
         views: list[ViewInput],
@@ -239,7 +238,7 @@ class RtmlibBboxKeypointsLiveDetectionStage(
         Ps: torch.Tensor,
         distortion_coefficients: list[torch.Tensor],
         distortion_models: list[str],
-        det_model: YOLOX,
+        det_model: YOLOXPerson,
         keypoints_model: RTMPose,
         det_category_id: int | None = None,
         bbox_thr: float = 0.3,
@@ -252,16 +251,14 @@ class RtmlibBboxKeypointsLiveDetectionStage(
         frame_step: int = 1,
         show: bool = False,
         device: torch.device = torch.device("cuda"),
-    ):
+    ) -> tuple[Keypoints3DAnnotations, FrameTimingsAnnotations]:
         """
-        Infer bounding boxes for all views.
+        Stream every view, triangulating each frame as it arrives.
         """
 
         keypoints_format = self.keypoints_format
         keypoints_format_name = keypoints_format.name
-        keypoints_metadata = self.keypoints_metadata
         n_keypoints = keypoints_format.n_keypoints
-        keypoints_names = keypoints_format.keypoints_names
         keypoints_connectivity = keypoints_format.keypoints_connectivity
 
         n_views = len(views)
@@ -270,20 +267,25 @@ class RtmlibBboxKeypointsLiveDetectionStage(
         view_id_to_idx = {view["view_id"]: view_idx for view_idx, view in enumerate(views)}
 
         frame_idx = 0
+        keypoints_3d_annotations: list[Keypoints3DAnnotation] = []
+        frame_timings: list[FrameTiming] = []
 
         while all(v.is_opened() for v in video_loaders):
-            rr.set_time("frame", sequence=frame_idx)
+            if show:
+                rr.set_time("frame", sequence=frame_idx)
+
+            frame_start_time = perf_counter()
 
             frames = []
 
             for view, video_loader in zip(views, video_loaders):
                 frame = video_loader.read_frame()
-                # (C, H, W) -> (H, W, C)
-                frame_bgr = frame.permute(1, 2, 0).flip(-1)
-                frames.append(frame_bgr)
+                frames.append(frame.flip(0))
 
-            frames = torch.stack(frames, dim=0)
             frames_indices = [frame_idx] * n_views
+
+            torch.cuda.synchronize()
+            read_time = perf_counter()
 
             batch_bboxes_annotations = detect_bboxes(
                 view_ids=view_ids,
@@ -297,6 +299,8 @@ class RtmlibBboxKeypointsLiveDetectionStage(
                 default_subject_id=default_subject_id,
             )
 
+            detection_time = perf_counter()
+
             batch_keypoints_annotations = detect_keypoints(
                 view_ids=view_ids,
                 frames_bgr=frames,
@@ -307,95 +311,238 @@ class RtmlibBboxKeypointsLiveDetectionStage(
                 default_subject_id=default_subject_id,
             )
 
-            # Triangulate keypoints and log to rerun
+            keypoints_time = perf_counter()
+            triangulation_seconds = 0.0
+
             for subject_id in batch_keypoints_annotations.subjects_ids:
-                subject_keypoints_annotations = batch_keypoints_annotations.filter_by_subject_id(
-                    subject_id
+                triangulation_start_time = perf_counter()
+
+                subject_keypoints_annotations = (
+                    batch_keypoints_annotations.filter_by_subject_id(subject_id)
                 )
 
-                view_kps_xy = torch.empty((n_views, n_keypoints, 2), dtype=torch.float32, device=device)
-                view_kps_xy_undistorted = torch.empty((n_views, n_keypoints, 2), dtype=torch.float32, device=device)
-                view_kps_scores = torch.empty((n_views, n_keypoints), dtype=torch.float32, device=device)
-
-                for a in subject_keypoints_annotations.annotations:
-                    view_idx = view_id_to_idx[a.view_id]
-
-                    xy = a.xy
-                    xy_undistorted = undistort_points(
-                        points=xy,
-                        K=Ks[view_idx],
-                        D=distortion_coefficients[view_idx],
-                        distortion_model=distortion_models[view_idx]
+                view_kps_xy, view_kps_xy_undistorted, view_kps_scores = (
+                    gather_view_keypoints(
+                        keypoints_annotations=subject_keypoints_annotations,
+                        view_id_to_idx=view_id_to_idx,
+                        Ks=Ks,
+                        distortion_coefficients=distortion_coefficients,
+                        distortion_models=distortion_models,
+                        n_views=n_views,
+                        n_keypoints=n_keypoints,
+                        device=device,
                     )
+                )
 
-                    view_kps_xy[view_idx] = xy
-                    view_kps_xy_undistorted[view_idx] = xy_undistorted
-                    view_kps_scores[view_idx] = a.scores
-
-                kps_xyz = triangulate_points(
+                # CUDA svd is slow past ~32 rows
+                kps_xyz = triangulate_points_vectorized(
                     Ps=Ps,
                     points=view_kps_xy_undistorted,
                     points_weights=view_kps_scores,
+                    use_eigendecomposition=True,
                 )
-                kps_scores = pairwise_reprojection_consensus_score(
-                    kps_3d=kps_xyz,
-                    kps_2d=view_kps_xy_undistorted,
-                    kps_2d_scores=view_kps_scores,
-                    Rts=Rts,
-                    Ks=Ks,
-                    Ds=torch.stack(distortion_coefficients, dim=0),
-                    distortion_model=distortion_models[0]
+                kps_scores = pairwise_visibility_score(view_kps_scores)
+
+                torch.cuda.synchronize()
+                triangulation_seconds += perf_counter() - triangulation_start_time
+
+                # xyz is NaN if no keypoint has two views
+                if not bool((kps_scores > 0).any()):
+                    continue
+
+                keypoints_3d_annotations.append(
+                    Keypoints3DAnnotation(
+                        frame_idx=frame_idx,
+                        subject_id=subject_id,
+                        xyz=kps_xyz,
+                        scores=kps_scores,
+                        format=keypoints_format_name,
+                    )
                 )
 
-                frames_bgr = []
+                if show:
+                    log_skeletons(
+                        view_ids=view_ids,
+                        view_kps_xy=view_kps_xy,
+                        view_kps_scores=view_kps_scores,
+                        kps_xyz=kps_xyz,
+                        kps_scores=kps_scores,
+                        keypoints_connectivity=keypoints_connectivity,
+                        kps2d_score_threshold=kps2d_score_threshold,
+                        kps3d_score_threshold=kps3d_score_threshold,
+                        skeleton_color=skeleton_color,
+                    )
 
-                for view_idx, view in enumerate(views):
-                    valid_kps_2d_mask = view_kps_scores[view_idx] > kps2d_score_threshold
-                    valid_kps_2d = view_kps_xy[view_idx][valid_kps_2d_mask]
-
-                    bones_2d = np.empty((0, 2, 2), dtype=np.float32)
-                    for bone_idx, (start_kp_idx, end_kp_idx) in enumerate(keypoints_connectivity):
-                        if not valid_kps_2d_mask[start_kp_idx] or not valid_kps_2d_mask[end_kp_idx]:
-                            continue
-                        kp1_pos = view_kps_xy[view_idx][start_kp_idx].cpu().numpy()
-                        kp2_pos = view_kps_xy[view_idx][end_kp_idx].cpu().numpy()
-                        bone_2d = np.stack([kp1_pos, kp2_pos], axis=0)
-                        bones_2d = np.concatenate((bones_2d, bone_2d[None, ...]), axis=0)
-
-                    # Draw the valid_kps_2d and bones2d on the frames
-                    frame_bgr = frames[view_idx].cpu().numpy()
-                    frames_bgr.append(frame_bgr)
-
-                    rr.log(f"2d/{view['view_id']}/skeleton/kps",
-                           rr.Points2D(positions=valid_kps_2d.cpu().numpy(), colors=skeleton_color))
-                    rr.log(f"2d/{view['view_id']}/skeleton/bones", rr.LineStrips2D(
-                        strips=bones_2d,
-                        colors=skeleton_color,
-                    ))
-
-                valid_kps_3d_mask = kps_scores > kps3d_score_threshold
-                valid_kps_3d = kps_xyz[valid_kps_3d_mask]
-                kps_3d = valid_kps_3d.cpu().numpy()
-
-                bones_3d = np.empty((0, 2, 3), dtype=np.float32)
-                for bone_idx, (start_kp_idx, end_kp_idx) in enumerate(keypoints_connectivity):
-                    if not valid_kps_3d_mask[start_kp_idx] or not valid_kps_3d_mask[end_kp_idx]:
-                        continue
-
-                    kp1_pos = kps_xyz[start_kp_idx].cpu().numpy()
-                    kp2_pos = kps_xyz[end_kp_idx].cpu().numpy()
-                    bone_3d = np.stack([kp1_pos, kp2_pos], axis=0)
-                    bones_3d = np.concatenate((bones_3d, bone_3d[None, ...]), axis=0)
-
-                rr.log(f"3d/skeleton/kps", rr.Points3D(positions=kps_3d, colors=skeleton_color, radii=0.01))
-                rr.log(f"3d/skeleton/bones", rr.LineStrips3D(strips=bones_3d, colors=skeleton_color, radii=0.005))
+            frame_timings.append(
+                FrameTiming(
+                    frame_idx=frame_idx,
+                    read_seconds=read_time - frame_start_time,
+                    detection_seconds=detection_time - read_time,
+                    keypoints_seconds=keypoints_time - detection_time,
+                    triangulation_seconds=triangulation_seconds,
+                    total_seconds=perf_counter() - frame_start_time,
+                )
+            )
 
             frame_idx += 1
+
+        return (
+            Keypoints3DAnnotations(
+                metadata=Keypoints3DAnnotationsMetadata(
+                    formats=[keypoints_format]
+                ),
+                annotations=keypoints_3d_annotations,
+            ),
+            FrameTimingsAnnotations(annotations=frame_timings),
+        )
+
+
+KEYPOINTS_FORMATS_BY_COUNT = {
+    17: ("coco", coco17),
+    18: ("openpose-wholebody", openpose18),
+    21: ("hand21", hand21),
+    26: ("halpe26", halpe26),
+    133: ("coco-wholebody", coco133),
+    134: ("openpose-wholebody", openpose134),
+}
+
+
+def resolve_keypoints_format(
+    keypoints_format_name: str | None, n_keypoints: int
+) -> KeypointsFormat:
+    if keypoints_format_name is not None:
+        if keypoints_format_name not in NAMED_KEYPOINTS_FORMATS:
+            raise ValueError(
+                f"Unknown keypoints format {keypoints_format_name}, "
+                f"expected one of {sorted(NAMED_KEYPOINTS_FORMATS)}"
+            )
+        named_format = NAMED_KEYPOINTS_FORMATS[keypoints_format_name]
+        if named_format.n_keypoints != n_keypoints:
+            raise ValueError(
+                f"{keypoints_format_name} holds "
+                f"{named_format.n_keypoints} keypoints but the model "
+                f"emits {n_keypoints}"
+            )
+        return named_format
+
+    if n_keypoints not in KEYPOINTS_FORMATS_BY_COUNT:
+        raise ValueError(
+            f"Expected one of "
+            f"{sorted(KEYPOINTS_FORMATS_BY_COUNT)} keypoints, got "
+            f"{n_keypoints}"
+        )
+
+    name, metainfo = KEYPOINTS_FORMATS_BY_COUNT[n_keypoints]
+    keypoints_names = [
+        metainfo["keypoint_info"][idx]["name"] for idx in range(n_keypoints)
+    ]
+
+    return KeypointsFormat(
+        name=name,
+        n_keypoints=n_keypoints,
+        keypoints_names=keypoints_names,
+        keypoints_connectivity=[
+            (keypoints_names.index(bone1), keypoints_names.index(bone2))
+            for bone1, bone2 in (
+                link["link"] for link in metainfo["skeleton_info"].values()
+            )
+        ],
+    )
+
+
+def gather_view_keypoints(
+    keypoints_annotations: Keypoints2DAnnotations,
+    view_id_to_idx: dict[str, int],
+    Ks: torch.Tensor,
+    distortion_coefficients: list[torch.Tensor],
+    distortion_models: list[str],
+    n_views: int,
+    n_keypoints: int,
+    device: torch.device,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    # Views without the subject get zero weight
+    view_kps_xy = torch.zeros(
+        (n_views, n_keypoints, 2), dtype=torch.float32, device=device
+    )
+    view_kps_xy_undistorted = torch.zeros(
+        (n_views, n_keypoints, 2), dtype=torch.float32, device=device
+    )
+    view_kps_scores = torch.zeros(
+        (n_views, n_keypoints), dtype=torch.float32, device=device
+    )
+
+    for annotation in keypoints_annotations.annotations:
+        view_idx = view_id_to_idx[annotation.view_id]
+
+        view_kps_xy[view_idx] = annotation.xy
+        view_kps_xy_undistorted[view_idx] = undistort_points(
+            points=annotation.xy,
+            K=Ks[view_idx],
+            D=distortion_coefficients[view_idx],
+            distortion_model=distortion_models[view_idx],
+        )
+        view_kps_scores[view_idx] = annotation.scores
+
+    return view_kps_xy, view_kps_xy_undistorted, view_kps_scores
+
+
+def skeleton_bones(
+    keypoints: torch.Tensor,
+    valid_mask: torch.Tensor,
+    keypoints_connectivity: list[tuple[int, int]],
+) -> np.ndarray:
+    bones = [
+        keypoints[[start_kp_idx, end_kp_idx]]
+        for start_kp_idx, end_kp_idx in keypoints_connectivity
+        if valid_mask[start_kp_idx] and valid_mask[end_kp_idx]
+    ]
+
+    if not bones:
+        return np.empty((0, 2, keypoints.shape[-1]), dtype=np.float32)
+
+    return torch.stack(bones).cpu().numpy()
+
+
+def log_skeletons(
+    view_ids: list[str],
+    view_kps_xy: torch.Tensor,
+    view_kps_scores: torch.Tensor,
+    kps_xyz: torch.Tensor,
+    kps_scores: torch.Tensor,
+    keypoints_connectivity: list[tuple[int, int]],
+    kps2d_score_threshold: float,
+    kps3d_score_threshold: float,
+    skeleton_color: np.ndarray,
+):
+    for view_idx, view_id in enumerate(view_ids):
+        valid_mask = view_kps_scores[view_idx] > kps2d_score_threshold
+        rr.log(f"2d/{view_id}/skeleton/kps", rr.Points2D(
+            positions=view_kps_xy[view_idx][valid_mask].cpu().numpy(),
+            colors=skeleton_color,
+        ))
+        rr.log(f"2d/{view_id}/skeleton/bones", rr.LineStrips2D(
+            strips=skeleton_bones(
+                view_kps_xy[view_idx], valid_mask, keypoints_connectivity
+            ),
+            colors=skeleton_color,
+        ))
+
+    valid_mask = kps_scores > kps3d_score_threshold
+    rr.log("3d/skeleton/kps", rr.Points3D(
+        positions=kps_xyz[valid_mask].cpu().numpy(),
+        colors=skeleton_color,
+        radii=0.01,
+    ))
+    rr.log("3d/skeleton/bones", rr.LineStrips3D(
+        strips=skeleton_bones(kps_xyz, valid_mask, keypoints_connectivity),
+        colors=skeleton_color,
+        radii=0.005,
+    ))
 
 
 def detect_keypoints(
     view_ids: list[str],
-    frames_bgr: torch.Tensor,
+    frames_bgr: list[torch.Tensor],
     batch_frames: list[int],
     bboxes_annotations: BBox2DAnnotations,
     keypoints_model: RTMPose,
@@ -404,16 +551,19 @@ def detect_keypoints(
     force_zero_scores_outside_bbox: bool = True,
     default_subject_id: str = "subject_0",
 ) -> Keypoints2DAnnotations:
-    frames_bgr = frames_bgr.cpu().numpy()
-
-    assert frames_bgr.ndim in [3, 4] and frames_bgr.shape[-1] == 3, (
-        f"Expected frames_bgr to have shape (B, H, W, C) or (H, W, C), got {frames_bgr.shape}"
+    # Views may differ in resolution
+    assert all(f.ndim == 3 and f.shape[0] == 3 for f in frames_bgr), (
+        f"Expected each frame to have shape (C, H, W), got "
+        f"{[tuple(f.shape) for f in frames_bgr]}"
     )
-    assert frames_bgr.dtype == np.uint8, "Expected frames_bgr to be uint8"
 
     actual_batch_size = len(batch_frames)
+    device = frames_bgr[0].device
 
-    bboxes: list[np.ndarray] = [np.zeros((0, 5)) for _ in range(actual_batch_size)]
+    bboxes: list[torch.Tensor] = [
+        torch.zeros((0, 4), dtype=torch.float32, device=device)
+        for _ in range(actual_batch_size)
+    ]
 
     for batch_idx in range(actual_batch_size):
         frame_idx = batch_frames[batch_idx]
@@ -425,35 +575,29 @@ def detect_keypoints(
         if len(frame_bboxes) == 0:
             continue
 
-        bboxes[batch_idx] = np.stack(
-            [
-                bbox.xyxy.cpu().numpy()
-                for bbox in frame_bboxes
-            ],
-            axis=0,
-        )
+        bboxes[batch_idx] = torch.stack(
+            [bbox.xyxy for bbox in frame_bboxes], dim=0
+        ).to(device=device, dtype=torch.float32)
 
-    keypoints_results: list[KeypointsDetectionResult] = []
-    for i in range(actual_batch_size):
-        frame_bgr = frames_bgr[i]
-        frame_bboxes = bboxes[i]
-        keypoints, scores = keypoints_model(frame_bgr, frame_bboxes)
-        keypoints_results.append(KeypointsDetectionResult(keypoints=keypoints, scores=scores))
+    keypoints_results = [
+        KeypointsDetectionResult(keypoints=keypoints, scores=scores)
+        for keypoints, scores in keypoints_model.forward_gpu_batch(
+            frames_bgr, bboxes
+        )
+    ]
 
     annotations: list[Keypoints2DAnnotation] = []
 
     for batch_idx in range(actual_batch_size):
-        frame_idx = batch_frames[batch_idx]
-        keypoints_result = keypoints_results[batch_idx]
-
-        keypoints_annotations = _create_keypoints_annotations(
-            keypoints_result=keypoints_result,
-            view_id=view_ids[batch_idx],
-            frame_idx=frame_idx,
-            keypoints_format_name=keypoints_metadata.formats[0].name,
-            default_subject_id=default_subject_id,
+        annotations.extend(
+            _create_keypoints_annotations(
+                keypoints_result=keypoints_results[batch_idx],
+                view_id=view_ids[batch_idx],
+                frame_idx=batch_frames[batch_idx],
+                keypoints_format_name=keypoints_metadata.formats[0].name,
+                default_subject_id=default_subject_id,
+            )
         )
-        annotations.extend(keypoints_annotations)
 
     return Keypoints2DAnnotations(
         metadata=keypoints_metadata,
@@ -463,33 +607,27 @@ def detect_keypoints(
 
 def detect_bboxes(
     view_ids: list[str],
-    frames_bgr: torch.Tensor,
+    frames_bgr: list[torch.Tensor],
     batch_frames: list[int],
-    det_model: YOLOX,
+    det_model: YOLOXPerson,
     bbox_thr: float = 0.3,
     nms_iou_thr: float = 0.65,
     det_category_id: int | None = None,
     best_bbox_only: bool = True,
     default_subject_id: str = "subject_0",
 ) -> BBox2DAnnotations:
-    frames_bgr = frames_bgr.cpu().numpy()
-
-    assert frames_bgr.ndim in [3, 4] and frames_bgr.shape[-1] == 3, (
-        f"Expected frames_bgr to have shape (B, H, W, C) or (H, W, C), got {frames_bgr.shape}"
+    # Views may differ in resolution
+    assert all(f.ndim == 3 and f.shape[0] == 3 for f in frames_bgr), (
+        f"Expected each frame to have shape (C, H, W), got "
+        f"{[tuple(f.shape) for f in frames_bgr]}"
     )
-    assert frames_bgr.dtype == np.uint8, "Expected frames_bgr to be uint8"
 
     actual_batch_size = len(batch_frames)
 
-    if frames_bgr.ndim == 3:
-        frames_bgr = frames_bgr[None, ...]
-    batch_size = frames_bgr.shape[0]
-
-    det_data_samples: list[BboxDetectionResult] = []
-
-    for frame_bgr in frames_bgr:
-        bboxes, scores = det_model(frame_bgr)
-        det_data_samples.append(BboxDetectionResult(bboxes=bboxes, scores=scores))
+    det_data_samples = [
+        BboxDetectionResult(bboxes=bboxes, scores=scores)
+        for bboxes, scores in det_model.forward_gpu(frames_bgr)
+    ]
 
     # Keep only one bbox per frame based on the score
     if best_bbox_only:
@@ -500,18 +638,15 @@ def detect_bboxes(
 
     annotations: list[BBox2DAnnotation] = []
 
-    # Convert the DetDataSample to BBox2DAnnotation
     for batch_idx in range(actual_batch_size):
-        det_data_sample = det_data_samples[batch_idx]
-        frame_idx = batch_frames[batch_idx]
-
-        bboxes_annotations = _create_bboxes_annotations(
-            det_data_sample=det_data_sample,
-            view_id=view_ids[batch_idx],
-            frame_idx=frame_idx,
-            default_subject_id=default_subject_id,
+        annotations.extend(
+            _create_bboxes_annotations(
+                det_data_sample=det_data_samples[batch_idx],
+                view_id=view_ids[batch_idx],
+                frame_idx=batch_frames[batch_idx],
+                default_subject_id=default_subject_id,
+            )
         )
-        annotations.extend(bboxes_annotations)
 
     return BBox2DAnnotations(
         metadata=BBox2DAnnotationsMetadata(),
@@ -522,38 +657,41 @@ def keep_best_bbox(det_data_sample: BboxDetectionResult) -> BboxDetectionResult:
     if len(det_data_sample.bboxes) == 0:
         return det_data_sample
 
-    best_idx = np.argmax(det_data_sample.scores)
+    best_idx = torch.argmax(det_data_sample.scores)
     return BboxDetectionResult(bboxes=det_data_sample.bboxes[best_idx][None, ...], scores=det_data_sample.scores[best_idx][None, ...])
 
 
 def _create_bboxes_annotations(
-    det_data_sample: tuple[np.ndarray, np.ndarray],
+    det_data_sample: BboxDetectionResult,
     view_id: str,
     frame_idx: int,
     default_subject_id: str,
 ) -> list[BBox2DAnnotation]:
     annotations = []
-    n_instances = len(det_data_sample[0])
+    n_instances = len(det_data_sample.bboxes)
 
     if n_instances > 1:
         warnings.warn(
-            "MMDetBboxDetectionStage only supports one bbox per frame for now (no tracker implemented). The best bbox will be used."
+            "Only one bbox per view is supported for now (no tracker "
+            "implemented). The best bbox will be used."
         )
         det_data_sample = keep_best_bbox(det_data_sample)
         n_instances = 1
 
     for instance_idx in range(n_instances):
-        bbox_xyxy = det_data_sample.bboxes[instance_idx]
-        score = det_data_sample.scores[instance_idx]
-        bbox_annotation = BBox2DAnnotation(
-            view_id=view_id,
-            frame_idx=frame_idx,
-            subject_id=default_subject_id,
-            category_id=0,
-            xyxy=torch.from_numpy(bbox_xyxy.reshape(4)).to(torch.float32),
-            score=score.item(),
+        annotations.append(
+            BBox2DAnnotation(
+                view_id=view_id,
+                frame_idx=frame_idx,
+                subject_id=default_subject_id,
+                category_id=0,
+                xyxy=det_data_sample.bboxes[instance_idx]
+                .reshape(4)
+                .to(torch.float32)
+                .cpu(),
+                score=det_data_sample.scores[instance_idx].item(),
+            )
         )
-        annotations.append(bbox_annotation)
     return annotations
 
 
@@ -566,24 +704,22 @@ def _create_keypoints_annotations(
 ) -> list[Keypoints2DAnnotation]:
     """Create keypoints annotations from inference results."""
     annotations = []
-    n_instances = len(keypoints_result.keypoints)
 
-    for instance_idx in range(n_instances):
-        keypoints_xy = keypoints_result.keypoints[instance_idx]
-        keypoints_scores = keypoints_result.scores[instance_idx]
-
-        kps_xy = torch.from_numpy(keypoints_xy).to(torch.float32)
-        scores = torch.from_numpy(keypoints_scores).to(torch.float32)
-
-        keypoint_annotation = Keypoints2DAnnotation(
-            view_id=view_id,
-            frame_idx=frame_idx,
-            subject_id=default_subject_id,
-            xy=kps_xy.cpu(),
-            scores=scores.cpu(),
-            format=keypoints_format_name,
+    for instance_idx in range(len(keypoints_result.keypoints)):
+        annotations.append(
+            Keypoints2DAnnotation(
+                view_id=view_id,
+                frame_idx=frame_idx,
+                subject_id=default_subject_id,
+                xy=keypoints_result.keypoints[instance_idx]
+                .to(torch.float32)
+                .cpu(),
+                scores=keypoints_result.scores[instance_idx]
+                .to(torch.float32)
+                .cpu(),
+                format=keypoints_format_name,
+            )
         )
-        annotations.append(keypoint_annotation)
 
     return annotations
 

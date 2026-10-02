@@ -28,6 +28,9 @@ from kineo.annotations import (
 )
 from kineo.pipeline.pipeline import Pipeline
 from kineo.pipeline import per_view_cache
+from kineo.pipeline.stages.rtmlib.keypoints_formats import (
+    NAMED_KEYPOINTS_FORMATS,
+)
 
 from dataclasses import dataclass
 
@@ -85,6 +88,7 @@ class RtmlibBboxKeypointsDetectionStage(
         bbox_model_input_shape_hw: tuple[int, int] = (416, 416),
         keypoints_model: str = "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-x_simcc-body7_pt-body7-halpe26_700e-384x288-7fb6e239_20230606.zip",
         keypoints_model_input_shape_hw: tuple[int, int] = (288, 384),
+        keypoints_format_name: str | None = None,
     ):
         super().__init__(
             name=name,
@@ -112,6 +116,26 @@ class RtmlibBboxKeypointsDetectionStage(
             dummy_output = dummy_output[None, ...]
 
         n_keypoints = dummy_output.shape[1]
+
+        if keypoints_format_name is not None:
+            if keypoints_format_name not in NAMED_KEYPOINTS_FORMATS:
+                raise ValueError(
+                    f"Unknown keypoints format {keypoints_format_name}, "
+                    f"expected one of {sorted(NAMED_KEYPOINTS_FORMATS)}"
+                )
+            named_format = NAMED_KEYPOINTS_FORMATS[keypoints_format_name]
+            if named_format.n_keypoints != n_keypoints:
+                raise ValueError(
+                    f"{keypoints_format_name} holds "
+                    f"{named_format.n_keypoints} keypoints but the model "
+                    f"emits {n_keypoints}"
+                )
+            self.keypoints_format = named_format
+            self.keypoints_metadata = Keypoints2DAnnotationsMetadata(
+                formats=[self.keypoints_format]
+            )
+            return
+
         if n_keypoints == 17:
             keypoints_format_name = "coco"
             keypoint_info = coco17["keypoint_info"]
