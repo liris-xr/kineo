@@ -1,2 +1,13 @@
+# Normalize text files to LF in the repo and in the working copy,
+# regardless of each machine's core.autocrlf setting
+* text=auto eol=lf
+
+# Binary assets
+*.pt binary
+*.npy binary
+*.png binary
+*.gif binary
+*.mp4 binary
+
 # SCM syntax highlighting & preventing 3-way merges
 pixi.lock merge=binary linguist-language=YAML linguist-generated=true
