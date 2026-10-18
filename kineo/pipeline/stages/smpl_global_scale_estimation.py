@@ -64,6 +64,10 @@ class SMPLGlobalScaleEstimationRuntimeConfig:
     tolerance_grad: float = 1e-05
     tolerance_change: float = 1e-09
     use_lbfgs: bool = True
+    optimize_betas: bool = True
+    # Uses GT bone lengths, evaluation only
+    oracle_betas_from_gt: bool = False
+    oracle_betas_prior_loss_weight: float = 1e-5
 
 
 def check_keypoints_format(expected: str | None, actual: str):
@@ -195,40 +199,39 @@ class SMPLGlobalScaleEstimationStage(
 
         joints_connectivity = joints_connectivity[joints_connectivity_mask]
 
-        subjects_joints = torch.zeros(
-            (n_frames, n_subjects, n_keypoints, 3), device=device
-        )
-        subjects_joints_scores = torch.zeros(
-            (n_frames, n_subjects, n_keypoints), device=device
-        )
-
         subject_id_to_idx = {subject_id: i for i, subject_id in enumerate(subjects_ids)}
 
-        for ann in keypoints_3d:
-            subject_idx = subject_id_to_idx[ann.subject_id]
-            subjects_joints[ann.frame_idx, subject_idx] = ann.xyz
-            subjects_joints_scores[ann.frame_idx, subject_idx] = ann.scores
-
         # Bones defined using the keypoints in arbitrary scale
-        bone_lengths = _compute_bone_lengths(subjects_joints, joints_connectivity)
-        bone_scores = _compute_bone_scores(subjects_joints_scores, joints_connectivity)
-        bone_lengths = torch.nan_to_num(bone_lengths, 0)
-        bone_scores = torch.nan_to_num(bone_scores, 0)
-
-        # Compute the median over the frames (dim=0)
-        bone_lengths = weighted_median(
-            values=bone_lengths,
-            weights=bone_scores,
-            dim=0,
-        )[0].reshape(-1)
-        bone_scores = torch.mean(bone_scores, dim=0).reshape(-1)
+        bone_lengths, bone_scores = _compute_median_bone_lengths(
+            keypoints_3d,
+            subject_id_to_idx,
+            n_frames,
+            n_keypoints,
+            joints_connectivity,
+            device,
+        )
         best_bone_idx = torch.argmax(bone_scores)
+
+        if runtime_cfg.oracle_betas_from_gt:
+            betas_init = self._fit_oracle_betas(
+                gt_annotations,
+                kps_format_name,
+                subject_id_to_idx,
+                n_keypoints,
+                joints_connectivity,
+                runtime_cfg,
+                device,
+            )
+        else:
+            betas_init = torch.zeros(
+                (n_subjects, self.smpl_layer.num_betas), device=device
+            )
 
         # SMPL joints in metric space
         smpl_joints = _compute_smpl_joints(
             self.smpl_layer,
             self.smpl_joints_regressor,
-            torch.zeros((n_subjects, self.smpl_layer.num_betas), device=device),
+            betas_init,
         )
         smpl_bone_lengths = _compute_bone_lengths(smpl_joints, joints_connectivity).reshape(-1)
 
@@ -249,11 +252,13 @@ class SMPLGlobalScaleEstimationStage(
             requires_grad=True,
         )
 
-        betas = torch.zeros(
-            (n_subjects, self.smpl_layer.num_betas),
-            device=device,
-            requires_grad=True,
+        optimize_betas = (
+            runtime_cfg.optimize_betas and not runtime_cfg.oracle_betas_from_gt
         )
+        betas = betas_init.clone().requires_grad_(optimize_betas)
+        optimized_params = [log_global_scale]
+        if optimize_betas:
+            optimized_params.append(betas)
 
         def closure():
             optimizer.zero_grad()
@@ -292,10 +297,10 @@ class SMPLGlobalScaleEstimationStage(
 
         if runtime_cfg.use_lbfgs:
             optimizer = torch.optim.LBFGS(
-                [log_global_scale, betas], lr=1, line_search_fn="strong_wolfe"
+                optimized_params, lr=1, line_search_fn="strong_wolfe"
             )
         else:
-            optimizer = torch.optim.AdamW([log_global_scale, betas], lr=1e-3)
+            optimizer = torch.optim.AdamW(optimized_params, lr=1e-3)
 
         n_max_iters = runtime_cfg.n_iters
         pbar = tqdm(range(n_max_iters), desc="Optimizing global scale", leave=False)
@@ -334,6 +339,155 @@ class SMPLGlobalScaleEstimationStage(
 
         self.smpl_layer = self.smpl_layer.cpu()
         self.smpl_joints_regressor = self.smpl_joints_regressor.cpu()
+
+    def _fit_oracle_betas(
+            self,
+            gt_annotations: dict[str, Annotations],
+            kps_format_name: str,
+            subject_id_to_idx: dict[str, int],
+            n_keypoints: int,
+            joints_connectivity: torch.Tensor,
+            runtime_cfg: SMPLGlobalScaleEstimationRuntimeConfig,
+            device: torch.device,
+    ) -> torch.Tensor:
+        gt_keypoints_3d: Keypoints3DAnnotations | None = gt_annotations.get(
+            "keypoints_3d"
+        )
+
+        if gt_keypoints_3d is None:
+            raise ValueError("Oracle betas require ground-truth 3D keypoints")
+
+        gt_kps_format_name = gt_keypoints_3d.first_or_default().format
+
+        if gt_kps_format_name != kps_format_name:
+            raise ValueError(
+                f"Oracle betas require ground-truth keypoints in the format of the "
+                f"estimated ones ({kps_format_name}), got {gt_kps_format_name}"
+            )
+
+        missing_subjects = set(subject_id_to_idx) - set(gt_keypoints_3d.subjects_ids)
+
+        if missing_subjects:
+            raise ValueError(
+                f"No ground-truth keypoints for subjects {sorted(missing_subjects)}"
+            )
+
+        gt_keypoints_3d = Keypoints3DAnnotations(
+            metadata=gt_keypoints_3d.metadata,
+            annotations=[
+                ann for ann in gt_keypoints_3d if ann.subject_id in subject_id_to_idx
+            ],
+        )
+
+        gt_bone_lengths, gt_bone_scores = _compute_median_bone_lengths(
+            gt_keypoints_3d,
+            subject_id_to_idx,
+            max(ann.frame_idx for ann in gt_keypoints_3d) + 1,
+            n_keypoints,
+            joints_connectivity,
+            device,
+            ignore_non_finite=True,
+        )
+        valid_bones_mask = gt_bone_scores > 0
+
+        betas = torch.zeros(
+            (len(subject_id_to_idx), self.smpl_layer.num_betas),
+            device=device,
+            requires_grad=True,
+        )
+
+        def closure():
+            optimizer.zero_grad()
+
+            smpl_joints = _compute_smpl_joints(
+                self.smpl_layer, self.smpl_joints_regressor, betas
+            )
+            smpl_bone_lengths = _compute_bone_lengths(
+                smpl_joints, joints_connectivity
+            ).reshape(-1)
+
+            bone_lengths_loss = torch.nn.functional.huber_loss(
+                input=smpl_bone_lengths[valid_bones_mask],
+                target=gt_bone_lengths[valid_bones_mask],
+                delta=runtime_cfg.bones_lengths_huber_loss_delta,
+                reduction="none",
+            )
+            bone_lengths_loss = weighted_mean(
+                values=bone_lengths_loss, weights=gt_bone_scores[valid_bones_mask]
+            )
+
+            betas_l2_loss = (betas ** 2).sum(dim=-1).mean()
+
+            loss = (
+                    bone_lengths_loss
+                    + runtime_cfg.oracle_betas_prior_loss_weight * betas_l2_loss
+            )
+            loss.backward()
+            return loss
+
+        optimizer = torch.optim.LBFGS([betas], lr=1, line_search_fn="strong_wolfe")
+
+        prev_losses = []
+
+        for _ in tqdm(range(runtime_cfg.n_iters), desc="Fitting oracle betas", leave=False):
+            loss = optimizer.step(closure)
+
+            if optimizer_should_stop(
+                    optimizer,
+                    loss,
+                    prev_losses,
+                    patience=5,
+                    tolerance_grad=runtime_cfg.tolerance_grad,
+                    tolerance_change=runtime_cfg.tolerance_change,
+            ):
+                break
+
+            prev_losses.append(loss.detach())
+
+        return betas.detach()
+
+
+def _compute_median_bone_lengths(
+        keypoints_3d: Keypoints3DAnnotations,
+        subject_id_to_idx: dict[str, int],
+        n_frames: int,
+        n_keypoints: int,
+        joints_connectivity: torch.Tensor,
+        device: torch.device,
+        ignore_non_finite: bool = False,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    n_subjects = len(subject_id_to_idx)
+
+    subjects_joints = torch.zeros(
+        (n_frames, n_subjects, n_keypoints, 3), device=device
+    )
+    subjects_joints_scores = torch.zeros(
+        (n_frames, n_subjects, n_keypoints), device=device
+    )
+
+    for ann in keypoints_3d:
+        subject_idx = subject_id_to_idx[ann.subject_id]
+        subjects_joints[ann.frame_idx, subject_idx] = ann.xyz
+        subjects_joints_scores[ann.frame_idx, subject_idx] = ann.scores
+
+    if ignore_non_finite:
+        # Missing joints would count as zero-length bones
+        subjects_joints_scores[~subjects_joints.isfinite().all(dim=-1)] = 0
+
+    bone_lengths = _compute_bone_lengths(subjects_joints, joints_connectivity)
+    bone_scores = _compute_bone_scores(subjects_joints_scores, joints_connectivity)
+    bone_lengths = torch.nan_to_num(bone_lengths, 0)
+    bone_scores = torch.nan_to_num(bone_scores, 0)
+
+    # Compute the median over the frames (dim=0)
+    bone_lengths = weighted_median(
+        values=bone_lengths,
+        weights=bone_scores,
+        dim=0,
+    )[0].reshape(-1)
+    bone_scores = torch.mean(bone_scores, dim=0).reshape(-1)
+
+    return bone_lengths, bone_scores
 
 
 def _compute_bone_lengths(

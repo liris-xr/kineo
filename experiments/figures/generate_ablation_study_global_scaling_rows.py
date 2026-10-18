@@ -19,6 +19,9 @@ def generate_h36m_ablation_study_scaling_method_rows(h36m_dataset_dir: str, kine
     kineo_h36m_scaling_method_smpl_annotations_path = os.path.join(
         kineo_eval_data_dir, "h36m_global_scaling_smpl", "annotations"
     )
+    kineo_h36m_scaling_method_smpl_oracle_shape_annotations_path = os.path.join(
+        kineo_eval_data_dir, "h36m_global_scaling_smpl_oracle_shape", "annotations"
+    )
 
     kineo_h36m_results = {
         "MoGe": compute_h36m_stats(
@@ -26,6 +29,9 @@ def generate_h36m_ablation_study_scaling_method_rows(h36m_dataset_dir: str, kine
         ),
         "SMPL": compute_h36m_stats(
             h36m_dataset_dir, kineo_h36m_scaling_method_smpl_annotations_path
+        ),
+        "SMPLOracleShape": compute_h36m_stats(
+            h36m_dataset_dir, kineo_h36m_scaling_method_smpl_oracle_shape_annotations_path
         ),
     }
 
@@ -70,6 +76,9 @@ def generate_egohumans_ablation_study_scaling_method_rows(egohumans_dataset_dir:
     kineo_egohumans_scaling_method_smpl_annotations_path = os.path.join(
         kineo_eval_data_dir, "egohumans_global_scaling_smpl", "annotations"
     )
+    kineo_egohumans_scaling_method_smpl_oracle_shape_annotations_path = os.path.join(
+        kineo_eval_data_dir, "egohumans_global_scaling_smpl_oracle_shape", "annotations"
+    )
 
     kineo_egohumans_results = {
         "MoGe": compute_egohumans_stats(
@@ -77,6 +86,9 @@ def generate_egohumans_ablation_study_scaling_method_rows(egohumans_dataset_dir:
         ),
         "SMPL": compute_egohumans_stats(
             egohumans_dataset_dir, kineo_egohumans_scaling_method_smpl_annotations_path
+        ),
+        "SMPLOracleShape": compute_egohumans_stats(
+            egohumans_dataset_dir, kineo_egohumans_scaling_method_smpl_oracle_shape_annotations_path
         ),
     }
 
