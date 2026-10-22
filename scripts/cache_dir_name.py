@@ -169,6 +169,16 @@ def cache_signature(cfg: DictConfig) -> list[dict]:
                 entry[key] = str(value)
         signature.append(entry)
 
+    occlusion = cfg.get("occlusion")
+    if signature and occlusion is not None:
+        signature.append(
+            {
+                "stage": "occ",
+                "n_occluded_views": str(occlusion.n_occluded_views),
+                "seed": str(occlusion.seed),
+            }
+        )
+
     return sorted(signature, key=lambda entry: entry["stage"])
 
 
