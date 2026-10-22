@@ -234,6 +234,10 @@ cmd = "python experiments/egohumans_eval.py {{ dataset_dir }} --config-file {{co
 args = ["dataset_dir"]
 cmd = "python scripts/download_demand_dataset.py {{ dataset_dir }}"
 
+[tool.pixi.tasks.pascal-voc-download]
+args = ["dataset_dir"]
+cmd = "python scripts/download_pascal_voc_dataset.py {{ dataset_dir }}"
+
 [tool.pixi.tasks.aistpp-sync-ablation-audio]
 args = ["dataset_dir", "demand_dir"]
 cmd = "python scripts/export_aistpp_sync_ablation_audio.py {{ dataset_dir }} {{ demand_dir }}"
