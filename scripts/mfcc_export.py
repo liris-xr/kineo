@@ -86,8 +86,12 @@ def compute_mfcc(
 
 
 if __name__ == "__main__":
-    # Video paths
-    video_path1 = "D:/Charles_JAVERLIAT/Captations Guedelon/raw_videos/09_09_2025_luc/gopro1_linear_carriere1.MP4"
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("video_path")
+    args = parser.parse_args()
+    video_path1 = args.video_path
     output_path_mfcc = "../outputs/gopro1_mfcc.png"
     output_path_stft = "../outputs/gopro1_stft.png"
 

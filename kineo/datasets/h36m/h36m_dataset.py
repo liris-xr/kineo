@@ -109,8 +109,14 @@ class H36MSequenceDataset(KeypointsSequenceDataset):
 
 
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("dataset_filepath", help="h36m_protocol1_sequences.json")
+    args = parser.parse_args()
+
     dataset = H36MSequenceDataset(
-        dataset_filepath="/mnt/hdd_storage/Charles_JAVERLIAT/Datasets/H3.6M/raw/h36m_protocol1_sequences.json",
+        dataset_filepath=args.dataset_filepath,
         split="val",
         device=torch.device("cuda"),
     )

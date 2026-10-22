@@ -527,9 +527,15 @@ def clamp(x: float, min_val: float, max_val: float) -> float:
 
 
 if __name__ == "__main__":
+    import argparse
+
     from sam2.build_sam import build_sam2_generic_video_predictor
     import matplotlib
     matplotlib.use("TkAgg")
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("video_path")
+    args = parser.parse_args()
 
     sam2_video_predictor = build_sam2_generic_video_predictor(
         "configs/sam2.1/sam2.1_hiera_s.yaml",
@@ -537,7 +543,7 @@ if __name__ == "__main__":
         device="cuda",
     )
 
-    video_path = "E:/Datasets/Guedelon/Carriere Luc/gopro1.mp4"
+    video_path = args.video_path
     video_reader = cv2.VideoCapture(video_path)
     video_width = int(video_reader.get(cv2.CAP_PROP_FRAME_WIDTH))
     video_height = int(video_reader.get(cv2.CAP_PROP_FRAME_HEIGHT))

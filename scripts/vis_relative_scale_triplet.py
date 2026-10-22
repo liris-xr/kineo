@@ -1,3 +1,4 @@
+import argparse
 import pickle
 import numpy as np
 import rerun as rr
@@ -5,7 +6,9 @@ import os
 
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-data_dir = "D:/Charles_JAVERLIAT/Technique/kineo_lirisxr/outputs/infer_dwpose_single_person_pairwise_calib/offline_demo/annotations/walking"
+parser = argparse.ArgumentParser()
+parser.add_argument("data_dir", help="annotations directory of an offline run")
+data_dir = parser.parse_args().data_dir
 n_cams = 4
 
 # Triplet: three cameras forming a directed loop  0 → 1 → 2 → 0
