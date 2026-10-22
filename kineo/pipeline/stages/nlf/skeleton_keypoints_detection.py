@@ -1,7 +1,11 @@
 from __future__ import annotations
+from collections import defaultdict
+from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 import torch
 from tqdm import tqdm
 
+from kineo.io.frame_sequence_loader import FrameSequenceLoader
 from kineo.pipeline.pipeline import PipelineStage
 from kineo.datasets.keypoints_sequence_dataset import ViewInput
 from kineo.annotations import (
@@ -215,16 +219,19 @@ class NLFSkeletonKeypointsDetectionStage(
             )
 
             inference_frames = inference_frames_by_view[view_id]
+            batches = [
+                inference_frames[start : start + batch_size]
+                for start in range(0, len(inference_frames), batch_size)
+            ]
 
-            for batch_start in range(0, len(inference_frames), batch_size):
-                batch_end = min(batch_start + batch_size, len(inference_frames))
-                batch_frames = inference_frames[batch_start:batch_end]
+            bboxes_by_frame: dict[int, list] = defaultdict(list)
+            for bbox in bboxes_annotations.filter_by_view_id(view_id).annotations:
+                bboxes_by_frame[bbox.frame_idx].append(bbox)
+
+            for batch_frames, frames_rgb in zip(
+                batches, _load_batches_ahead(frame_loader, batches)
+            ):
                 actual_batch_size = len(batch_frames)
-
-                # Load batch of frames
-                frames_rgb = frame_loader.load_frames_at(
-                    frame_indices=torch.tensor(batch_frames)
-                )
 
                 batch_bboxes_xywhs: list[torch.Tensor] = [
                     torch.zeros((0, 5), dtype=torch.float32, device=device)
@@ -236,11 +243,7 @@ class NLFSkeletonKeypointsDetectionStage(
                 ]
 
                 for batch_idx, frame_idx in enumerate(batch_frames):
-                    frame_bboxes = bboxes_annotations.filter_by_view_id(
-                        view_id
-                    ).filter_by_frame_idx(frame_idx)
-
-                    frame_annotations = frame_bboxes.annotations
+                    frame_annotations = bboxes_by_frame.get(frame_idx, [])
 
                     if len(frame_annotations) == 0:
                         continue
@@ -316,6 +319,20 @@ class NLFSkeletonKeypointsDetectionStage(
         ).cpu()
 
         return keypoints_annotations
+
+
+def _load_batches_ahead(
+    frame_loader: FrameSequenceLoader, batches: list[list[int]]
+) -> Iterator[torch.Tensor]:
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        pending = None
+        for batch in batches:
+            future = executor.submit(frame_loader.load_frames_at, torch.tensor(batch))
+            if pending is not None:
+                yield pending.result()
+            pending = future
+        if pending is not None:
+            yield pending.result()
 
 
 def _get_inference_frames(n_frames: int, frame_step: int) -> list[int]:
