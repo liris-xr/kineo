@@ -59,9 +59,8 @@ def main(
 
     pipeline = Pipeline.build_pipeline_from_config(config_file, device)
 
-    # Optional synthetic object occlusion of the input frames, see
-    # kineo/io/occluded_frame_loader.py.
-    occlusion_cfg = OmegaConf.load(config_file).get("occlusion")
+    cfg = OmegaConf.load(config_file)
+    occlusion_cfg = cfg.get("occlusion")
     if occlusion_cfg is not None:
         print(f"Loading occluders from {occlusion_cfg.pascal_voc_dir}")
         occluders = load_occluders(occlusion_cfg.pascal_voc_dir)

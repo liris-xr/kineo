@@ -10,6 +10,7 @@
 
 import torch
 from kineo.geometry.transformations import (
+    compute_camera_similarity_transform,
     compute_similarity_transform,
     compute_weighted_similarity_transform,
     apply_similarity_transform_to_points,
@@ -190,12 +191,10 @@ def compute_human_metrics(
 
     gt_cam2world = inverse_Rt(gt_world2cam)
     pred_cam2world = inverse_Rt(pred_world2cam)
-    gt_cam_pos = gt_cam2world[..., :3, 3]
-    pred_cam_pos = pred_cam2world[..., :3, 3]
 
-    R, t, s = compute_similarity_transform(
-        X=pred_cam_pos.reshape(n_frames, n_views, 3),
-        Y=gt_cam_pos.reshape(n_frames, n_views, 3),
+    R, t, s = compute_camera_similarity_transform(
+        pred_cam2world.reshape(n_frames, n_views, 3, 4),
+        gt_cam2world.reshape(n_frames, n_views, 3, 4),
         estimate_scale=False,
     )
 

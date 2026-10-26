@@ -14,7 +14,9 @@ import os
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 
 import torch
+from omegaconf import OmegaConf
 from kineo.pipeline.pipeline import Pipeline
+from kineo.datasets.egohumans.camera_subsets import load_camera_subsets
 from kineo.datasets.egohumans.egohumans_dataset import EgoHumansSequenceDataset
 
 
@@ -50,6 +52,9 @@ def main(
     print_system_info(device)
 
     pipeline = Pipeline.build_pipeline_from_config(config_file, device)
+
+    n_views = OmegaConf.load(config_file).get("n_views")
+    camera_subsets = None if n_views is None else load_camera_subsets(n_views)
 
     dataset = EgoHumansSequenceDataset(
         os.path.join(dataset_dir, "egohumans_sequences.json"), device=device
@@ -106,6 +111,18 @@ def main(
                 if camera not in non_static_views
                 and (not views_filter or camera in views_filter)
             ]
+
+            if camera_subsets is not None:
+                subset = camera_subsets[sequence_name]
+                unavailable = [c for c in subset if c not in cameras]
+                if unavailable:
+                    raise ValueError(
+                        f"{sequence_name}: subset cameras "
+                        f"{', '.join(unavailable)} are missing or non-static"
+                    )
+                # Keep the dataset's view order
+                cameras = [c for c in cameras if c in subset]
+                tqdm.write(f"{sequence_name}: cameras {', '.join(cameras)}")
 
             gt_bboxes_2d = gt_bboxes_2d.filter_by_view_ids(cameras)
             gt_keypoints_2d = gt_keypoints_2d.filter_by_view_ids(cameras)
