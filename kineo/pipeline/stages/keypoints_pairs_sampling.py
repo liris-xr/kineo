@@ -26,11 +26,23 @@ from tqdm import tqdm
 from dataclasses import dataclass
 
 
+SAMPLING_STRATEGIES = ("random", "top_confidence")
+
+
+def top_confidence_indices(
+    candidate_indices: torch.Tensor, scores: torch.Tensor, n_samples: int
+) -> torch.Tensor:
+    order = torch.sort(scores, descending=True, stable=True).indices
+    return candidate_indices[order[:n_samples]]
+
+
 @dataclass(frozen=True)
 class KeypointsPairsSamplingRuntimeConfig:
     max_points_pairs: int = 2000
     pair_avg_conf_score_thr: float = 0.75
     keypoints_indices: list[int] | None = None
+    # One of SAMPLING_STRATEGIES
+    strategy: str = "random"
 
 
 class KeypointsPairsSamplingStage(PipelineStage[KeypointsPairsSamplingRuntimeConfig]):
@@ -62,6 +74,8 @@ class KeypointsPairsSamplingStage(PipelineStage[KeypointsPairsSamplingRuntimeCon
         gt_annotations: dict[str, Annotations],
         runtime_cfg: KeypointsPairsSamplingRuntimeConfig,
     ):
+        if runtime_cfg.strategy not in SAMPLING_STRATEGIES:
+            raise ValueError(f"Unknown sampling strategy: {runtime_cfg.strategy}")
         device = pipeline.device
         n_views = len(views)
         pairs = list(itertools.combinations(range(n_views), 2))
@@ -135,6 +149,12 @@ class KeypointsPairsSamplingStage(PipelineStage[KeypointsPairsSamplingRuntimeCon
 
             if runtime_cfg.max_points_pairs == -1:
                 picked_indices = valid_pick_indices
+            elif runtime_cfg.strategy == "top_confidence":
+                picked_indices = top_confidence_indices(
+                    valid_pick_indices,
+                    pair_avg_conf_scores[valid_pick_indices],
+                    runtime_cfg.max_points_pairs,
+                )
             else:
                 # Uses a temporary generator for deterministic results
                 picked_indices = valid_pick_indices[

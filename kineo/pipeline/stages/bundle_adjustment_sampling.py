@@ -29,6 +29,10 @@ from kineo.annotations.bundle_adjustment_keypoints import (
     BundleAdjustmentKeypointsAnnotation,
     BundleAdjustmentKeypointsAnnotationsMetadata,
 )
+from kineo.pipeline.stages.keypoints_pairs_sampling import (
+    SAMPLING_STRATEGIES,
+    top_confidence_indices,
+)
 
 from dataclasses import dataclass
 
@@ -38,6 +42,9 @@ class BundleAdjustmentSamplingRuntimeConfig:
     keypoints_indices: list[int] | None = None
     n_kp_samples: int = 1000
     min_kp_score: float = 0.4
+    # One of SAMPLING_STRATEGIES; "top_confidence" keeps the best mean scores
+    # over the views passing min_kp_score.
+    strategy: str = "random"
 
 
 class BundleAdjustmentSamplingStage(
@@ -73,6 +80,8 @@ class BundleAdjustmentSamplingStage(
         gt_annotations: dict[str, Annotations],
         runtime_cfg: BundleAdjustmentSamplingRuntimeConfig,
     ):
+        if runtime_cfg.strategy not in SAMPLING_STRATEGIES:
+            raise ValueError(f"Unknown sampling strategy: {runtime_cfg.strategy}")
         device = pipeline.device
 
         cameras_intrinsics: CameraIntrinsicsAnnotations = annotations[
@@ -181,10 +190,16 @@ class BundleAdjustmentSamplingStage(
         if runtime_cfg.n_kp_samples == -1:
             picked_indices = candidates_indices
         else:
-            # Uses a temporary generator for deterministic results
-            picked_indices = candidates_indices[
-                torch.randperm(candidates_indices.shape[0])[: runtime_cfg.n_kp_samples]
-            ]
+            picked_indices = self.pick_samples(
+                pipeline,
+                runtime_cfg,
+                kps_xy,
+                kps_scores,
+                candidates_indices,
+                cameras_resolutions_hw,
+                n_frames,
+                n_subjects * n_selected_keypoints,
+            )
 
         n_samples = len(picked_indices)
         # Shape is (n_views, n_kps, 2)
@@ -230,3 +245,27 @@ class BundleAdjustmentSamplingStage(
                 ],
             ).cpu()
         )
+
+    def pick_samples(
+        self,
+        pipeline: Pipeline,
+        runtime_cfg: BundleAdjustmentSamplingRuntimeConfig,
+        kps_xy: torch.Tensor,
+        kps_scores: torch.Tensor,
+        candidates_indices: torch.Tensor,
+        cameras_resolutions_hw: list[tuple[int, int]],
+        n_frames: int,
+        n_points_per_frame: int,
+    ) -> torch.Tensor:
+        """Picks at most ``runtime_cfg.n_kp_samples`` of the candidates."""
+        if runtime_cfg.strategy == "top_confidence":
+            passing = kps_scores[:, candidates_indices] > runtime_cfg.min_kp_score
+            mean_scores = (kps_scores[:, candidates_indices] * passing).sum(
+                dim=0
+            ) / passing.sum(dim=0)
+            return top_confidence_indices(
+                candidates_indices, mean_scores, runtime_cfg.n_kp_samples
+            )
+        return candidates_indices[
+            torch.randperm(candidates_indices.shape[0])[: runtime_cfg.n_kp_samples]
+        ]
