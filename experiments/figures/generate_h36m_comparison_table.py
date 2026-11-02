@@ -197,6 +197,12 @@ def align_hsfm_pred_to_gt(
             ]
         )
 
+        if not torch.isfinite(pred_cam_pos).all():
+            # Failed HSfM frame, never scored nor shown
+            aligned_pred_camera_extrinsics.extend(frame_pred_cam_extrinsics._annotations)
+            aligned_pred_keypoints_3d.extend(frame_pred_keypoints_3d._annotations)
+            continue
+
         R, t, s = compute_similarity_transform(
             X=pred_cam_pos,
             Y=gt_cam_pos,

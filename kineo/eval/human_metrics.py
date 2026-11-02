@@ -11,6 +11,7 @@
 import torch
 from kineo.geometry.transformations import (
     compute_similarity_transform,
+    compute_weighted_similarity_transform,
     apply_similarity_transform_to_points,
     inverse_Rt,
 )
@@ -31,16 +32,17 @@ def get_min_median_max_frames(
     if len(w_mpjpe) == 0 or len(pa_mpjpe) == 0:
         return None
 
-    min_w_mpjpe_frame = w_mpjpe.argmin().item()
+    # Keep NaN (unreconstructed) frames out of argmin and argmax
+    min_w_mpjpe_frame = w_mpjpe.nan_to_num(nan=float("inf")).argmin().item()
     median_w_mpjpe = w_mpjpe.nanmedian(dim=-1, keepdim=False)
     median_w_mpjpe_frame = median_w_mpjpe[1].item()
     median_w_mpjpe_value = median_w_mpjpe[0].item()
-    max_w_mpjpe_frame = w_mpjpe.argmax().item()
-    min_pa_mpjpe_frame = pa_mpjpe.argmin().item()
+    max_w_mpjpe_frame = w_mpjpe.nan_to_num(nan=float("-inf")).argmax().item()
+    min_pa_mpjpe_frame = pa_mpjpe.nan_to_num(nan=float("inf")).argmin().item()
     median_pa_mpjpe = pa_mpjpe.nanmedian(dim=-1, keepdim=False)
     median_pa_mpjpe_frame = median_pa_mpjpe[1].item()
     median_pa_mpjpe_value = median_pa_mpjpe[0].item()
-    max_pa_mpjpe_frame = pa_mpjpe.argmax().item()
+    max_pa_mpjpe_frame = pa_mpjpe.nan_to_num(nan=float("-inf")).argmax().item()
     min_w_mpjpe_value = w_mpjpe[min_w_mpjpe_frame]
     max_w_mpjpe_value = w_mpjpe[max_w_mpjpe_frame]
     min_pa_mpjpe_value = pa_mpjpe[min_pa_mpjpe_frame]
@@ -158,6 +160,9 @@ def compute_human_metrics(
     reconstructed = torch.zeros((n_frames, n_subjects), dtype=torch.bool)
 
     for ann in pred_keypoints_3d_annotations.annotations:
+        # Non-finite points would break the alignment
+        if not torch.isfinite(ann.xyz).all():
+            continue
         subject_idx = subject_id_to_idx[ann.subject_id]
         for slot in slots_by_pred_frame.get(ann.frame_idx, ()):
             pred_kps3d[slot, subject_idx] = ann.xyz
@@ -176,8 +181,12 @@ def compute_human_metrics(
 
         for ann in pred_cam_extrinsics_annotations.annotations:
             view_idx = view_id_to_idx[ann.view_id]
+            finite = bool(torch.isfinite(ann.Rt).all())
             for slot in slots_by_pred_frame.get(ann.frame_idx, ()):
-                pred_world2cam[slot, view_idx] = ann.Rt
+                if finite:
+                    pred_world2cam[slot, view_idx] = ann.Rt
+                else:
+                    reconstructed[slot] = False
 
     gt_cam2world = inverse_Rt(gt_world2cam)
     pred_cam2world = inverse_Rt(pred_world2cam)
@@ -199,6 +208,25 @@ def compute_human_metrics(
 
     w_mpjpe = torch.norm(
         gt_kps3d - pred_kps3d_aligned,
+        dim=-1,
+    ).cpu()
+
+    # One similarity transform for all subjects of a frame
+    R, t, s = compute_weighted_similarity_transform(
+        X=pred_kps3d.reshape(n_frames, -1, 3),
+        Y=gt_kps3d.reshape(n_frames, -1, 3),
+        weights=reconstructed.to(device=device, dtype=pred_kps3d.dtype)
+        .unsqueeze(-1)
+        .expand(-1, -1, n_keypoints)
+        .reshape(n_frames, -1),
+        estimate_scale=True,
+    )
+
+    ga_mpjpe = torch.norm(
+        gt_kps3d
+        - apply_similarity_transform_to_points(
+            pred_kps3d.reshape(n_frames, -1, 3), R, t, s
+        ).reshape(n_frames, n_subjects, n_keypoints, 3),
         dim=-1,
     ).cpu()
 
@@ -224,6 +252,7 @@ def compute_human_metrics(
         )
 
     w_mpjpe[~reconstructed] = float("nan")
+    ga_mpjpe[~reconstructed] = float("nan")
     pa_mpjpe[~reconstructed] = float("nan")
 
     return {
@@ -235,6 +264,7 @@ def compute_human_metrics(
                     {
                         "joint_name": gt_kps_format.keypoints_names[kp_idx],
                         "w-mpjpe": w_mpjpe[frame_idx, subject_idx, kp_idx].item(),
+                        "ga-mpjpe": ga_mpjpe[frame_idx, subject_idx, kp_idx].item(),
                         "pa-mpjpe": pa_mpjpe[frame_idx, subject_idx, kp_idx].item(),
                     }
                     for kp_idx in range(n_keypoints)
@@ -247,9 +277,10 @@ def compute_human_metrics(
 
 
 def flatten_human_metrics(human_metrics: dict[str, Any]) -> dict[str, Any]:
-    # Aggregate the W-MPJPE and PA-MPJPE metrics for each joint and each subject in each frame
+    # Aggregate the error metrics for each joint and each subject in each frame
     # We collect them as a list so that the caller can compute the statistics (mean, median, std, min, max).
     all_w_mpjpe = []
+    all_ga_mpjpe = []
     all_pa_mpjpe = []
     all_reconstructed = []
 
@@ -258,10 +289,12 @@ def flatten_human_metrics(human_metrics: dict[str, Any]) -> dict[str, Any]:
             all_reconstructed.append(float(subject_metrics["reconstructed"]))
             for keypoint_metrics in subject_metrics["joints"]:
                 all_w_mpjpe.append(keypoint_metrics["w-mpjpe"])
+                all_ga_mpjpe.append(keypoint_metrics["ga-mpjpe"])
                 all_pa_mpjpe.append(keypoint_metrics["pa-mpjpe"])
 
     return {
         "w-mpjpe": all_w_mpjpe,
+        "ga-mpjpe": all_ga_mpjpe,
         "pa-mpjpe": all_pa_mpjpe,
         "reconstructed": all_reconstructed,
     }

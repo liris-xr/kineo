@@ -233,7 +233,19 @@ def compute_camera_metrics(
     n_views = len(views_ids)
 
     if len(pred_cam_extrinsics_annotations.annotations) != n_views:
-        frames = pred_cam_extrinsics_annotations.frames
+        # Skip failed reconstructions (non-finite cameras)
+        frames = [
+            frame
+            for frame in pred_cam_extrinsics_annotations.frames
+            if all(
+                torch.isfinite(ann.Rt).all()
+                for ann in pred_cam_extrinsics_annotations.filter_by_frame_idx(frame).annotations
+            )
+            and all(
+                torch.isfinite(ann.K).all()
+                for ann in pred_cam_intrinsics_annotations.get_closest_by_frame_idx(frame).annotations
+            )
+        ]
     else:
         frames = [0]
 
