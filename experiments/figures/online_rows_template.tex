@@ -1,0 +1,16 @@
+\begin{table*}[htbp]
+\centering
+\caption{Comparison of Kineo in offline and online modes on Human3.6M~\cite{human36m}. In offline mode, the calibration reads the whole sequence before reconstruction; in online mode, it reads only the first 10\,s, after which frames are reconstructed one at a time as they arrive, at the latency and sustained rate given in the last two columns. Both modes estimate all camera parameters and share the same person detector, 2D keypoint detector, triangulation, and reconstruct the same frames, so the difference between the two rows is attributable to the calibration window alone. Person detection uses YOLOX-tiny and 2D keypoints RTMPose~\cite{rtmpose} fine-tuned to the H3.6M skeleton, rather than the NLF~\cite{sarandiNeuralLocalizerFields2024} of Tables~\ref{tab:human_metrics} and~\ref{tab:camera_metrics}; in online mode, both networks run as TensorRT engines at half precision. Metrics include translation error (TE, in meters), scale-aligned translation error (s-TE, in meters), angular error (AE, in degrees), Relative Rotation Accuracy (RRA, as a proportion), Camera Center Accuracy (CCA, as a proportion), scale-aligned CCA (s-CCA, as a proportion), Field-of-View error (FoV, in degrees), and mean-per-joint position error in metric world space (W-MPJPE, in meters) and its Procrustes-Aligned version (PA-MPJPE, in meters). Latency is the median and 95th percentile cost of reconstructing one frame across all {kineo_views_h36m} views, together with the sustained rate of complete {kineo_views_h36m}-view frames, measured on {kineo_gpu_h36m}.}
+\maxsizebox{\linewidth}{!}{
+    \begin{tabular}{l|cccccccc|cc|cc}
+        \toprule
+        \multirow{2}{*}{\textbf{Mode}} & \multicolumn{8}{c|}{\textbf{Camera Metrics}} & \multicolumn{2}{c|}{\textbf{Human Metrics}} & \multicolumn{2}{c}{\textbf{Streaming} ({kineo_views_h36m} views)} \\
+        & TE$\downarrow$ & s-TE$\downarrow$ & AE$\downarrow$ & RRA@10$\uparrow$ & CCA@5$\uparrow$ & CCA@10$\uparrow$ & s-CCA@10$\uparrow$ & FoV$\downarrow$ & W-MPJPE$\downarrow$ & PA-MPJPE$\downarrow$ & Latency (ms)$\downarrow$ & fps$\uparrow$ \\
+        \midrule
+        \cellcolor{breeze}{\textbf{Kineo}} (offline) & {kineo_TE_h36m_Offline} & {kineo_s-TE_h36m_Offline} & {kineo_AE_h36m_Offline} & {kineo_RRA10_h36m_Offline} & {kineo_CCA05_h36m_Offline} & {kineo_CCA10_h36m_Offline} & {kineo_s-CCA10_h36m_Offline} & {kineo_vfov_error_h36m_Offline} & {kineo_w-mpjpe_h36m_Offline} & {kineo_pa-mpjpe_h36m_Offline} & \NA & \NA \\
+        \cellcolor{breeze}{\textbf{Kineo}} (online) & {kineo_TE_h36m_Online} & {kineo_s-TE_h36m_Online} & {kineo_AE_h36m_Online} & {kineo_RRA10_h36m_Online} & {kineo_CCA05_h36m_Online} & {kineo_CCA10_h36m_Online} & {kineo_s-CCA10_h36m_Online} & {kineo_vfov_error_h36m_Online} & {kineo_w-mpjpe_h36m_Online} & {kineo_pa-mpjpe_h36m_Online} & {kineo_latency_p50_h36m}\,/\,{kineo_latency_p95_h36m} & {kineo_fps_h36m} \\
+        \bottomrule
+    \end{tabular}
+}
+\label{tab:online_vs_offline}
+\end{table*}
