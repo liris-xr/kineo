@@ -1,0 +1,16 @@
+\begin{table}[!ht]
+\centering
+\caption{Impact of audio-based temporal synchronization on PA-MPJPE (lower is better) on the AIST++ dataset. \emph{Sync} gives the source of the inter-camera time offsets: estimated from the audio (\useest) or taken from the ground truth (\usegt). All camera parameters are estimated (extrinsics, intrinsics, distortion coefficients).}
+\maxsizebox{\linewidth}{0.3\textheight}{
+\begin{tabular}{c|ccc|c|c}
+    \toprule
+    \textbf{Offset error} & \multicolumn{3}{c|}{\textbf{Views within tolerance (\%)}} & \textbf{PA-MPJPE} & \textbf{Sync} \\
+    (ms)$\downarrow$ & $\leq$17\,ms (1 fr.)$\uparrow$ & $\leq$33\,ms (2 fr.)$\uparrow$ & $\leq$67\,ms (4 fr.)$\uparrow$ & (m)$\downarrow$ & \\
+    \midrule
+{kineo_offset_median_error_ms_aistpp_GtSync} & {kineo_offset_ratio_within_1_frame_aistpp_GtSync} & {kineo_offset_ratio_within_2_frames_aistpp_GtSync} & {kineo_offset_ratio_within_4_frames_aistpp_GtSync} & {kineo_pa-mpjpe_aistpp_GtSync} & \usegt \\
+{kineo_offset_median_error_ms_aistpp_EstSync} & {kineo_offset_ratio_within_1_frame_aistpp_EstSync} & {kineo_offset_ratio_within_2_frames_aistpp_EstSync} & {kineo_offset_ratio_within_4_frames_aistpp_EstSync} & {kineo_pa-mpjpe_aistpp_EstSync} & \useest \\
+    \bottomrule
+\end{tabular}
+}
+\label{tab:aistpp_sync}
+\end{table}

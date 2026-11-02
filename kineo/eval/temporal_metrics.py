@@ -17,24 +17,7 @@ def compute_time_offset_errors(
     gt: CameraTemporalAnnotations,
     pred: CameraTemporalAnnotations,
 ) -> dict[str, float]:
-    """Scores recovered inter-camera time offsets against the ground truth.
-
-    Both sides are rebased on a shared reference view: only inter-view
-    differences are observable, so a common offset is not an error and whichever
-    view each side pinned to zero must not count.
-
-    Args:
-        gt: Ground-truth time offsets, one annotation per view.
-        pred: Time offsets recovered by the pipeline.
-
-    Returns:
-        Maps each view scored to its signed offset error, in seconds, positive
-        when the estimate runs late. Views missing from either side are left
-        out.
-
-    Raises:
-        ValueError: If the two share no view to score.
-    """
+    """Compute signed offset errors in seconds, from the first shared view."""
     gt_offsets = {a.view_id: a.time_offset for a in gt.annotations}
     pred_offsets = {a.view_id: a.time_offset for a in pred.annotations}
 
@@ -50,7 +33,7 @@ def compute_time_offset_errors(
     return {
         view_id: (pred_offsets[view_id] - pred_offsets[reference_view])
         - (gt_offsets[view_id] - gt_offsets[reference_view])
-        for view_id in shared_views
+        for view_id in shared_views[1:]
     }
 
 
@@ -81,11 +64,14 @@ def summarize_time_offset_errors(
         "mean_signed_error_ms": statistics.fmean(signed) * 1e3,
         "mean_error_frames": statistics.fmean(frames),
         "median_error_frames": statistics.median(frames),
+        "p95_error_frames": frames[int(0.95 * (n - 1))],
         "max_error_frames": frames[-1],
         "mean_signed_error_frames": statistics.fmean(signed) * fps,
         "ratio_within_tolerance": sum(e <= tolerance_s for e in errors) / n,
         "ratio_within_1_frame": sum(f <= 1.0 for f in frames) / n,
         "ratio_within_2_frames": sum(f <= 2.0 for f in frames) / n,
+        "ratio_within_3_frames": sum(f <= 3.0 for f in frames) / n,
+        "ratio_within_4_frames": sum(f <= 4.0 for f in frames) / n,
     }
 
 
@@ -108,6 +94,7 @@ def print_time_offset_statistics(summary: dict[str, float], fps: float):
     )
     print(f"  within 1 frame       {summary['ratio_within_1_frame']:.1%}")
     print(f"  within 2 frames      {summary['ratio_within_2_frames']:.1%}")
+    print(f"  within 3 frames      {summary['ratio_within_3_frames']:.1%}")
     print(
         f"  error (frames)       mean {summary['mean_error_frames']:.3f}"
         f"  median {summary['median_error_frames']:.3f}"
