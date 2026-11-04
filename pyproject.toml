@@ -238,6 +238,10 @@ cmd = "python scripts/download_demand_dataset.py {{ dataset_dir }}"
 args = ["dataset_dir"]
 cmd = "python scripts/download_pascal_voc_dataset.py {{ dataset_dir }}"
 
+[tool.pixi.tasks.reproduce-paper]
+depends-on = ["download-checkpoints"]
+cmd = "bash experiments/reproduce_paper.sh"
+
 [tool.pixi.tasks.aistpp-sync-ablation-audio]
 args = ["dataset_dir", "demand_dir"]
 cmd = "python scripts/export_aistpp_sync_ablation_audio.py {{ dataset_dir }} {{ demand_dir }}"

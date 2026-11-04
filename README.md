@@ -96,6 +96,37 @@ pixi run egohumans-benchmark <path-to-egohumans-dataset> [path-to-config.yaml]
 If no `path-to-config.yaml` is not given, uses `configs/experiments/benchmarks/*_benchmark_nlf_estRt_estK_estD.yaml` by default.
 All configurations used in the paper are available in the `configs` directory.
 
+### Reproducing the paper
+
+Each launcher of `experiments/` runs the configurations of some tables and
+figures, skips the runs already finished, and writes the tables to
+`$OUTPUT_ROOT_DIR/tables` and the figures to `$OUTPUT_ROOT_DIR/figures`.
+
+```sh
+export KINEO_DATASETS_DIR=<path-to-datasets>  # parent of H3.6M, EgoHumans, AIST++
+export PASCAL_VOC_DIR=<path-to-pascal-voc>    # pixi run pascal-voc-download
+export DEMAND_DIR=<path-to-demand>            # pixi run demand-download
+export H36M_RUNTIME_VIDEOS_DIR=<path>         # {short,medium,long}_video/<camera>.mp4
+export HSFM_EVAL_DIR=<path-to-hsfm-results>   # optional, comparison with HSfM
+
+pixi run reproduce-paper
+```
+
+| Launcher | Results |
+|---|---|
+| `run_benchmarks.sh` | Human and camera metrics, detectors, AIST++ synchronization, distortion error |
+| `run_ablation_study_camera_params.sh` | Camera parameters |
+| `run_ablation_study_global_scaling.sh` | Global scale estimation |
+| `run_ablation_study_sampling.sh` | Sampling strategies, confidence filter and weights with RTMPose |
+| `run_ablation_study_confidence.sh` | Detection confidence with NLF and DWPose |
+| `run_ablation_study_n_views.sh` | Number of views |
+| `run_aistpp_sync_ablation.sh` | Robustness of the audio synchronization |
+| `run_online_vs_offline.sh` | Online against offline mode |
+| `run_runtime_benchmarks.sh` | Calibration runtime |
+| `run_method_figures.sh` | Figures of the method |
+
+Set `SEQUENCES=<name>,...` to try a launcher on a few sequences first.
+
 ### Online mode
 
 The online benchmark replays each H3.6M sequence as a stream: it calibrates on
