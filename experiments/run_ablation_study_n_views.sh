@@ -1,68 +1,27 @@
 #!/usr/bin/env bash
-# Runs the number-of-views ablation on EgoHumans (8 cameras down to 2) or
-# Human3.6M (4 down to 2).
-#
-# Each arm is a configs/experiments/ablation_study/n_views/ config, run with
-# experiments/<dataset>_eval.py and summarized with
-# experiments/summarize_benchmark.py. The camera sets come from
-# kineo/datasets/<dataset>/camera_subsets.yaml, where every smaller set is
-# nested in the largest one: that one runs first and fills the per-view
-# detection cache, and the others then detect nothing. Arms run one after
-# another in their own process, never at once. An arm whose log already ends
-# its run is not rerun, so adding view counts to an existing run only runs the
-# new ones.
-#
-# Usage:
-#   DATASET=egohumans|h36m DATASET_DIR=<preprocessed dataset> \
-#     [OUTPUT_ROOT_DIR=outputs] [CACHE_ROOT_DIR=$OUTPUT_ROOT_DIR/cache] \
-#     [PYTHON=python] [SEQUENCES="<name>,..."] [N_VIEWS="<largest first>"] \
-#     [PIPELINE=nlf_estRt_estK_estD|nlf_estRt_gtK_gtD] \
-#     bash experiments/run_ablation_study_n_views.sh
-# or `pixi run egohumans-n-views-ablation <egohumans_dir>` /
-# `pixi run h36m-n-views-ablation <h36m_dir>`.
-# CACHE_ROOT_DIR defaults to a cache of the run's own, so its detections are
-# not mixed with those of earlier runs. SEQUENCES restricts every arm to a
-# subset, e.g. for a smoke run. N_VIEWS picks the arms, largest first so that
-# it fills the cache the others read.
-set -euo pipefail
+source "$(dirname "$0")/launch_common.sh"
+require EGOHUMANS_DIR
 
-: "${DATASET:?set DATASET to egohumans or h36m}"
-: "${DATASET_DIR:?set DATASET_DIR to the preprocessed dataset directory}"
-case "$DATASET" in
-  egohumans) DEFAULT_N_VIEWS="8 7 6 5 4 3 2" ;;
-  h36m) DEFAULT_N_VIEWS="4 3 2" ;;
-  *) echo "unknown DATASET: $DATASET" >&2; exit 1 ;;
-esac
-# Relative on purpose: Git Bash turns an absolute $(pwd) into a /d/... path
-# that Python cannot open once it sits after an "=" in an argument.
-export OUTPUT_ROOT_DIR="${OUTPUT_ROOT_DIR:-outputs}"
-export CACHE_ROOT_DIR="${CACHE_ROOT_DIR:-$OUTPUT_ROOT_DIR/cache}"
-PYTHON="${PYTHON:-python}"
-# Which benchmark the arms derive from: estimated intrinsics, or the ground
-# truth ones loaded as is (nlf_estRt_gtK_gtD).
-PIPELINE="${PIPELINE:-nlf_estRt_estK_estD}"
 CONFIGS=configs/experiments/ablation_study/n_views
-FILTER_ARGS=()
-if [ -n "${SEQUENCES:-}" ]; then
-  # Comma-separated: Human3.6M sequence names contain spaces.
-  IFS=, read -r -a SUBSET <<< "$SEQUENCES"
-  FILTER_ARGS=(--sequences-filter "${SUBSET[@]}")
-fi
-
-mkdir -p "$OUTPUT_ROOT_DIR"
-
-read -r -a ARMS <<< "${N_VIEWS:-$DEFAULT_N_VIEWS}"
-for n_views in "${ARMS[@]}"; do
-  arm=${DATASET}_benchmark_${PIPELINE}_${n_views}views
-  log="$OUTPUT_ROOT_DIR/$arm.log"
-  # The eval scripts print their failed sequences as their last step.
-  if [ -f "$log" ] && grep -q "^Failed sequences:" "$log"; then
-    echo "== $arm complete, not rerun"
-  else
-    echo "== running $arm"
-    "$PYTHON" -u "experiments/${DATASET}_eval.py" "$DATASET_DIR" \
-      --config-file "$CONFIGS/$arm.yaml" "${FILTER_ARGS[@]}" > "$log" 2>&1
-  fi
-  grep "^Failed sequences:" "$log"
-  "$PYTHON" experiments/summarize_benchmark.py "$OUTPUT_ROOT_DIR/$arm"
+est=() gt=()
+for n_views in 2 3 4 5 6 7 8; do
+  for intrinsics in estK_estD gtK_gtD; do
+    run_arm experiments/egohumans_eval.py "$EGOHUMANS_DIR" \
+      "$CONFIGS/egohumans_benchmark_nlf_estRt_${intrinsics}_${n_views}views.yaml" \
+      "${SEQUENCES_FILTER[@]}"
+  done
+  est+=("$OUTPUT_ROOT_DIR/egohumans_benchmark_nlf_estRt_estK_estD_${n_views}views")
+  gt+=("$OUTPUT_ROOT_DIR/egohumans_benchmark_nlf_estRt_gtK_gtD_${n_views}views")
 done
+for intrinsics in estK_estD gtK_gtD; do
+  run_arm experiments/egohumans_eval.py "$EGOHUMANS_DIR" \
+    "configs/experiments/benchmarks/egohumans_benchmark_nlf_estRt_$intrinsics.yaml" \
+    "${SEQUENCES_FILTER[@]}"
+done
+est+=("$OUTPUT_ROOT_DIR/egohumans_benchmark_nlf_estRt_estK_estD")
+gt+=("$OUTPUT_ROOT_DIR/egohumans_benchmark_nlf_estRt_gtK_gtD")
+
+"$PYTHON" -m experiments.figures.generate_n_views_rows --est-runs "${est[@]}" \
+  --gt-runs "${gt[@]}" > "$TABLES_DIR/n_views.tex"
+"$PYTHON" experiments/figures/generate_n_views_figure.py "$FIGURES_DIR/n_views" \
+  --est-runs "${est[@]}" --gt-runs "${gt[@]}"

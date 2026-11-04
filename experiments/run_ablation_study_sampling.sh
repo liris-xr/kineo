@@ -1,22 +1,71 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# Sampling strategies, and the confidence filter and weights with RTMPose
+# The Human3.6M tables share runs, so they use the same sequences
+source "$(dirname "$0")/launch_common.sh"
+require H36M_DIR EGOHUMANS_DIR PASCAL_VOC_DIR
+export PASCAL_VOC_DIR
 
-declare -A EGOHUMANS_SEQUENCES=(
-    ["tagging"]="tagging_001 tagging_002 tagging_003 tagging_004 tagging_005 tagging_006 tagging_007 tagging_008 tagging_009 tagging_010 tagging_011 tagging_012 tagging_013 tagging_014"
-    ["legoassemble"]="legoassemble_001 legoassemble_002 legoassemble_003 legoassemble_004 legoassemble_005 legoassemble_006"
-    ["fencing"]="fencing_001 fencing_002 fencing_003 fencing_004 fencing_005 fencing_006 fencing_007 fencing_008 fencing_009 fencing_010 fencing_011 fencing_012 fencing_013 fencing_014"
-    ["basketball"]="basketball_001 basketball_002 basketball_003 basketball_004 basketball_005 basketball_006 basketball_007 basketball_008 basketball_009 basketball_011 basketball_012 basketball_013 basketball_014"
-    ["volleyball"]="volleyball_001 volleyball_002 volleyball_003 volleyball_004 volleyball_005 volleyball_006 volleyball_007 volleyball_008 volleyball_009 volleyball_010 volleyball_011"
-    ["badminton"]="badminton_001 badminton_002 badminton_003 badminton_004 badminton_005 badminton_006 badminton_007 badminton_008 badminton_009 badminton_010 badminton_011 badminton_012 badminton_013 badminton_014 badminton_015 badminton_016 badminton_017 badminton_018 badminton_019 badminton_020 badminton_021 badminton_022 badminton_023 badminton_024 badminton_025 badminton_026 badminton_027 badminton_028 badminton_029 badminton_030 badminton_031 badminton_032 badminton_033 badminton_034 badminton_035 badminton_036 badminton_037 badminton_038 badminton_039 badminton_040 badminton_041 badminton_042 badminton_043 badminton_044 badminton_045 badminton_046 badminton_047 badminton_048 badminton_049 badminton_050 badminton_052 badminton_053 badminton_054 badminton_055 badminton_056 badminton_057 badminton_058 badminton_059 badminton_060 badminton_061"
-    ["tennis"]="tennis_001 tennis_002 tennis_003 tennis_004 tennis_005 tennis_006 tennis_007 tennis_008 tennis_009 tennis_010 tennis_011 tennis_012 tennis_013"
-)
-
-# Human3.6M
-sbatch --job-name="h36m_sampling_disabled_nlf" --output="slurm-h36m_sampling_disabled_nlf.out" experiments/run_h36m_eval_a100.slurm $SCRATCH/datasets/H3.6M/raw/ configs/experiments/ablation_study/sampling/h36m_sampling_disabled_nlf.yaml
-sbatch --job-name="h36m_sampling_disabled_rtmpose" --output="slurm-h36m_sampling_disabled_rtmpose.out" experiments/run_h36m_eval_a100.slurm $SCRATCH/datasets/H3.6M/raw/ configs/experiments/ablation_study/sampling/h36m_sampling_disabled_rtmpose.yaml
-
-# EgoHumans
-for seq in "${!EGOHUMANS_SEQUENCES[@]}"; do
-    subsequences="${EGOHUMANS_SEQUENCES[${seq}]}"
-    sbatch --job-name="egohumans_sampling_disabled_nlf_${seq}" --output="slurm-egohumans_sampling_disabled_nlf_${seq}.out" experiments/run_egohumans_eval_a100.slurm $SCRATCH/datasets/EgoHumans/ configs/experiments/ablation_study/sampling/egohumans_sampling_disabled_nlf.yaml "${subsequences}"
-    sbatch --job-name="egohumans_sampling_disabled_dwpose_${seq}" --output="slurm-egohumans_sampling_disabled_dwpose_${seq}.out" experiments/run_egohumans_eval_a100.slurm $SCRATCH/datasets/EgoHumans/ configs/experiments/ablation_study/sampling/egohumans_sampling_disabled_dwpose.yaml "${subsequences}"
+CONFIGS=configs/experiments/ablation_study/sampling
+# Random sampling is the benchmark config
+run_arm experiments/egohumans_eval.py "$EGOHUMANS_DIR" \
+  configs/experiments/benchmarks/egohumans_benchmark_nlf_estRt_estK_estD.yaml \
+  "${SEQUENCES_FILTER[@]}"
+for arm in fps topconf_nlf; do
+  run_arm experiments/egohumans_eval.py "$EGOHUMANS_DIR" \
+    "$CONFIGS/egohumans_sampling_$arm.yaml" "${SEQUENCES_FILTER[@]}"
 done
+h36m_runs=()
+for input in "" _occluded; do
+  for arm in random fps topconf uniform; do
+    run_arm experiments/h36m_eval.py "$H36M_DIR" \
+      "$CONFIGS/h36m_sampling_${arm}_rtmpose$input.yaml" "${SEQUENCES_FILTER[@]}"
+    h36m_runs+=("$OUTPUT_ROOT_DIR/h36m_sampling_${arm}_rtmpose$input")
+  done
+  run_arm experiments/h36m_eval.py "$H36M_DIR" \
+    "configs/experiments/ablation_study/confidence/h36m_unit_weights_rtmpose_estRt_estK_estD$input.yaml" \
+    "${SEQUENCES_FILTER[@]}"
+  h36m_runs+=("$OUTPUT_ROOT_DIR/h36m_unit_weights_rtmpose_estRt_estK_estD$input")
+done
+
+random="$OUTPUT_ROOT_DIR/egohumans_benchmark_nlf_estRt_estK_estD"
+fps="$OUTPUT_ROOT_DIR/egohumans_sampling_fps"
+topp="$OUTPUT_ROOT_DIR/egohumans_sampling_topconf_nlf"
+"$PYTHON" -m experiments.benchmark_sampling_runtime "$random" \
+  "$OUTPUT_ROOT_DIR/sampling_runtime_egohumans.json"
+"$PYTHON" -m experiments.figures.compute_pair_sampling_coverage "$random" "$fps" \
+  "$topp" "$OUTPUT_ROOT_DIR/sampling_coverage_egohumans.json"
+"$PYTHON" -m experiments.figures.generate_sampling_rows "$random" "$fps" \
+  --topp-run-dir "$topp" --runtime-json "$OUTPUT_ROOT_DIR/sampling_runtime_egohumans.json" \
+  > "$TABLES_DIR/sampling_egohumans.tex"
+"$PYTHON" experiments/figures/generate_pair_sampling_figure.py "$random" "$fps" \
+  "$EGOHUMANS_DIR" "$FIGURES_DIR/sampling" --topp-run-dir "$topp"
+
+inputs=()
+for input in "" _occluded; do
+  runtime="$OUTPUT_ROOT_DIR/sampling_runtime_h36m$input.json"
+  "$PYTHON" -m experiments.benchmark_sampling_runtime \
+    "$OUTPUT_ROOT_DIR/h36m_sampling_random_rtmpose$input" "$runtime" \
+    --pairs 4000 --keypoints 400 --threshold 0.5
+  label=Original
+  [ -n "$input" ] && label=Occluded
+  inputs+=(--input "$label" "$OUTPUT_ROOT_DIR/h36m_sampling_random_rtmpose$input"
+           "$OUTPUT_ROOT_DIR/h36m_sampling_fps_rtmpose$input"
+           "$OUTPUT_ROOT_DIR/h36m_sampling_topconf_rtmpose$input" "$runtime")
+done
+"$PYTHON" -m experiments.figures.generate_h36m_sampling_rows "${inputs[@]}" \
+  --restrict-to "${h36m_runs[@]}" > "$TABLES_DIR/sampling_h36m.tex"
+"$PYTHON" -m experiments.figures.generate_confidence_filter_rows "$OUTPUT_ROOT_DIR" \
+  "$H36M_DIR" --workers "${WORKERS:-1}" --restrict-to "${h36m_runs[@]}" \
+  > "$TABLES_DIR/confidence_filter_h36m.tex"
+pairs=()
+for input in "" _occluded; do
+  label=Original
+  [ -n "$input" ] && label=Occluded
+  pairs+=(--pair Human3.6M RTMPose "$label"
+          "$OUTPUT_ROOT_DIR/h36m_unit_weights_rtmpose_estRt_estK_estD$input"
+          "$OUTPUT_ROOT_DIR/h36m_sampling_random_rtmpose$input")
+done
+"$PYTHON" -m experiments.figures.generate_confidence_ablation_rows "${pairs[@]}" \
+  --restrict-to "${h36m_runs[@]}" > "$TABLES_DIR/confidence_weights_h36m.tex"
+
+echo "The coverage column of the EgoHumans tables is in $OUTPUT_ROOT_DIR/sampling_coverage_egohumans.json"

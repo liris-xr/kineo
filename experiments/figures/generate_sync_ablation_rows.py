@@ -14,6 +14,7 @@ import argparse
 import json
 import os
 import statistics
+import sys
 
 _TEMPLATE = os.path.join(
     os.path.dirname(__file__), "sync_ablation_rows_template.tex"
@@ -22,11 +23,11 @@ _TEMPLATE = os.path.join(
 ARMS = (
     "Beep",
     "NoBeep",
-    "ParkM20dB",
-    "ParkM10dB",
+    "Park20dB",
+    "Park10dB",
     "Park0dB",
-    "CafeteriaM20dB",
-    "CafeteriaM10dB",
+    "Cafeteria20dB",
+    "Cafeteria10dB",
     "Cafeteria0dB",
     "NoBeepSynthBeep",
 )
@@ -98,13 +99,6 @@ if __name__ == "__main__":
     for arm in ARMS:
         parser.add_argument(f"{arm}_run_dir", type=str)
     parser.add_argument("--n-decimals", type=int, default=2)
-    parser.add_argument(
-        "--extra",
-        action="append",
-        default=[],
-        metavar="NAME=RUN_DIR",
-        help="Further runs for the markdown table (controls, sweeps)",
-    )
     args = parser.parse_args()
 
     values = {arm: load_run(getattr(args, f"{arm}_run_dir")) for arm in ARMS}
@@ -112,8 +106,4 @@ if __name__ == "__main__":
     with open(_TEMPLATE, "r") as f:
         template = f.read()
     print(fill_rows(template, values, args.n_decimals))
-
-    for extra in args.extra:
-        name, run_dir = extra.split("=", 1)
-        values[name] = load_run(run_dir)
-    print(markdown_table(values, args.n_decimals))
+    print(markdown_table(values, args.n_decimals), file=sys.stderr)
