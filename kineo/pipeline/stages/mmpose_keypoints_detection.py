@@ -23,6 +23,7 @@ from kineo.annotations import (
     BBox2DAnnotation,
     KeypointsFormat,
 )
+from kineo.annotations.keypoints_utils import with_unit_scores
 from kineo.pipeline.pipeline import Pipeline
 from kineo.pipeline import per_view_cache
 from kineo.maths import clamp
@@ -154,7 +155,6 @@ class MMPoseKeypointsDetectionStage(
                         use_half_precision=runtime_cfg.use_half_precision,
                         force_zero_scores_outside_bbox=runtime_cfg.force_zero_scores_outside_bbox,
                         frame_step=runtime_cfg.frame_step,
-                        disable_confidence=runtime_cfg.disable_confidence,
                     )
                 }
             finally:
@@ -174,7 +174,10 @@ class MMPoseKeypointsDetectionStage(
             use_cache=runtime_cfg.use_cache,
         )
 
-        annotations["keypoints_2d"] = cached["keypoints_2d"].cpu()
+        keypoints_2d = cached["keypoints_2d"].cpu()
+        if runtime_cfg.disable_confidence:
+            keypoints_2d = with_unit_scores(keypoints_2d)
+        annotations["keypoints_2d"] = keypoints_2d
 
     def _infer_keypoints(
         self,
@@ -185,7 +188,6 @@ class MMPoseKeypointsDetectionStage(
         use_half_precision: bool = True,
         force_zero_scores_outside_bbox: bool = True,
         frame_step: int = 1,
-        disable_confidence: bool = False,
     ) -> Keypoints2DAnnotations:
         """
         Infer keypoints for all views.
@@ -281,7 +283,6 @@ class MMPoseKeypointsDetectionStage(
                         frame_idx=frame_idx,
                         keypoints_format_name=keypoints_format_name,
                         force_zero_scores_outside_bbox=force_zero_scores_outside_bbox,
-                        disable_confidence=disable_confidence,
                     )
 
                     view_annotations.extend(keypoints_annotation)
@@ -341,7 +342,6 @@ def _create_keypoints_annotations(
     frame_idx: int,
     keypoints_format_name: str,
     force_zero_scores_outside_bbox: bool,
-    disable_confidence: bool = False,
 ) -> list[Keypoints2DAnnotation]:
     """Create keypoints annotations from inference results."""
     annotations = []
@@ -371,10 +371,6 @@ def _create_keypoints_annotations(
                 torch.zeros_like(scores),
                 scores,
             ).cpu()
-
-        if disable_confidence:
-            # Set all scores to 1
-            scores = torch.ones_like(scores)
 
         keypoint_annotation = Keypoints2DAnnotation(
             view_id=view_id,

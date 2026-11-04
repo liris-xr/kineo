@@ -18,6 +18,7 @@ from kineo.annotations import (
     COCO_17_KEYPOINTS_FORMAT,
     H36M_17_KEYPOINTS_FORMAT,
 )
+from kineo.annotations.keypoints_utils import with_unit_scores
 from kineo.pipeline.pipeline import Pipeline
 from kineo.pipeline import per_view_cache
 from kineo.pipeline.stages.global_time_reference import build_inference_frames
@@ -49,6 +50,7 @@ class NLFSkeletonKeypointsDetectionRuntimeConfig:
         1  # Infer every N frames (1 = every frame, 2 = every other frame, etc.)
     )
     skeleton_name: str = "smpl_24"
+    disable_confidence: bool = False
 
 
 # TODO: in case of single view, export keypoints 3d as well
@@ -151,7 +153,10 @@ class NLFSkeletonKeypointsDetectionStage(
             use_cache=runtime_cfg.use_cache,
         )
 
-        annotations["keypoints_2d"] = cached["keypoints_2d"].cpu()
+        keypoints_2d = cached["keypoints_2d"].cpu()
+        if runtime_cfg.disable_confidence:
+            keypoints_2d = with_unit_scores(keypoints_2d)
+        annotations["keypoints_2d"] = keypoints_2d
 
     def _infer_keypoints(
         self,

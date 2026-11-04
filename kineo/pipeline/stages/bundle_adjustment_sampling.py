@@ -42,9 +42,9 @@ class BundleAdjustmentSamplingRuntimeConfig:
     keypoints_indices: list[int] | None = None
     n_kp_samples: int = 1000
     min_kp_score: float = 0.4
-    # One of SAMPLING_STRATEGIES; "top_confidence" keeps the best mean scores
-    # over the views passing min_kp_score.
+    # One of SAMPLING_STRATEGIES
     strategy: str = "random"
+    unit_weights: bool = False
 
 
 class BundleAdjustmentSamplingStage(
@@ -206,6 +206,10 @@ class BundleAdjustmentSamplingStage(
         sampled_frame_kps_xy = kps_xy[:, picked_indices]
         # Shape is (n_views, n_kps)
         sampled_frame_kps_scores = kps_scores[:, picked_indices]
+        if runtime_cfg.unit_weights:
+            sampled_frame_kps_scores = (sampled_frame_kps_scores > 0).to(
+                sampled_frame_kps_scores.dtype
+            )
 
         sampled_frame_kps_xy_undistorted = sampled_frame_kps_xy.clone()
 
@@ -257,7 +261,6 @@ class BundleAdjustmentSamplingStage(
         n_frames: int,
         n_points_per_frame: int,
     ) -> torch.Tensor:
-        """Picks at most ``runtime_cfg.n_kp_samples`` of the candidates."""
         if runtime_cfg.strategy == "top_confidence":
             passing = kps_scores[:, candidates_indices] > runtime_cfg.min_kp_score
             mean_scores = (kps_scores[:, candidates_indices] * passing).sum(
