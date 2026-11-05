@@ -27,9 +27,7 @@ from scipy.stats import binomtest
 from experiments.figures.generate_online_rows import diverged_sequences, format_metric
 
 _TEMPLATE = os.path.join(os.path.dirname(__file__), "confidence_filter_rows_template.tex")
-_CONFIGS_DIR = os.path.join(
-    os.path.dirname(__file__), "..", "..", "configs", "experiments", "ablation_study", "sampling"
-)
+_CONFIGS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "configs", "experiments")
 
 INPUTS = (("Original", ""), ("Occluded", "_occluded"))
 # Confidence arm and its default run name
@@ -47,8 +45,12 @@ MAX_ITERS = 1000
 BOOTSTRAP_RESAMPLES = 10000
 
 
-def run_name(run: str, input_suffix: str) -> str:
-    return f"h36m_sampling_rtmpose_{run}{input_suffix}"
+def run_config(run: str, input_suffix: str) -> str:
+    # On the original images, random sampling is the benchmark
+    if run == "random" and not input_suffix:
+        return os.path.join(_CONFIGS_DIR, "benchmarks", "h36m_benchmark_rtmpose_estRt_estK_estD.yaml")
+    return os.path.join(_CONFIGS_DIR, "ablation_study", "sampling",
+                        f"h36m_sampling_rtmpose_{run}{input_suffix}.yaml")
 
 
 def run_settings(config_path: str, cache_root: str | None = None) -> dict:
@@ -427,9 +429,9 @@ if __name__ == "__main__":
         settings = {key: run_settings(config, cache_root) for key, config, cache_root
                     in zip(keys, args.configs, args.cache_roots)}
     else:
-        names = {(inp, arm): run_name(run, sfx) for inp, sfx in INPUTS for arm, run in ARMS}
-        settings = {key: run_settings(os.path.join(_CONFIGS_DIR, name + ".yaml"))
-                    for key, name in names.items()}
+        configs = {(inp, arm): run_config(run, sfx) for inp, sfx in INPUTS for arm, run in ARMS}
+        names = {key: os.path.splitext(os.path.basename(path))[0] for key, path in configs.items()}
+        settings = {key: run_settings(path) for key, path in configs.items()}
     block = confidence_ablation_block(
         args.benchmark_dir, args.dataset_dir, args.sequences_file, [inp for inp, _ in INPUTS],
         names, settings, args.seeds, args.workers, np.random.default_rng(0), args.restrict_to)

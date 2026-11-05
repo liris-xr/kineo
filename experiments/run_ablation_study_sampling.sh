@@ -14,12 +14,21 @@ for arm in fps topconf; do
   run_arm experiments/egohumans_eval.py "$EGOHUMANS_DIR" \
     "$CONFIGS/egohumans_sampling_nlf_$arm.yaml" "${SEQUENCES_FILTER[@]}"
 done
+# h36m_config ARM INPUT: on the original images, random sampling is the benchmark
+h36m_config() {
+  if [ "$1$2" = random ]; then
+    echo configs/experiments/benchmarks/h36m_benchmark_rtmpose_estRt_estK_estD.yaml
+  else
+    echo "$CONFIGS/h36m_sampling_rtmpose_$1$2.yaml"
+  fi
+}
+h36m_run() { echo "$OUTPUT_ROOT_DIR/$(basename "$(h36m_config "$@")" .yaml)"; }
 h36m_runs=()
 for input in "" _occluded; do
   for arm in random fps topconf random_unfiltered; do
-    run_arm experiments/h36m_eval.py "$H36M_DIR" \
-      "$CONFIGS/h36m_sampling_rtmpose_$arm$input.yaml" "${SEQUENCES_FILTER[@]}"
-    h36m_runs+=("$OUTPUT_ROOT_DIR/h36m_sampling_rtmpose_$arm$input")
+    run_arm experiments/h36m_eval.py "$H36M_DIR" "$(h36m_config "$arm" "$input")" \
+      "${SEQUENCES_FILTER[@]}"
+    h36m_runs+=("$(h36m_run "$arm" "$input")")
   done
   run_arm experiments/h36m_eval.py "$H36M_DIR" \
     "configs/experiments/ablation_study/confidence/h36m_confidence_rtmpose_unit_weights$input.yaml" \
@@ -44,13 +53,12 @@ inputs=()
 for input in "" _occluded; do
   runtime="$OUTPUT_ROOT_DIR/sampling_runtime_h36m$input.json"
   "$PYTHON" -m experiments.benchmark_sampling_runtime \
-    "$OUTPUT_ROOT_DIR/h36m_sampling_rtmpose_random$input" "$runtime" \
+    "$(h36m_run random "$input")" "$runtime" \
     --pairs 4000 --keypoints 400 --threshold 0.5
   label=Original
   [ -n "$input" ] && label=Occluded
-  inputs+=(--input "$label" "$OUTPUT_ROOT_DIR/h36m_sampling_rtmpose_random$input"
-           "$OUTPUT_ROOT_DIR/h36m_sampling_rtmpose_fps$input"
-           "$OUTPUT_ROOT_DIR/h36m_sampling_rtmpose_topconf$input" "$runtime")
+  inputs+=(--input "$label" "$(h36m_run random "$input")"
+           "$(h36m_run fps "$input")" "$(h36m_run topconf "$input")" "$runtime")
 done
 "$PYTHON" -m experiments.figures.generate_h36m_sampling_rows "${inputs[@]}" \
   --restrict-to "${h36m_runs[@]}" > "$TABLES_DIR/sampling_h36m.tex"
@@ -63,7 +71,7 @@ for input in "" _occluded; do
   [ -n "$input" ] && label=Occluded
   pairs+=(--pair Human3.6M RTMPose "$label"
           "$OUTPUT_ROOT_DIR/h36m_confidence_rtmpose_unit_weights$input"
-          "$OUTPUT_ROOT_DIR/h36m_sampling_rtmpose_random$input")
+          "$(h36m_run random "$input")")
 done
 "$PYTHON" -m experiments.figures.generate_confidence_ablation_rows "${pairs[@]}" \
   --restrict-to "${h36m_runs[@]}" > "$TABLES_DIR/confidence_weights_h36m.tex"
