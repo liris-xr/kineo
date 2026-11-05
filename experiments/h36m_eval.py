@@ -207,7 +207,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--config-file",
         type=str,
-        default="configs/pipeline/h36m_eval_rtmpose_smpl_scaling.yaml",
+        required=True,
     )
     parser.add_argument(
         "--sequences-filter",

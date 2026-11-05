@@ -58,7 +58,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--config-file",
         type=str,
-        default="configs/experiments/runtime/h36m_long_video_rtmpose_runtime.yaml",
+        required=True,
     )
     args = parser.parse_args()
     video_dir = args.video_dir

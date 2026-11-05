@@ -165,7 +165,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--config-file",
         type=str,
-        default="configs/pipeline/egohumans_eval_dwpose_smpl_scaling.yaml",
+        required=True,
     )
     parser.add_argument(
         "--sequences-filter",
