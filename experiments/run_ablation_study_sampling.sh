@@ -10,26 +10,26 @@ CONFIGS=configs/experiments/ablation_study/sampling
 run_arm experiments/egohumans_eval.py "$EGOHUMANS_DIR" \
   configs/experiments/benchmarks/egohumans_benchmark_nlf_estRt_estK_estD.yaml \
   "${SEQUENCES_FILTER[@]}"
-for arm in fps topconf_nlf; do
+for arm in fps topconf; do
   run_arm experiments/egohumans_eval.py "$EGOHUMANS_DIR" \
-    "$CONFIGS/egohumans_sampling_$arm.yaml" "${SEQUENCES_FILTER[@]}"
+    "$CONFIGS/egohumans_sampling_nlf_$arm.yaml" "${SEQUENCES_FILTER[@]}"
 done
 h36m_runs=()
 for input in "" _occluded; do
-  for arm in random fps topconf uniform; do
+  for arm in random fps topconf random_unfiltered; do
     run_arm experiments/h36m_eval.py "$H36M_DIR" \
-      "$CONFIGS/h36m_sampling_${arm}_rtmpose$input.yaml" "${SEQUENCES_FILTER[@]}"
-    h36m_runs+=("$OUTPUT_ROOT_DIR/h36m_sampling_${arm}_rtmpose$input")
+      "$CONFIGS/h36m_sampling_rtmpose_$arm$input.yaml" "${SEQUENCES_FILTER[@]}"
+    h36m_runs+=("$OUTPUT_ROOT_DIR/h36m_sampling_rtmpose_$arm$input")
   done
   run_arm experiments/h36m_eval.py "$H36M_DIR" \
-    "configs/experiments/ablation_study/confidence/h36m_unit_weights_rtmpose_estRt_estK_estD$input.yaml" \
+    "configs/experiments/ablation_study/confidence/h36m_confidence_rtmpose_unit_weights$input.yaml" \
     "${SEQUENCES_FILTER[@]}"
-  h36m_runs+=("$OUTPUT_ROOT_DIR/h36m_unit_weights_rtmpose_estRt_estK_estD$input")
+  h36m_runs+=("$OUTPUT_ROOT_DIR/h36m_confidence_rtmpose_unit_weights$input")
 done
 
 random="$OUTPUT_ROOT_DIR/egohumans_benchmark_nlf_estRt_estK_estD"
-fps="$OUTPUT_ROOT_DIR/egohumans_sampling_fps"
-topp="$OUTPUT_ROOT_DIR/egohumans_sampling_topconf_nlf"
+fps="$OUTPUT_ROOT_DIR/egohumans_sampling_nlf_fps"
+topp="$OUTPUT_ROOT_DIR/egohumans_sampling_nlf_topconf"
 "$PYTHON" -m experiments.benchmark_sampling_runtime "$random" \
   "$OUTPUT_ROOT_DIR/sampling_runtime_egohumans.json"
 "$PYTHON" -m experiments.figures.compute_pair_sampling_coverage "$random" "$fps" \
@@ -44,13 +44,13 @@ inputs=()
 for input in "" _occluded; do
   runtime="$OUTPUT_ROOT_DIR/sampling_runtime_h36m$input.json"
   "$PYTHON" -m experiments.benchmark_sampling_runtime \
-    "$OUTPUT_ROOT_DIR/h36m_sampling_random_rtmpose$input" "$runtime" \
+    "$OUTPUT_ROOT_DIR/h36m_sampling_rtmpose_random$input" "$runtime" \
     --pairs 4000 --keypoints 400 --threshold 0.5
   label=Original
   [ -n "$input" ] && label=Occluded
-  inputs+=(--input "$label" "$OUTPUT_ROOT_DIR/h36m_sampling_random_rtmpose$input"
-           "$OUTPUT_ROOT_DIR/h36m_sampling_fps_rtmpose$input"
-           "$OUTPUT_ROOT_DIR/h36m_sampling_topconf_rtmpose$input" "$runtime")
+  inputs+=(--input "$label" "$OUTPUT_ROOT_DIR/h36m_sampling_rtmpose_random$input"
+           "$OUTPUT_ROOT_DIR/h36m_sampling_rtmpose_fps$input"
+           "$OUTPUT_ROOT_DIR/h36m_sampling_rtmpose_topconf$input" "$runtime")
 done
 "$PYTHON" -m experiments.figures.generate_h36m_sampling_rows "${inputs[@]}" \
   --restrict-to "${h36m_runs[@]}" > "$TABLES_DIR/sampling_h36m.tex"
@@ -62,8 +62,8 @@ for input in "" _occluded; do
   label=Original
   [ -n "$input" ] && label=Occluded
   pairs+=(--pair Human3.6M RTMPose "$label"
-          "$OUTPUT_ROOT_DIR/h36m_unit_weights_rtmpose_estRt_estK_estD$input"
-          "$OUTPUT_ROOT_DIR/h36m_sampling_random_rtmpose$input")
+          "$OUTPUT_ROOT_DIR/h36m_confidence_rtmpose_unit_weights$input"
+          "$OUTPUT_ROOT_DIR/h36m_sampling_rtmpose_random$input")
 done
 "$PYTHON" -m experiments.figures.generate_confidence_ablation_rows "${pairs[@]}" \
   --restrict-to "${h36m_runs[@]}" > "$TABLES_DIR/confidence_weights_h36m.tex"

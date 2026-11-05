@@ -33,7 +33,7 @@ _CONFIGS_DIR = os.path.join(
 
 INPUTS = (("Original", ""), ("Occluded", "_occluded"))
 # Confidence arm and its default run name
-ARMS = (("off", "uniform"), ("on", "random"))
+ARMS = (("off", "random_unfiltered"), ("on", "random"))
 METRICS = (
     ("TE", "cam_stats"),
     ("s-TE", "cam_stats"),
@@ -48,7 +48,7 @@ BOOTSTRAP_RESAMPLES = 10000
 
 
 def run_name(run: str, input_suffix: str) -> str:
-    return f"h36m_sampling_{run}_rtmpose{input_suffix}"
+    return f"h36m_sampling_rtmpose_{run}{input_suffix}"
 
 
 def run_settings(config_path: str, cache_root: str | None = None) -> dict:

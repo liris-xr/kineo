@@ -44,7 +44,7 @@ from kineo.pipeline.stages.keypoints_pairs_sampling import (
 
 ARMS = {
     "Random": "configs/experiments/benchmarks/egohumans_benchmark_nlf_estRt_estK_estD.yaml",
-    "FPS": "configs/experiments/ablation_study/sampling/egohumans_sampling_fps.yaml",
+    "FPS": "configs/experiments/ablation_study/sampling/egohumans_sampling_nlf_fps.yaml",
 }
 SAVED_ANNOTATIONS = {
     "calibration_points": CalibrationPointsAnnotations,

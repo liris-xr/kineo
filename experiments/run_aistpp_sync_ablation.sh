@@ -3,7 +3,7 @@ source "$(dirname "$0")/launch_common.sh"
 require AISTPP_DIR DEMAND_DIR
 export DEMAND_DIR
 
-CONFIGS=configs/experiments/sync_only
+CONFIGS=configs/experiments/sync
 # In table row order
 ARMS=(
   aistpp_sync_mfcc

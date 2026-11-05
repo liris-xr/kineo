@@ -9,7 +9,7 @@ run_arm experiments/egohumans_eval.py "$EGOHUMANS_DIR" \
   "$BENCHMARKS/egohumans_benchmark_nlf_estRt_estK_estD.yaml"
 for reconstruction in moge vggt; do
   run_arm experiments/h36m_eval.py "$H36M_DIR" \
-    "configs/experiments/scene_reconstruction/h36m_scene_reconstruction_$reconstruction.yaml" \
+    "configs/experiments/scene_reconstruction/h36m_scene_reconstruction_nlf_$reconstruction.yaml" \
     --sequences-filter "S9_Directions 1"
 done
 

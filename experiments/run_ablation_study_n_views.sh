@@ -7,11 +7,11 @@ est=() gt=()
 for n_views in 2 3 4 5 6 7 8; do
   for intrinsics in estK_estD gtK_gtD; do
     run_arm experiments/egohumans_eval.py "$EGOHUMANS_DIR" \
-      "$CONFIGS/egohumans_benchmark_nlf_estRt_${intrinsics}_${n_views}views.yaml" \
+      "$CONFIGS/egohumans_n_views_nlf_estRt_${intrinsics}_${n_views}views.yaml" \
       "${SEQUENCES_FILTER[@]}"
   done
-  est+=("$OUTPUT_ROOT_DIR/egohumans_benchmark_nlf_estRt_estK_estD_${n_views}views")
-  gt+=("$OUTPUT_ROOT_DIR/egohumans_benchmark_nlf_estRt_gtK_gtD_${n_views}views")
+  est+=("$OUTPUT_ROOT_DIR/egohumans_n_views_nlf_estRt_estK_estD_${n_views}views")
+  gt+=("$OUTPUT_ROOT_DIR/egohumans_n_views_nlf_estRt_gtK_gtD_${n_views}views")
 done
 for intrinsics in estK_estD gtK_gtD; do
   run_arm experiments/egohumans_eval.py "$EGOHUMANS_DIR" \

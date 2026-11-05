@@ -5,11 +5,10 @@ require H36M_RUNTIME_VIDEOS_DIR
 
 CONFIGS=configs/experiments/runtime
 for length in short medium long; do
-  for detector in nlf rtmpose rtmpose_b32_half; do
-    config="h36m_runtime_${detector%_b32_half}_${length}_video"
-    [ "$detector" = rtmpose_b32_half ] && config+=_b32_half
+  for detector in nlf rtmpose rtmpose_b32_fp16; do
     run_arm experiments/h36m_runtime_eval.py \
-      "$H36M_RUNTIME_VIDEOS_DIR/${length}_video" "$CONFIGS/$config.yaml"
+      "$H36M_RUNTIME_VIDEOS_DIR/${length}_video" \
+      "$CONFIGS/h36m_runtime_${detector}_${length}_video.yaml"
   done
 done
 
