@@ -13,13 +13,11 @@ from kineo.annotations.bboxes_2d import BBox2DAnnotations
 import pickle
 from kineo.geometry.camera import inverse_Rt
 from kineo.geometry.transformations import compute_similarity_transform
-from kineo.geometry.conversions import convert_world_points_from_opencv_to_opengl
 
 from aitviewer.headless import HeadlessRenderer
 from aitviewer.scene.camera import PinholeCamera
 from aitviewer.configuration import CONFIG as C
 from aitviewer.scene.node import Node
-from aitviewer.viewer import Viewer
 
 from kineo.visualization.viz_3d import add_keypoints_3d
 from kineo.visualization.viz_3d import add_cameras
@@ -285,8 +283,8 @@ if __name__ == "__main__":
         sequences = orjson.loads(f.read())
     sequence = next(s for s in sequences if s["sequence_name"] == "S9_Directions 1")
 
-    moge_pred_annotations_dir = os.path.join(pred_annotations_dir, "h36m_scene_reconstruction_moge", "annotations")
-    vggt_pred_annotations_dir = os.path.join(pred_annotations_dir, "h36m_scene_reconstruction_vggt", "annotations")
+    moge_pred_annotations_dir = os.path.join(pred_annotations_dir, "h36m_scene_reconstruction_nlf_moge", "annotations")
+    vggt_pred_annotations_dir = os.path.join(pred_annotations_dir, "h36m_scene_reconstruction_nlf_vggt", "annotations")
 
     gt_keypoints_3d_annotations, gt_camera_intrinsics_annotations, gt_camera_extrinsics_annotations = load_gt_annotations(dataset_dir, sequence)
     moge_pred_keypoints_3d_annotations, moge_pred_camera_intrinsics_annotations, moge_pred_camera_extrinsics_annotations, moge_pred_world_reconstructed_scene_annotations = load_predicted_annotations(moge_pred_annotations_dir, sequence)

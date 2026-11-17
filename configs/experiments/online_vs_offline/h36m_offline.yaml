@@ -1,0 +1,5 @@
+calibration_window_s: null
+reconstruction_start_s: 10.0
+
+calibration_config_file: "configs/experiments/online_vs_offline/h36m_online_calibration.yaml"
+stream_config_file: "configs/experiments/online_vs_offline/h36m_online_stream_h36m_trt_fp16.yaml"

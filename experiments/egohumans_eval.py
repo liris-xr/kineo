@@ -14,23 +14,15 @@ import os
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 
 import torch
+from omegaconf import OmegaConf
 from kineo.pipeline.pipeline import Pipeline
-from kineo.datasets.keypoints_sequence_dataset import ViewInput
-from kineo.io.frame_sequence_loader import ImagesLoader
-from kineo.annotations.keypoints_3d import Keypoints3DAnnotations
-from kineo.annotations.keypoints_2d import Keypoints2DAnnotations
-from kineo.annotations.camera_extrinsics import CameraExtrinsicsAnnotations
-from kineo.annotations.camera_intrinsics import CameraIntrinsicsAnnotations
-from kineo.annotations.bboxes_2d import BBox2DAnnotations
+from kineo.datasets.egohumans.camera_subsets import load_camera_subsets
+from kineo.datasets.egohumans.egohumans_dataset import EgoHumansSequenceDataset
 
-from collections import defaultdict
 
-import glob
-import orjson
 from tqdm import tqdm
 import argparse
 import traceback
-import json
 
 torch.use_deterministic_algorithms(True)
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -50,52 +42,6 @@ def print_system_info(device: torch.device):
         )
 
 
-def print_statistics(
-    cam_metrics_stats: dict[str, float],
-    human_metrics_stats: dict[str, float],
-    failed_sequences: list[str],
-):
-    print("\n=== Statistics Report ===\n")
-    print("📷 Camera Metrics:")
-    for metric_name, metric_stats in cam_metrics_stats.items():
-        print(f"- {metric_name}:")
-        for key, value in metric_stats.items():
-            print(f"\t- {key:<10}: {value:.4f}")
-
-    print("\n🧑 Human Metrics:")
-    for metric_name, metric_stats in human_metrics_stats.items():
-        print(f"- {metric_name}:")
-        for key, value in metric_stats.items():
-            print(f"\t- {key:<10}: {value:.4f}")
-
-    if failed_sequences:
-        print("\n❌ Failed Sequences:")
-        for seq in failed_sequences:
-            print(f"  - {seq}")
-
-    print("\n=========================\n")
-
-
-def export_statistics(
-    output_path: str,
-    cam_metrics_stats: dict[str, dict[str, float]],
-    human_metrics_stats: dict[str, dict[str, float]],
-    failed_sequences: list[str],
-):
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-
-    with open(output_path, "w") as f:
-        json.dump(
-            {
-                "camera_metrics": cam_metrics_stats,
-                "human_metrics": human_metrics_stats,
-                "failed_sequences": failed_sequences,
-            },
-            f,
-            indent=2,
-        )
-
-
 def main(
     dataset_dir: str,
     config_file: str,
@@ -107,102 +53,87 @@ def main(
 
     pipeline = Pipeline.build_pipeline_from_config(config_file, device)
 
-    sequences_file = os.path.join(dataset_dir, "egohumans_sequences.json")
+    n_views = OmegaConf.load(config_file).get("n_views")
+    camera_subsets = None if n_views is None else load_camera_subsets(n_views)
 
-    with open(sequences_file, "rb") as f:
-        sequences = orjson.loads(f.read())
+    dataset = EgoHumansSequenceDataset(
+        os.path.join(dataset_dir, "egohumans_sequences.json"), device=device
+    )
 
-    if sequences_filter:
-        sequences = [s for s in sequences if s["sequence_name"] in sequences_filter]
-    
+    indices = [
+        index
+        for index, sequence_data in enumerate(dataset.sequences_data)
+        if not sequences_filter
+        or sequence_data["sequence_name"] in sequences_filter
+    ]
+
     print("The following sequences will be processed:")
-    for sequence in sequences:
-        print(f"- {sequence['sequence_name']}")
+    for index in indices:
+        print(f"- {dataset.sequences_data[index]['sequence_name']}")
 
-    pbar = tqdm(sequences, desc="Processing sequences")
+    pbar = tqdm(indices, desc="Processing sequences")
 
     failed_sequences = []
 
-    for sequence in pbar:
-        sequence_name = sequence["sequence_name"]
+    for index in pbar:
+        sequence_name = dataset.sequences_data[index]["sequence_name"]
 
         pbar.set_description(f"Processing sequence: {sequence_name}")
 
         try:
-            cameras = list(sequence["views"].keys())
+            sequence = dataset[index]
+            annotations = sequence["annotations"]
 
-            bboxes_2d_file = sequence["annotations"]["bboxes_2d"]
-            bboxes_2d_file = os.path.join(dataset_dir, bboxes_2d_file)
+            gt_bboxes_2d = annotations["bboxes_2d"]
+            gt_keypoints_2d = annotations["keypoints_2d"]
+            gt_keypoints_3d = annotations["keypoints_3d"]
+            gt_cam_intrinsics = annotations["cameras_intrinsics"]
+            gt_cam_extrinsics = annotations["cameras_extrinsics"]
 
-            with open(bboxes_2d_file, "rb") as f:
-                gt_bboxes_2d = BBox2DAnnotations.from_dict(orjson.loads(f.read()))
+            cameras = [view["view_id"] for view in sequence["views_inputs"]]
 
-            keypoints_3d_file = sequence["annotations"]["keypoints_3d"]
-            keypoints_3d_file = os.path.join(dataset_dir, keypoints_3d_file)
+            # The pipeline assumes static cameras
+            non_static_views = [
+                view_id
+                for view_id in gt_cam_extrinsics.views_ids
+                if not gt_cam_extrinsics.is_view_static(view_id)
+            ]
 
-            with open(keypoints_3d_file, "rb") as f:
-                gt_keypoints_3d = Keypoints3DAnnotations.from_dict(
-                    orjson.loads(f.read())
+            if non_static_views:
+                tqdm.write(
+                    f"{sequence_name}: skipping non-static views "
+                    f"{', '.join(non_static_views)}"
                 )
 
-            keypoints_2d_file = sequence["annotations"]["keypoints_2d"]
-            keypoints_2d_file = os.path.join(dataset_dir, keypoints_2d_file)
-            with open(keypoints_2d_file, "rb") as f:
-                gt_keypoints_2d = Keypoints2DAnnotations.from_dict(
-                    orjson.loads(f.read())
-                )
+            cameras = [
+                camera
+                for camera in cameras
+                if camera not in non_static_views
+                and (not views_filter or camera in views_filter)
+            ]
 
-            cam_intrinsics_file = sequence["annotations"]["cameras_intrinsics"]
-            cam_intrinsics_file = os.path.join(dataset_dir, cam_intrinsics_file)
-
-            with open(cam_intrinsics_file, "rb") as f:
-                gt_cam_intrinsics = CameraIntrinsicsAnnotations.from_dict(
-                    orjson.loads(f.read())
-                )
-
-            cam_extrinsics_file = sequence["annotations"]["cameras_extrinsics"]
-            cam_extrinsics_file = os.path.join(dataset_dir, cam_extrinsics_file)
-
-            with open(cam_extrinsics_file, "rb") as f:
-                gt_cam_extrinsics = CameraExtrinsicsAnnotations.from_dict(
-                    orjson.loads(f.read())
-                )
-
-            if views_filter:
-                gt_bboxes_2d = gt_bboxes_2d.filter_by_view_ids(views_filter)
-                gt_keypoints_2d = gt_keypoints_2d.filter_by_view_ids(views_filter)
-                gt_cam_extrinsics = gt_cam_extrinsics.filter_by_view_ids(views_filter)
-                gt_cam_intrinsics = gt_cam_intrinsics.filter_by_view_ids(views_filter)
-                cameras = [c for c in cameras if c in views_filter]
-
-            views = []
-            for camera in cameras:
-                images_dir = sequence["views"][camera]["images_dir"]
-                fps = sequence["views"][camera]["fps"]
-                imgs_paths = sorted(
-                    glob.glob(
-                        os.path.join(
-                            dataset_dir,
-                            images_dir,
-                            "*.jpg",
-                        )
+            if camera_subsets is not None:
+                subset = camera_subsets[sequence_name]
+                unavailable = [c for c in subset if c not in cameras]
+                if unavailable:
+                    raise ValueError(
+                        f"{sequence_name}: subset cameras "
+                        f"{', '.join(unavailable)} are missing or non-static"
                     )
-                )
-                n_imgs = len(imgs_paths)
+                # Keep the dataset's view order
+                cameras = [c for c in cameras if c in subset]
+                tqdm.write(f"{sequence_name}: cameras {', '.join(cameras)}")
 
-                frame_timestamps_local = (torch.arange(n_imgs) / fps).tolist()
+            gt_bboxes_2d = gt_bboxes_2d.filter_by_view_ids(cameras)
+            gt_keypoints_2d = gt_keypoints_2d.filter_by_view_ids(cameras)
+            gt_cam_extrinsics = gt_cam_extrinsics.filter_by_view_ids(cameras)
+            gt_cam_intrinsics = gt_cam_intrinsics.filter_by_view_ids(cameras)
 
-                views.append(
-                    ViewInput(
-                        view_id=camera,
-                        frame_loader=ImagesLoader(
-                            img_paths=imgs_paths,
-                            frame_timestamps_local=frame_timestamps_local,
-                            device=device,
-                        ),
-                        audio_loader=None,
-                    )
-                )
+            views = [
+                view
+                for view in sequence["views_inputs"]
+                if view["view_id"] in cameras
+            ]
 
             _ = pipeline.run(
                 sequence_name=sequence_name,
@@ -210,8 +141,8 @@ def main(
                 annotations={},
                 gt_annotations={
                     "bboxes_2d": gt_bboxes_2d,
-                    "camera_intrinsics": gt_cam_intrinsics,
-                    "camera_extrinsics": gt_cam_extrinsics,
+                    "cameras_intrinsics": gt_cam_intrinsics,
+                    "cameras_extrinsics": gt_cam_extrinsics,
                     "keypoints_3d": gt_keypoints_3d,
                     "keypoints_2d": gt_keypoints_2d,
                 },
@@ -234,7 +165,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--config-file",
         type=str,
-        default="configs/pipeline/egohumans_eval_dwpose_smpl_scaling.yaml",
+        required=True,
     )
     parser.add_argument(
         "--sequences-filter",

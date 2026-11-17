@@ -9,6 +9,7 @@ from kineo.annotations.camera_intrinsics import CameraIntrinsicsAnnotations
 from kineo.annotations.camera_extrinsics import CameraExtrinsicsAnnotations
 from kineo.annotations.stage_timing import StageTimingsAnnotations
 from kineo.eval.dataset_metrics import compute_predictions_metrics
+from egohumans_stats_utils import camera_annotations_file, keep_predicted_views
 
 
 def load_gt_annotations(
@@ -81,11 +82,11 @@ def load_predicted_annotations(
             pred_keypoints_3d_file = os.path.join(
                 predictions_dir, seq_name, "keypoints_3d.pkl"
             )
-            pred_camera_intrinsics_file = os.path.join(
-                predictions_dir, seq_name, "camera_intrinsics.pkl"
+            pred_camera_intrinsics_file = camera_annotations_file(
+                predictions_dir, seq_name, "intrinsics"
             )
-            pred_camera_extrinsics_file = os.path.join(
-                predictions_dir, seq_name, "camera_extrinsics.pkl"
+            pred_camera_extrinsics_file = camera_annotations_file(
+                predictions_dir, seq_name, "extrinsics"
             )
             pred_stage_timings_file = os.path.join(
                 predictions_dir, seq_name, "stage_timings.pkl"
@@ -137,6 +138,13 @@ def compute_h36m_stats(
         pred_camera_extrinsics_per_seq,
         pred_stage_timings_per_seq,
     ) = load_predicted_annotations(h36m_annotations_dir, sequences)
+    gt_camera_intrinsics_per_seq, gt_camera_extrinsics_per_seq = (
+        keep_predicted_views(
+            gt_camera_intrinsics_per_seq,
+            gt_camera_extrinsics_per_seq,
+            pred_camera_extrinsics_per_seq,
+        )
+    )
     return compute_predictions_metrics(
         gt_keypoints_3d_annotations=gt_keypoints_3d_per_seq,
         gt_cam_intrinsics_annotations=gt_camera_intrinsics_per_seq,

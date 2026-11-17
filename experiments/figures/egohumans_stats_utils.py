@@ -60,6 +60,16 @@ def load_gt_annotations(
     )
 
 
+def camera_annotations_file(
+    predictions_dir: str, seq_name: str, kind: str
+) -> str:
+    for prefix in ("cameras", "camera"):
+        path = os.path.join(predictions_dir, seq_name, f"{prefix}_{kind}.pkl")
+        if os.path.exists(path):
+            return path
+    return path
+
+
 def load_predicted_annotations(
     predictions_dir: str,
     sequences: list[dict],
@@ -81,11 +91,11 @@ def load_predicted_annotations(
             pred_keypoints_3d_file = os.path.join(
                 predictions_dir, seq_name, "keypoints_3d.pkl"
             )
-            pred_camera_intrinsics_file = os.path.join(
-                predictions_dir, seq_name, "camera_intrinsics.pkl"
+            pred_camera_intrinsics_file = camera_annotations_file(
+                predictions_dir, seq_name, "intrinsics"
             )
-            pred_camera_extrinsics_file = os.path.join(
-                predictions_dir, seq_name, "camera_extrinsics.pkl"
+            pred_camera_extrinsics_file = camera_annotations_file(
+                predictions_dir, seq_name, "extrinsics"
             )
             pred_stage_timings_file = os.path.join(
                 predictions_dir, seq_name, "stage_timings.pkl"
@@ -117,6 +127,25 @@ def load_predicted_annotations(
     )
 
 
+def keep_predicted_views(
+    gt_camera_intrinsics_per_seq: dict[str, CameraIntrinsicsAnnotations],
+    gt_camera_extrinsics_per_seq: dict[str, CameraExtrinsicsAnnotations],
+    pred_camera_extrinsics_per_seq: dict[str, CameraExtrinsicsAnnotations],
+) -> tuple[
+    dict[str, CameraIntrinsicsAnnotations],
+    dict[str, CameraExtrinsicsAnnotations],
+]:
+    intrinsics = dict(gt_camera_intrinsics_per_seq)
+    extrinsics = dict(gt_camera_extrinsics_per_seq)
+
+    for seq_name, pred_extrinsics in pred_camera_extrinsics_per_seq.items():
+        views_ids = sorted(pred_extrinsics.views_ids)
+        intrinsics[seq_name] = intrinsics[seq_name].filter_by_view_ids(views_ids)
+        extrinsics[seq_name] = extrinsics[seq_name].filter_by_view_ids(views_ids)
+
+    return intrinsics, extrinsics
+
+
 def compute_egohumans_stats(
     egohumans_dataset_dir: str,
     egohumans_annotations_dir: str,
@@ -135,6 +164,13 @@ def compute_egohumans_stats(
         pred_camera_extrinsics_per_seq,
         pred_stage_timings_per_seq,
     ) = load_predicted_annotations(egohumans_annotations_dir, sequences)
+    gt_camera_intrinsics_per_seq, gt_camera_extrinsics_per_seq = (
+        keep_predicted_views(
+            gt_camera_intrinsics_per_seq,
+            gt_camera_extrinsics_per_seq,
+            pred_camera_extrinsics_per_seq,
+        )
+    )
     return compute_predictions_metrics(
         gt_keypoints_3d_annotations=gt_keypoints_3d_per_seq,
         gt_cam_intrinsics_annotations=gt_camera_intrinsics_per_seq,

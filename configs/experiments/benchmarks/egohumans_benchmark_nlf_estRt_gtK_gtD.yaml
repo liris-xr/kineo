@@ -1,6 +1,6 @@
 output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/egohumans_benchmark_nlf_estRt_gtK_gtD"
-cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/egohumans_benchmark_nlf_estRt_gtK_gtD"
-use_cache: False
+cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/egohumans_nlfcoco19-fp32_4965fc50"
+use_cache: True
 batch_size: 32
 use_half_precision: False
 
@@ -14,7 +14,7 @@ pipeline:
       order: 0
       runtime_cfg:
         _target_: kineo.pipeline.stages.transfer_gt_annotations.TransferGroundTruthAnnotationsRuntimeConfig
-        annotations_keys: ["bboxes_2d", "camera_intrinsics"]
+        annotations_keys: ["bboxes_2d", "cameras_intrinsics"]
 
     nlf_skeleton_keypoints_detection:
       _target_: kineo.pipeline.stages.nlf.skeleton_keypoints_detection.NLFSkeletonKeypointsDetectionStage
@@ -26,7 +26,7 @@ pipeline:
         batch_size: ${batch_size}
         use_half_precision: ${use_half_precision}
         use_cache: ${use_cache}
-        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
+        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}/{view_id}.pkl"
         skeleton_name: "coco_19"
 
     global_time_resampling:
@@ -74,6 +74,7 @@ pipeline:
       order: 60
       runtime_cfg:
         _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentRuntimeConfig
+        device: cpu
         n_iters: 300
         use_lbfgs: True
         optimize_distortion_coefficients: False
@@ -93,7 +94,7 @@ pipeline:
       _target_: kineo.pipeline.stages.smpl_global_scale_estimation.SMPLGlobalScaleEstimationStage
       name: "SMPL Global Scale Estimation"
       joint_regressor_path: "./body_models/smpl/J_regressor_coco19.pt"
-      smpl_model_path: "./body_models/smpl/SMPL_NEUTRAL.pkl"
+      smpl_model_path: "./body_models/smpl/SMPL_NEUTRAL_clean.pkl"
       order: 100
       runtime_cfg:
         _target_: kineo.pipeline.stages.smpl_global_scale_estimation.SMPLGlobalScaleEstimationRuntimeConfig

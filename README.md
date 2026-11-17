@@ -96,6 +96,98 @@ pixi run egohumans-benchmark <path-to-egohumans-dataset> [path-to-config.yaml]
 If no `path-to-config.yaml` is not given, uses `configs/experiments/benchmarks/*_benchmark_nlf_estRt_estK_estD.yaml` by default.
 All configurations used in the paper are available in the `configs` directory.
 
+### Reproducing the paper
+
+Each launcher of `experiments/` runs the configurations of some tables and
+figures, skips the runs already finished, and writes the tables to
+`$OUTPUT_ROOT_DIR/tables` and the figures to `$OUTPUT_ROOT_DIR/figures`.
+
+```sh
+export KINEO_DATASETS_DIR=<path-to-datasets>  # parent of H3.6M, EgoHumans, AIST++
+export PASCAL_VOC_DIR=<path-to-pascal-voc>    # pixi run pascal-voc-download
+export DEMAND_DIR=<path-to-demand>            # pixi run demand-download
+export H36M_RUNTIME_VIDEOS_DIR=<path>         # {short,medium,long}_video/<camera>.mp4
+export HSFM_EVAL_DIR=<path-to-hsfm-results>   # optional, comparison with HSfM
+
+pixi run reproduce-paper
+```
+
+| Launcher | Results |
+|---|---|
+| `run_benchmarks.sh` | Human and camera metrics, detectors, AIST++ synchronization, distortion error |
+| `run_ablation_study_camera_params.sh` | Camera parameters |
+| `run_ablation_study_global_scaling.sh` | Global scale estimation |
+| `run_ablation_study_sampling.sh` | Sampling strategies, confidence filter and weights with RTMPose |
+| `run_ablation_study_confidence.sh` | Detection confidence with NLF and DWPose |
+| `run_ablation_study_n_views.sh` | Number of views |
+| `run_aistpp_sync_ablation.sh` | Robustness of the audio synchronization |
+| `run_online_vs_offline.sh` | Online against offline mode |
+| `run_runtime_benchmarks.sh` | Calibration runtime |
+| `run_method_figures.sh` | Figures of the method |
+
+Set `SEQUENCES=<name>,...` to try a launcher on a few sequences first.
+
+### Online mode
+
+The online benchmark replays each H3.6M sequence as a stream: it calibrates on
+the first seconds only, never rewinds, and scores accuracy and latency over the
+same run. `OUTPUT_ROOT_DIR` decides where it lands.
+
+```sh
+export OUTPUT_ROOT_DIR=<path-to-results>
+
+pixi run h36m-online-benchmark <path-to-h36m-dataset> [path-to-config.yaml]
+pixi run h36m-online-report $OUTPUT_ROOT_DIR/h36m_online
+```
+
+If no `path-to-config.yaml` is given, uses
+`configs/experiments/online_vs_offline/h36m_online.yaml`. Its sibling
+`h36m_offline.yaml` is the same arm with the calibration allowed to read the
+whole sequence instead of the first 10 s, which is the one difference between
+online and offline mode; both reconstruct the same frames with the same models,
+so their metrics are directly comparable. Give each arm its own
+`OUTPUT_ROOT_DIR`.
+
+The report prints the camera and human metrics, the per-phase latency
+distribution and the throughput, and writes `metrics_summary.json`,
+`latency_summary.txt` and `environment.json` beside the run.
+
+Only the `h36m_trt_fp16` arm can be scored against H3.6M: the other arms run the
+stock estimator, which emits COCO wholebody. The calibration is solved with the
+backends pinned, so it reproduces exactly; the stream keeps the fast backends
+because it is the thing being timed.
+
+A frame covers every view at once, so `frames/s` is 3D poses per second and
+`view-frames/s` is that times the number of cameras.
+
+## 👁️ Previewing a dataset
+
+Check a preprocessed sequence and its ground truth in [rerun](https://rerun.io):
+3D skeletons and cameras, 2D skeletons and boxes over the footage, and a lane
+per view showing when it was recording and which part is annotated.
+
+```sh
+export KINEO_DATASETS_DIR=<path-to-datasets>   # parent of AIST++, H3.6M, EgoHumans
+
+pixi run preview-egohumans tennis_001
+pixi run preview-aistpp mBR2_ch01
+pixi run preview-h36m S9_Directions
+```
+
+Each task also takes the dataset directory as its last argument, for datasets
+kept outside `$KINEO_DATASETS_DIR`:
+
+```sh
+pixi run preview-egohumans tennis_001 <path-to-EgoHumans>
+```
+
+A sequence is picked by name, or by any fragment naming exactly one.
+
+```sh
+pixi run preview-aistpp mBR2_ch01 refined       # AIST++ variant: raw or refined
+pixi run preview-h36m "S1_Directions 1" train   # H3.6M split: val or train
+```
+
 ## 🤝 Contributing
 
 The pipeline is modular and can easily be extended by changing the stages defined in the configuration files. Example of configuration files are available in the `configs` directory. If you want to integrate your own work in Kineo, feel free to fork the repository and modify the code to suit your needs.

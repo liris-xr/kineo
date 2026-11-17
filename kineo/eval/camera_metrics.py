@@ -10,7 +10,7 @@
 
 import torch
 from kineo.geometry.transformations import (
-    compute_similarity_transform,
+    compute_camera_similarity_transform,
     inverse_Rt,
     apply_similarity_transform_to_Rt,
 )
@@ -105,9 +105,9 @@ def _compute_camera_metrics_for_frame(
     pred_cam_pos = pred_cam2world[:, :3, 3]
 
     # Camera position accuracy, with scale alignment.
-    R, t, s = compute_similarity_transform(
-        X=pred_cam_pos,
-        Y=gt_cam_pos,
+    R, t, s = compute_camera_similarity_transform(
+        pred_cam2world,
+        gt_cam2world,
         estimate_scale=True,
     )
     pred_Rt_scaled_aligned = apply_similarity_transform_to_Rt(pred_Rt, R, t, s)
@@ -115,9 +115,9 @@ def _compute_camera_metrics_for_frame(
     pred_cam_pos_scaled_aligned = pred_cam2world_scaled_aligned[:, :3, 3]
 
     # Camera position accuracy, without scale alignment.
-    R, t, s = compute_similarity_transform(
-        X=pred_cam_pos,
-        Y=gt_cam_pos,
+    R, t, s = compute_camera_similarity_transform(
+        pred_cam2world,
+        gt_cam2world,
         estimate_scale=False,
     )
     pred_Rt_unscaled_aligned = apply_similarity_transform_to_Rt(pred_Rt, R, t, s)
@@ -233,7 +233,19 @@ def compute_camera_metrics(
     n_views = len(views_ids)
 
     if len(pred_cam_extrinsics_annotations.annotations) != n_views:
-        frames = pred_cam_extrinsics_annotations.frames
+        # Skip failed reconstructions (non-finite cameras)
+        frames = [
+            frame
+            for frame in pred_cam_extrinsics_annotations.frames
+            if all(
+                torch.isfinite(ann.Rt).all()
+                for ann in pred_cam_extrinsics_annotations.filter_by_frame_idx(frame).annotations
+            )
+            and all(
+                torch.isfinite(ann.K).all()
+                for ann in pred_cam_intrinsics_annotations.get_closest_by_frame_idx(frame).annotations
+            )
+        ]
     else:
         frames = [0]
 

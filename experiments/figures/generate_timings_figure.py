@@ -6,7 +6,6 @@ from kineo.annotations.global_time_reference import GlobalTimeReferenceAnnotatio
 import matplotlib.pyplot as plt
 import matplotlib
 import numpy as np
-from matplotlib.ticker import FuncFormatter
 matplotlib.use("TkAgg")
 
 def compute_sequence_timings(annotations_dir: str) -> dict:
@@ -102,13 +101,13 @@ def generate_h36m_calibration_runtime_rows(kineo_eval_data_dir: str, output_path
     )
 
     kineo_h36m_runtime_rtmpose_short_video_b32_half_annotations_path = os.path.join(
-        kineo_eval_data_dir, "h36m_runtime_rtmpose_short_video_b32_half", "annotations", "runtime_eval"
+        kineo_eval_data_dir, "h36m_runtime_rtmpose_b32_fp16_short_video", "annotations", "runtime_eval"
     )
     kineo_h36m_runtime_rtmpose_medium_video_b32_half_annotations_path = os.path.join(
-        kineo_eval_data_dir, "h36m_runtime_rtmpose_medium_video_b32_half", "annotations", "runtime_eval"
+        kineo_eval_data_dir, "h36m_runtime_rtmpose_b32_fp16_medium_video", "annotations", "runtime_eval"
     )
     kineo_h36m_runtime_rtmpose_long_video_b32_half_annotations_path = os.path.join(
-        kineo_eval_data_dir, "h36m_runtime_rtmpose_long_video_b32_half", "annotations", "runtime_eval"
+        kineo_eval_data_dir, "h36m_runtime_rtmpose_b32_fp16_long_video", "annotations", "runtime_eval"
     )
 
     kineo_h36m_runtime_nlf_short_video_annotations_path = os.path.join(

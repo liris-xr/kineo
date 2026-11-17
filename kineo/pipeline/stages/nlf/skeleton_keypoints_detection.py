@@ -1,9 +1,11 @@
 from __future__ import annotations
+from collections import defaultdict
+from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 import torch
-import os
 from tqdm import tqdm
-import pickle
 
+from kineo.io.frame_sequence_loader import FrameSequenceLoader
 from kineo.pipeline.pipeline import PipelineStage
 from kineo.datasets.keypoints_sequence_dataset import ViewInput
 from kineo.annotations import (
@@ -13,13 +15,16 @@ from kineo.annotations import (
     Keypoints2DAnnotation,
     BBox2DAnnotations,
     CameraIntrinsicsAnnotations,
+    COCO_17_KEYPOINTS_FORMAT,
+    H36M_17_KEYPOINTS_FORMAT,
 )
+from kineo.annotations.keypoints_utils import with_unit_scores
 from kineo.pipeline.pipeline import Pipeline
+from kineo.pipeline import per_view_cache
+from kineo.pipeline.stages.global_time_reference import build_inference_frames
 from kineo.pipeline.stages.nlf.model_wrapper import NLFModelWrapper
 from kineo.pipeline.stages.nlf.skeleton_keypoints_format import (
-    H36M_17_KEYPOINTS_FORMAT,
     COCO_19_KEYPOINTS_FORMAT,
-    COCO_17_KEYPOINTS_FORMAT,
     SMPL_24_KEYPOINTS_FORMAT,
 )
 
@@ -38,11 +43,14 @@ class NLFSkeletonKeypointsDetectionRuntimeConfig:
     batch_size: int = 16
     use_half_precision: bool = True
     use_cache: bool = True
-    cache_output_path_template: str = "cache/{sequence_name}/{annotation_key}.pkl"
+    cache_output_path_template: str = (
+        "cache/{sequence_name}/{annotation_key}/{view_id}.pkl"
+    )
     frame_step: int = (
         1  # Infer every N frames (1 = every frame, 2 = every other frame, etc.)
     )
     skeleton_name: str = "smpl_24"
+    disable_confidence: bool = False
 
 
 # TODO: in case of single view, export keypoints 3d as well
@@ -101,55 +109,54 @@ class NLFSkeletonKeypointsDetectionStage(
         bboxes_annotations: BBox2DAnnotations = annotations.get("bboxes_2d")
 
         intrinsics_annotations: CameraIntrinsicsAnnotations = annotations.get(
-            "camera_intrinsics"
+            "cameras_intrinsics"
         )
 
         if bboxes_annotations is None:
             raise ValueError("Expected bboxes annotations but none were provided")
 
-        if runtime_cfg.use_cache:
-            kps2d_cache_filepath = runtime_cfg.cache_output_path_template.format(
-                sequence_name=sequence_name, annotation_key="keypoints_2d"
-            )
-
-            if os.path.exists(kps2d_cache_filepath):
-                with open(kps2d_cache_filepath, "rb") as f:
-                    keypoints_annotations = Keypoints2DAnnotations.from_dict(
-                        pickle.load(f)
+        def infer_missing(missing_views: list[ViewInput]) -> dict[str, Annotations]:
+            self.model = self.model.to(device)
+            try:
+                return {
+                    "keypoints_2d": self._infer_keypoints(
+                        views=missing_views,
+                        device=device,
+                        bboxes_annotations=bboxes_annotations,
+                        intrinsics_annotations=intrinsics_annotations,
+                        model=self.model,
+                        batch_size=runtime_cfg.batch_size,
+                        use_half_precision=runtime_cfg.use_half_precision,
+                        frame_step=runtime_cfg.frame_step,
+                        skeleton_name=runtime_cfg.skeleton_name,
+                        inference_frames_by_view=build_inference_frames(
+                            annotations, missing_views
+                        ),
                     )
-                print(
-                    f"Loaded keypoints annotations from cache: {kps2d_cache_filepath}"
-                )
-                annotations["keypoints_2d"] = keypoints_annotations.cpu()
-                return
+                }
+            finally:
+                self.model = self.model.cpu()
 
-        self.model = self.model.to(device)
-
-        keypoints_annotations = self._infer_keypoints(
+        cached = per_view_cache.load_or_infer_per_view(
             views=views,
-            device=device,
-            bboxes_annotations=bboxes_annotations,
-            intrinsics_annotations=intrinsics_annotations,
-            model=self.model,
-            batch_size=runtime_cfg.batch_size,
-            use_half_precision=runtime_cfg.use_half_precision,
-            frame_step=runtime_cfg.frame_step,
-            skeleton_name=runtime_cfg.skeleton_name,
+            specs={
+                "keypoints_2d": per_view_cache.PerViewCacheSpec(
+                    annotations_cls=Keypoints2DAnnotations,
+                    metadata=Keypoints2DAnnotationsMetadata(
+                        formats=[KEYPOINTS_FORMAT[runtime_cfg.skeleton_name]]
+                    ),
+                )
+            },
+            infer_missing=infer_missing,
+            sequence_name=sequence_name,
+            cache_output_path_template=runtime_cfg.cache_output_path_template,
+            use_cache=runtime_cfg.use_cache,
         )
 
-        self.model = self.model.cpu()
-
-        if runtime_cfg.use_cache:
-            os.makedirs(os.path.dirname(kps2d_cache_filepath), exist_ok=True)
-
-            if not os.path.exists(kps2d_cache_filepath):
-                with open(kps2d_cache_filepath, "wb") as f:
-                    print(
-                        f"Saving keypoints annotations to cache: {kps2d_cache_filepath}"
-                    )
-                    pickle.dump(keypoints_annotations.to_dict(), f)
-
-        annotations["keypoints_2d"] = keypoints_annotations.cpu()
+        keypoints_2d = cached["keypoints_2d"].cpu()
+        if runtime_cfg.disable_confidence:
+            keypoints_2d = with_unit_scores(keypoints_2d)
+        annotations["keypoints_2d"] = keypoints_2d
 
     def _infer_keypoints(
         self,
@@ -162,6 +169,7 @@ class NLFSkeletonKeypointsDetectionStage(
         use_half_precision: bool = True,
         frame_step: int = 1,
         skeleton_name: str = "smpl_24",
+        inference_frames_by_view: dict[str, list[int]] | None = None,
     ) -> Keypoints2DAnnotations:
         """
         Infer keypoints for all views.
@@ -176,9 +184,16 @@ class NLFSkeletonKeypointsDetectionStage(
 
         all_keypoints_annotations: list[Keypoints2DAnnotation] = []
 
+        if inference_frames_by_view is None:
+            inference_frames_by_view = {
+                view["view_id"]: _get_inference_frames(
+                    view["frame_loader"].n_frames, frame_step
+                )
+                for view in views
+            }
+
         n_total_inference_frames = sum(
-            len(_get_inference_frames(view["frame_loader"].n_frames, frame_step))
-            for view in views
+            len(inference_frames_by_view[view["view_id"]]) for view in views
         )
         pbar = tqdm(
             total=n_total_inference_frames, desc="Inferring keypoints", leave=False
@@ -187,7 +202,6 @@ class NLFSkeletonKeypointsDetectionStage(
         for view in views:
             frame_loader = view["frame_loader"]
             view_id = view["view_id"]
-            view_n_frames = frame_loader.n_frames
 
             K = (
                 intrinsics_annotations.filter_by_view_id(view_id)
@@ -209,17 +223,20 @@ class NLFSkeletonKeypointsDetectionStage(
                 [0, -1, 0], dtype=torch.float32, device=device
             )
 
-            inference_frames = _get_inference_frames(view_n_frames, frame_step)
+            inference_frames = inference_frames_by_view[view_id]
+            batches = [
+                inference_frames[start : start + batch_size]
+                for start in range(0, len(inference_frames), batch_size)
+            ]
 
-            for batch_start in range(0, len(inference_frames), batch_size):
-                batch_end = min(batch_start + batch_size, len(inference_frames))
-                batch_frames = inference_frames[batch_start:batch_end]
+            bboxes_by_frame: dict[int, list] = defaultdict(list)
+            for bbox in bboxes_annotations.filter_by_view_id(view_id).annotations:
+                bboxes_by_frame[bbox.frame_idx].append(bbox)
+
+            for batch_frames, frames_rgb in zip(
+                batches, _load_batches_ahead(frame_loader, batches)
+            ):
                 actual_batch_size = len(batch_frames)
-
-                # Load batch of frames
-                frames_rgb = frame_loader.load_frames_at(
-                    frame_indices=torch.tensor(batch_frames)
-                )
 
                 batch_bboxes_xywhs: list[torch.Tensor] = [
                     torch.zeros((0, 5), dtype=torch.float32, device=device)
@@ -231,11 +248,7 @@ class NLFSkeletonKeypointsDetectionStage(
                 ]
 
                 for batch_idx, frame_idx in enumerate(batch_frames):
-                    frame_bboxes = bboxes_annotations.filter_by_view_id(
-                        view_id
-                    ).filter_by_frame_idx(frame_idx)
-
-                    frame_annotations = frame_bboxes.annotations
+                    frame_annotations = bboxes_by_frame.get(frame_idx, [])
 
                     if len(frame_annotations) == 0:
                         continue
@@ -294,9 +307,6 @@ class NLFSkeletonKeypointsDetectionStage(
                             subject_id=subject_id,
                             xy=subject_joints2d_xy.cpu(),
                             scores=subject_joints2d_confidence.cpu(),
-                            annotated=torch.ones(
-                                subject_joints2d_xy.shape[0], dtype=torch.bool
-                            ),
                             format=keypoints_format.name,
                         )
 
@@ -314,6 +324,20 @@ class NLFSkeletonKeypointsDetectionStage(
         ).cpu()
 
         return keypoints_annotations
+
+
+def _load_batches_ahead(
+    frame_loader: FrameSequenceLoader, batches: list[list[int]]
+) -> Iterator[torch.Tensor]:
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        pending = None
+        for batch in batches:
+            future = executor.submit(frame_loader.load_frames_at, torch.tensor(batch))
+            if pending is not None:
+                yield pending.result()
+            pending = future
+        if pending is not None:
+            yield pending.result()
 
 
 def _get_inference_frames(n_frames: int, frame_step: int) -> list[int]:

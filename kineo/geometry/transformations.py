@@ -73,6 +73,9 @@ def compute_similarity_transform(
     # Compute the covariance between the point sets Xc, Yc.
     XY_cov = torch.bmm(Xc.transpose(2, 1), Yc)
 
+    if not torch.isfinite(XY_cov).all():
+        raise ValueError("non-finite entries in covariance matrix")
+
     # Decompose the covariance matrix.
     U, S, V = torch.svd(XY_cov)
 
@@ -108,6 +111,38 @@ def compute_similarity_transform(
         T = T.squeeze(0)
         s = s.squeeze(0)
 
+    return R, T, s
+
+
+def compute_camera_similarity_transform(
+    pred_cam2world: torch.Tensor,
+    gt_cam2world: torch.Tensor,
+    estimate_scale: bool = False,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Align predicted to GT cameras, using orientations below 3 cameras."""
+    X = pred_cam2world[..., :3, 3]
+    Y = gt_cam2world[..., :3, 3]
+    if X.shape[-2] >= 3:
+        return compute_similarity_transform(X, Y, estimate_scale=estimate_scale)
+
+    # Nearest rotation to sum(R_pred @ R_gt^T), as points map as X @ R
+    M = (pred_cam2world[..., :3, :3] @ gt_cam2world[..., :3, :3].mT).sum(dim=-3)
+    U, _, V = torch.svd(M)
+    E = torch.eye(3, dtype=M.dtype, device=M.device).expand(M.shape).clone()
+    E[..., -1, -1] = torch.det(U @ V.mT)
+    R = U @ E @ V.mT
+
+    Xmu = X.mean(dim=-2, keepdim=True)
+    Ymu = Y.mean(dim=-2, keepdim=True)
+    Xc_R = (X - Xmu) @ R
+    if estimate_scale:
+        X_cov = ((X - Xmu) ** 2).sum((-2, -1))
+        s = ((Y - Ymu) * Xc_R).sum((-2, -1)) / torch.clamp(
+            X_cov, torch.finfo(X_cov.dtype).eps
+        )
+    else:
+        s = X.new_ones(X.shape[:-2])
+    T = (Ymu - s[..., None, None] * (Xmu @ R))[..., 0, :]
     return R, T, s
 
 
@@ -181,6 +216,9 @@ def compute_weighted_similarity_transform(
     # Since weights are normalized, we can compute: sum_i w_i * Xc_i^T * Yc_i
     Xc_weighted = Xc * w  # (B, P, 3)
     XY_cov = torch.bmm(Xc_weighted.transpose(2, 1), Yc)  # (B, 3, 3)
+
+    if not torch.isfinite(XY_cov).all():
+        raise ValueError("non-finite entries in covariance matrix")
 
     # Decompose the covariance matrix.
     U, S, V = torch.svd(XY_cov)

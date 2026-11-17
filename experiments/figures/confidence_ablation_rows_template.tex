@@ -1,0 +1,19 @@
+\begin{table}[!hb]
+\centering
+\caption{Effect of the detection confidence on the results of the full pipeline. {ablation}. Each dataset uses its benchmark configuration, so values are not comparable across datasets. Each metric gives the median and the 90th percentile (p90) over sequences. The better of each pair of rows is in bold.}
+% H hides a column but keeps its values: change an H to c to show it.
+% Each metric has a median column followed by a p90 column:
+% Camera: TE, s-TE, AE, FoV. Human: W-MPJPE, GA-MPJPE, PA-MPJPE.
+\newcolumntype{H}{>{\setbox0\hbox\bgroup}c<{\egroup}@{}}
+\maxsizebox{\linewidth}{!}{
+    \begin{tabular}{llll|ccccccHH|ccHHcc}
+        \toprule
+        \multirow{2}{*}{\textbf{Dataset}} & \multirow{2}{*}{\textbf{Detector}} & \multirow{2}{*}{\textbf{Input}} & \multirow{2}{*}{\textbf{Confidence}} & \multicolumn{8}{c|}{\textbf{Camera Metrics}} & \multicolumn{6}{c}{\textbf{Human Metrics}} \\
+        & & & & TE (m)$\downarrow$ & p90 & s-TE (m)$\downarrow$ & p90 & AE (\textdegree)$\downarrow$ & p90 & FoV (\textdegree)$\downarrow$ & p90 & W-MPJPE (m)$\downarrow$ & p90 & GA-MPJPE (m)$\downarrow$ & p90 & PA-MPJPE (m)$\downarrow$ & p90 \\
+        \midrule
+{rows}
+        \bottomrule
+    \end{tabular}
+}
+\label{tab:confidence_ablation}
+\end{table}%

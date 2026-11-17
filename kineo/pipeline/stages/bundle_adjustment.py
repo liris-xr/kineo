@@ -48,7 +48,8 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class BundleAdjustmentRuntimeConfig:
-    optimize_distortion_coefficients: bool = True
+    # True, False, or indices into (k1, k2, p1, p2, k3)
+    optimize_distortion_coefficients: bool | list[int] = True
     optimize_focal_length: bool = True
     optimize_principal_point: bool = False
     optimize_rotation: bool = True
@@ -62,6 +63,7 @@ class BundleAdjustmentRuntimeConfig:
     dist_coeffs_regularization_weight: float = 1.0
     use_lbfgs: bool = True
     lr: float = 1.0
+    device: str = "cpu"
 
 class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
     """
@@ -99,14 +101,14 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
         # scalability for large-scale multi-view setups.
         # -------------------------------------------------------------------------
 
-        device = pipeline.device
+        device = torch.device(runtime_cfg.device)
 
         cameras_intrinsics: CameraIntrinsicsAnnotations = annotations[
-            "camera_intrinsics"
+            "cameras_intrinsics"
         ]
 
         cameras_extrinsics: CameraExtrinsicsAnnotations = annotations[
-            "camera_extrinsics"
+            "cameras_extrinsics"
         ]
 
         bundle_adjustment_keypoints: BundleAdjustmentKeypointsAnnotation = (
@@ -182,7 +184,7 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
             use_lbfgs=runtime_cfg.use_lbfgs,
         )
 
-        annotations["camera_extrinsics"] = CameraExtrinsicsAnnotations(
+        annotations["cameras_extrinsics"] = CameraExtrinsicsAnnotations(
             metadata=CameraExtrinsicsAnnotationsMetadata(),
             annotations=[
                 CameraExtrinsicsAnnotation(
@@ -195,7 +197,7 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
             ],
         )
 
-        annotations["camera_intrinsics"] = CameraIntrinsicsAnnotations(
+        annotations["cameras_intrinsics"] = CameraIntrinsicsAnnotations(
             metadata=CameraIntrinsicsAnnotationsMetadata(),
             annotations=[
                 CameraIntrinsicsAnnotation(
@@ -246,7 +248,7 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
             kps_2d_scores: torch.Tensor,
             kps_3d: torch.Tensor,
             view_ids: list[str],
-            optimize_distortion_coefficients: bool = True,
+            optimize_distortion_coefficients: bool | list[int] = True,
             optimize_focal_length: bool = True,
             optimize_principal_point: bool = True,
             optimize_rotation: bool = True,
@@ -362,10 +364,10 @@ class BundleAdjustmentStage(PipelineStage[BundleAdjustmentRuntimeConfig]):
                 dist_coeffs_regularization = (dist_coeffs ** 2).mean()
                 total_loss += dist_coeffs_regularization_weight * dist_coeffs_regularization
 
-            total_loss.backward()
-
-            if torch.isnan(total_loss) or torch.isinf(total_loss):
+            if not torch.isfinite(total_loss):
                 raise ValueError("Loss is NaN or inf")
+
+            total_loss.backward()
 
             return total_loss
 

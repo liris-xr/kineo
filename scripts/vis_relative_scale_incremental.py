@@ -1,3 +1,4 @@
+import argparse
 import pickle
 import numpy as np
 import rerun as rr
@@ -34,7 +35,9 @@ rr.spawn()
 rr.log("/", rr.ViewCoordinates.BLU, static=True)
 
 n_cams = 4
-data_dir = "D:/Charles_JAVERLIAT/Technique/kineo_lirisxr/outputs/infer_dwpose_single_person_pairwise_calib/offline_demo/annotations/walking"
+parser = argparse.ArgumentParser()
+parser.add_argument("data_dir", help="annotations directory of an offline run")
+data_dir = parser.parse_args().data_dir
 image_plane_dist = 0.2
 
 # ── Animation timing ──────────────────────────────────────────────────────────

@@ -58,7 +58,7 @@ class SceneReorientationStage(PipelineStage[SceneReorientationRuntimeConfig]):
         device = pipeline.device
 
         camera_extrinsics: CameraExtrinsicsAnnotations = annotations[
-            "camera_extrinsics"
+            "cameras_extrinsics"
         ]
         camera_extrinsics = camera_extrinsics.to(device)
 
@@ -114,7 +114,7 @@ class SceneReorientationStage(PipelineStage[SceneReorientationRuntimeConfig]):
         )
 
         annotations["keypoints_3d"] = new_keypoints_3d.cpu()
-        annotations["camera_extrinsics"] = new_camera_extrinsics.cpu()
+        annotations["cameras_extrinsics"] = new_camera_extrinsics.cpu()
 
         ba_history: BundleAdjustmentHistoryAnnotations | None = annotations.get(
             "bundle_adjustment_history"

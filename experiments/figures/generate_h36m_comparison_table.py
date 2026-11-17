@@ -21,7 +21,6 @@ from aitviewer.headless import HeadlessRenderer
 from aitviewer.configuration import CONFIG as C
 from kineo.eval.human_metrics import compute_human_metrics, get_min_median_max_frames
 
-import json
 import traceback
 import shutil
 from kineo.visualization.viz_3d import add_keypoints_3d_and_cameras
@@ -197,6 +196,12 @@ def align_hsfm_pred_to_gt(
                 )
             ]
         )
+
+        if not torch.isfinite(pred_cam_pos).all():
+            # Failed HSfM frame, never scored nor shown
+            aligned_pred_camera_extrinsics.extend(frame_pred_cam_extrinsics._annotations)
+            aligned_pred_keypoints_3d.extend(frame_pred_keypoints_3d._annotations)
+            continue
 
         R, t, s = compute_similarity_transform(
             X=pred_cam_pos,

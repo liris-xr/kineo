@@ -26,6 +26,8 @@ dependencies = [
     "rerun-sdk",
     "cv2-enumerate-cameras",
     "smplx", "google-auth", "google-auth-oauthlib>=1.4.0,<2", "google-api-python-client",
+    "tensorrt-cu12==10.9.*",
+    "pynvvideocodec>=2.2",
 ]
 
 classifiers = [
@@ -52,26 +54,19 @@ platforms = ["linux-64", "win-64"]
 
 [tool.pixi.pypi-dependencies]
 kineo = { path = ".", editable = true }
-moge = { git = "https://github.com/microsoft/MoGe.git" }
+moge = { git = "https://github.com/microsoft/MoGe.git", rev = "07444410f1e33f402353b99d6ccd26bd31e469e8" }
 
 torch = { version = "==2.10.*", index = "https://download.pytorch.org/whl/cu128" }
-torchvision = { version = ">=0.22.0", index = "https://download.pytorch.org/whl/cu128" }
+torchvision = { version = "==0.25.0", index = "https://download.pytorch.org/whl/cu128" }
 torchaudio = { version = "==2.10.*", index = "https://download.pytorch.org/whl/cu128" }
 onnxruntime-gpu = "*"
 soundfile = "*"
 cv2-enumerate-cameras = "*"
 
-sam2 = { git = "https://github.com/cjaverliat/sam2.git" }
-
-mmpretrain = "*"
-mmengine = "*"
-mmcv = { git = "https://github.com/cjaverliat/mmcv.git" }
-mmpose = { git = "https://github.com/cjaverliat/mmpose.git" }
-mmdet = { git = "https://github.com/cjaverliat/mmdetection.git" }
-mmdeploy = "*"
+sam2 = { git = "https://github.com/cjaverliat/sam2.git", rev = "6f43c2eb3db1da4811a8165f64ac23616f16dd36" }
 
 [tool.pixi.pypi-options]
-no-build-isolation = ["sam2", "chumpy"]
+no-build-isolation = ["sam2", "chumpy", "mmcv"]
 
 [tool.pixi.dependencies]
 python = "3.10.*"
@@ -94,6 +89,18 @@ ruff = "*"
 pytest = "*"
 pyrefly = "*"
 google-api-python-client = "*"
+
+[tool.pixi.feature.mmlab]
+platforms = ["linux-64", "win-64"]
+channels = ["conda-forge", "nvidia"]
+
+[tool.pixi.feature.mmlab.pypi-dependencies]
+mmpretrain = "*"
+mmengine = "*"
+mmcv = { git = "https://github.com/cjaverliat/mmcv.git", rev = "d2ac7cfdd53bca611be00630e1ec84f18565e2a4" }
+mmpose = { git = "https://github.com/cjaverliat/mmpose.git", rev = "111d9b3a1e15d417925e5bf66211fe1b4517ae6c" }
+mmdet = { git = "https://github.com/cjaverliat/mmdetection.git", rev = "2c6c427aad632694494c9bb17d6239f163e4ab04" }
+mmdeploy = "*"
 
 [tool.pixi.feature.cuda128]
 platforms = ["linux-64", "win-64"]
@@ -120,8 +127,17 @@ solve-group = "default"
 features = ["dev", "cuda128"]
 solve-group = "default"
 
+[tool.pixi.environments.mmlab]
+features = ["mmlab", "cuda128"]
+
 [tool.pixi.tasks]
 _download-smpl = { cmd = "test -f body_models/smpl/SMPL_NEUTRAL.pkl || python scripts/download_smpl.py" }
+
+_clean-smpl = { cmd = "test -f body_models/smpl/SMPL_NEUTRAL_clean.pkl || python scripts/clean_smpl_pkl.py body_models/smpl/SMPL_NEUTRAL.pkl body_models/smpl/SMPL_NEUTRAL_clean.pkl", depends-on = [
+    "_download-smpl",
+], outputs = [
+    "body_models/smpl/SMPL_NEUTRAL_clean.pkl",
+], description = "Rewrite the SMPL model without chumpy objects" }
 _download-smplx = { cmd = "(test -f body_models/smplx/SMPLX_NEUTRAL.pkl && test -f body_models/smplx/SMPLX_NEUTRAL.npz) || python scripts/download_smplx.py" }
 
 _download_nlf = { cmd = "test -f checkpoints/nlf_l_multi_0.3.2.torchscript || (mkdir -p checkpoints && curl -L https://github.com/isarandi/nlf/releases/download/v0.3.2/nlf_l_multi_0.3.2.torchscript -o checkpoints/nlf_l_multi_0.3.2.torchscript)", outputs = [
@@ -140,6 +156,12 @@ _download_moge = { cmd = "test -f checkpoints/moge-2-vitl-normal.pt || (mkdir -p
     "checkpoints/moge-2-vitl-normal.pt",
 ], description = "Download MoGe model" }
 
+_download_yolox_person = { cmd = "test -f checkpoints/yolox_tiny_humanart_person.onnx || (mkdir -p checkpoints && hf download charlesjvt/rtmpose-l-h36m-384x288 yolox_tiny_humanart_person.onnx --repo-type model --local-dir checkpoints)", outputs = [
+    "checkpoints/yolox_tiny_humanart_person.onnx",
+], description = "Download the person-only YOLOX ONNX, exported without NMS so the batch axis is free" }
+_download_rtmpose_h36m = { cmd = "test -f checkpoints/rtmpose_h36m.onnx || (mkdir -p checkpoints && hf download charlesjvt/rtmpose-l-h36m-384x288 rtmpose_h36m.onnx --repo-type model --local-dir checkpoints)", outputs = [
+    "checkpoints/rtmpose_h36m.onnx",
+], description = "Download the h36m-finetuned RTMPose ONNX" }
 _download_yolox = { cmd = "python -c \"from kineo.pipeline.stages.rtmlib.tools.file import download_checkpoint; print(download_checkpoint('https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/yolox_tiny_8xb8-300e_humanart-6f3252f9.zip', dst_dir='checkpoints/', progress=True))\"", outputs = [
     "checkpoints/yolox_tiny_8xb8-300e_humanart-6f3252f9.onnx",
 ], description = "Prefetch YOLOX ONNX for rtmlib" }
@@ -150,7 +172,9 @@ download-checkpoints = { depends-on = [
     "_download_efficienttam_weights",
     "_download_moge",
     "_download_yolox",
-    "_download-smpl",
+    "_download_rtmpose_h36m",
+    "_download_yolox_person",
+    "_clean-smpl",
     "_download-smplx"
 ], description = "Download all checkpoints" }
 
@@ -175,6 +199,21 @@ args = [
 ]
 cmd = "python experiments/h36m_eval.py {{ dataset_dir }} --config-file {{config_file}}"
 
+[tool.pixi.tasks.h36m-online-benchmark]
+depends-on = ["download-checkpoints"]
+args = [
+    { "arg" = "dataset_dir" },
+    { "arg" = "config_file", "default" = "configs/experiments/online_vs_offline/h36m_online.yaml" },
+]
+cmd = "python experiments/h36m_online_eval.py {{ dataset_dir }} --config-file {{config_file}}"
+
+[tool.pixi.tasks.h36m-online-report]
+args = [
+    { "arg" = "benchmark_dir", "default" = "outputs/h36m_online" },
+    { "arg" = "arm", "default" = "h36m_trt_fp16" },
+]
+cmd = "python -m experiments.report_online_benchmark {{ benchmark_dir }} --arms {{ arm }}"
+
 [tool.pixi.tasks.egohumans-download]
 args = ["dataset_dir"]
 cmd = "python scripts/download_egohumans_dataset.py {{ dataset_dir }}"
@@ -190,3 +229,58 @@ args = [
     { "arg" = "config_file", "default" = "configs/experiments/benchmarks/egohumans_benchmark_nlf_estRt_estK_estD.yaml" },
 ]
 cmd = "python experiments/egohumans_eval.py {{ dataset_dir }} --config-file {{config_file}}"
+
+[tool.pixi.tasks.demand-download]
+args = ["dataset_dir"]
+cmd = "python scripts/download_demand_dataset.py {{ dataset_dir }}"
+
+[tool.pixi.tasks.pascal-voc-download]
+args = ["dataset_dir"]
+cmd = "python scripts/download_pascal_voc_dataset.py {{ dataset_dir }}"
+
+[tool.pixi.tasks.reproduce-paper]
+depends-on = ["download-checkpoints"]
+cmd = "bash experiments/reproduce_paper.sh"
+
+[tool.pixi.tasks.aistpp-sync-ablation-audio]
+args = ["dataset_dir", "demand_dir"]
+cmd = "python scripts/export_aistpp_sync_ablation_audio.py {{ dataset_dir }} {{ demand_dir }}"
+
+[tool.pixi.tasks.preview-aistpp]
+args = [
+    { "arg" = "sequence", "default" = "" },
+    { "arg" = "variant", "default" = "raw" },
+    { "arg" = "dataset_dir", "default" = "" },
+]
+cmd = 'python scripts/preview_aistpp_sequence.py --sequence "{{ sequence }}" --variant {{ variant }}{% if dataset_dir %} --dataset-dir "{{ dataset_dir }}"{% endif %}'
+
+[tool.pixi.tasks.preview-h36m]
+args = [
+    { "arg" = "sequence", "default" = "" },
+    { "arg" = "split", "default" = "val" },
+    { "arg" = "dataset_dir", "default" = "" },
+]
+cmd = 'python scripts/preview_h36m_sequence.py --sequence "{{ sequence }}" --split {{ split }}{% if dataset_dir %} --dataset-dir "{{ dataset_dir }}"{% endif %}'
+
+[tool.pixi.tasks.preview-egohumans]
+args = [
+    { "arg" = "sequence", "default" = "" },
+    { "arg" = "dataset_dir", "default" = "" },
+]
+cmd = 'python scripts/preview_egohumans_sequence.py --sequence "{{ sequence }}"{% if dataset_dir %} --dataset-dir "{{ dataset_dir }}"{% endif %}'
+
+[tool.pixi.tasks.aistpp-download]
+args = ["dataset_dir"]
+cmd = "python scripts/download_aistpp_dataset.py {{ dataset_dir }}"
+
+[tool.pixi.tasks.aistpp-preprocess]
+args = ["dataset_dir"]
+cmd = "python scripts/preprocess_aistpp_dataset.py {{ dataset_dir }}"
+
+[tool.pixi.tasks.aistpp-benchmark]
+depends-on = ["download-checkpoints"]
+args = [
+    { "arg" = "dataset_dir" },
+    { "arg" = "config_file", "default" = "configs/experiments/benchmarks/aistpp_benchmark_nlf_estRt_estK_estD.yaml" },
+]
+cmd = "python experiments/aistpp_eval.py {{ dataset_dir }} --config-file {{config_file}}"

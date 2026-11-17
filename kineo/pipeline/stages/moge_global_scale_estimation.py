@@ -209,10 +209,10 @@ class MoGeGlobalScaleEstimationStage(
         self.model = self.model.to(device)
 
         camera_intrinsics: CameraIntrinsicsAnnotations = annotations[
-            "camera_intrinsics"
+            "cameras_intrinsics"
         ]
         camera_extrinsics: CameraExtrinsicsAnnotations = annotations[
-            "camera_extrinsics"
+            "cameras_extrinsics"
         ]
 
         keypoints_3d: Keypoints3DAnnotations = annotations["keypoints_3d"]

@@ -142,8 +142,8 @@ def main(target_fps, target_res, live_viz_config, skip_calibration, api_preferen
         sequence_name="realtime_viz",
         views=views,
         annotations={
-            "camera_intrinsics": cam_intrinsics,
-            "camera_extrinsics": cam_extrinsics,
+            "cameras_intrinsics": cam_intrinsics,
+            "cameras_extrinsics": cam_extrinsics,
             "world_reconstructed_scene": world_reconstructed_scene,
         },
         gt_annotations={},

@@ -96,7 +96,7 @@ class SfMCameraExtrinsicsInitializationStage(
             raise ValueError("No calibration points annotations found.")
 
         cameras_intrinsics: CameraIntrinsicsAnnotations = annotations[
-            "camera_intrinsics"
+            "cameras_intrinsics"
         ]
 
         n_views = len(views)
@@ -177,7 +177,7 @@ class SfMCameraExtrinsicsInitializationStage(
                 )
             )
 
-        annotations["camera_extrinsics"] = CameraExtrinsicsAnnotations(
+        annotations["cameras_extrinsics"] = CameraExtrinsicsAnnotations(
             metadata=CameraExtrinsicsAnnotationsMetadata(),
             annotations=camera_extrinsics_annotations,
         ).cpu()
@@ -406,6 +406,9 @@ def _refine_camera_extrinsics(
     pbar.close()
 
     Rts = torch.cat([origin_camera_extrinsics.Rt, other_cameras_extrinsics.Rt], dim=0)
+
+    if not torch.isfinite(Rts).all():
+        raise ValueError("non-finite camera extrinsics after refinement")
 
     # Update the graph
     for view_idx in range(n_views):
@@ -934,6 +937,9 @@ def _compute_relative_scale_factors(
     pbar.close()
 
     lmb = torch.exp(log_lmb.detach())
+
+    if not torch.isfinite(lmb).all():
+        raise ValueError("non-finite relative scale factors")
 
     for pair_idx, (view_i, view_j) in enumerate(pairs):
         graph[view_i][view_j]["scale"] = lmb[pair_idx]

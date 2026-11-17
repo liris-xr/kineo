@@ -8,6 +8,8 @@
 # Contact: guillaume.lavoue@enise.ec-lyon.fr
 # -----------------------------------------------------------------------------
 
+import itertools
+
 import torch
 from kineo.geometry.conversions import convert_points_to_homogeneous
 from kineo.geometry.camera import (
@@ -114,20 +116,6 @@ def compute_height_from_h36m_keypoints(
     )
 
     return total_height
-
-
-def compute_calibrated_height_from_h36m_keypoints(
-    kps_3d: torch.Tensor, kps_3d_scores: torch.Tensor | None = None
-) -> torch.Tensor:
-    """
-    Compute the calibrated height of the subject from the H3.6M 3D keypoints and applies a calibration factor to get a more accurate height measurement.
-    Note: To see how the height calibration was computed, please refer to the `experiments/compute_height_calibration.py` file.
-    """
-    if kps_3d_scores is None:
-        kps_3d_scores = torch.ones_like(kps_3d[..., 0])
-    uncalibrated_height = compute_height_from_h36m_keypoints(kps_3d, kps_3d_scores)
-    calibrated_height = 1.1026 * uncalibrated_height - 0.0232
-    return calibrated_height
 
 
 def sampson_distance(
@@ -354,6 +342,17 @@ def pairwise_reprojection_consensus_score(
 
     assert total_score.shape[-1] == P, f"Expected (*, P), got {total_score.shape}"
     return total_score
+
+
+def pairwise_visibility_score(kps_2d_scores: torch.Tensor) -> torch.Tensor:
+    """Average the pairwise geometric-mean confidence, (C, P) -> (P,)."""
+    pairs = torch.tensor(
+        list(itertools.combinations(range(kps_2d_scores.shape[0]), 2)),
+        device=kps_2d_scores.device,
+    )
+    return torch.sqrt(
+        kps_2d_scores[pairs[:, 0]] * kps_2d_scores[pairs[:, 1]]
+    ).mean(dim=0)
 
 
 def mpjpe_error(pred_joints_3d: torch.Tensor, target_joints_3d: torch.Tensor):

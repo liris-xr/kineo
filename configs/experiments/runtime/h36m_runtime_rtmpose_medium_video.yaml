@@ -1,5 +1,5 @@
 output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/h36m_runtime_rtmpose_medium_video"
-cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/h36m_runtime_rtmpose_medium_video"
+cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/h36m_mmlab-moge-fp32_32eb4f0e"
 use_cache: False
 batch_size: 1
 use_half_precision: False
@@ -42,7 +42,7 @@ pipeline:
         _target_: kineo.pipeline.stages.moge_intrinsics_estimation.MoGeIntrinsicsEstimationRuntimeConfig
         use_cache: ${use_cache}
         use_half_precision: ${use_half_precision}
-        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}.pkl"
+        cache_output_path_template: "${cache_root_dir}/{sequence_name}/{annotation_key}/{view_id}.pkl"
 
     keypoints_pairs_sampling:
       _target_: kineo.pipeline.stages.keypoints_pairs_sampling.KeypointsPairsSamplingStage
@@ -80,6 +80,7 @@ pipeline:
       order: 60
       runtime_cfg:
         _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentRuntimeConfig
+        device: cpu
         n_iters: 300
         use_lbfgs: True
         optimize_distortion_coefficients: False
@@ -96,6 +97,7 @@ pipeline:
       order: 70
       runtime_cfg:
         _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentRuntimeConfig
+        device: cpu
         n_iters: 300
         use_lbfgs: True
         optimize_distortion_coefficients: False
@@ -112,6 +114,7 @@ pipeline:
       order: 80
       runtime_cfg:
         _target_: kineo.pipeline.stages.bundle_adjustment.BundleAdjustmentRuntimeConfig
+        device: cpu
         n_iters: 300
         use_lbfgs: True
         optimize_distortion_coefficients: True
@@ -131,7 +134,7 @@ pipeline:
       _target_: kineo.pipeline.stages.smpl_global_scale_estimation.SMPLGlobalScaleEstimationStage
       name: "SMPL Global Scale Estimation"
       joint_regressor_path: "./body_models/smpl/h36m_joints_regressor.pt"
-      smpl_model_path: "./body_models/smpl/"
+      smpl_model_path: "./body_models/smpl/SMPL_NEUTRAL_clean.pkl"
       order: 100
       runtime_cfg:
         _target_: kineo.pipeline.stages.smpl_global_scale_estimation.SMPLGlobalScaleEstimationRuntimeConfig

@@ -1,0 +1,38 @@
+output_root_dir: "${oc.env:OUTPUT_ROOT_DIR,./outputs}/h36m_online/stream_h36m_trt_fp16"
+cache_root_dir: "${oc.env:CACHE_ROOT_DIR,./cache}/h36m_online/stream_h36m_trt_fp16"
+
+use_tensorrt: True
+fp16: True
+
+pipeline:
+  seed: 19
+
+  stages:
+    live_rtmlib_bbox_keypoints_detection:
+      _target_: kineo.pipeline.stages.rtmlib.rtmlib_bbox_keypoints_live_detection.RtmlibBboxKeypointsLiveDetectionStage
+      name: "Live Rtmlib Bbox Keypoints Detection"
+      order: 0
+      bbox_model: "./checkpoints/yolox_tiny_humanart_person.onnx"
+      bbox_model_input_shape_hw: [416, 416]
+      keypoints_model: "./checkpoints/rtmpose_h36m.onnx"
+      keypoints_model_input_shape_hw: [288, 384]
+      use_tensorrt: ${use_tensorrt}
+      fp16: ${fp16}
+      keypoints_format_name: "h36m"
+      engine_cache_dir: "${cache_root_dir}/tensorrt_engines"
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.rtmlib.rtmlib_bbox_keypoints_live_detection.RtmlibBboxKeypointsLiveDetectionRuntimeConfig
+        show: False
+        frame_step: 1
+        best_bbox_only: True
+
+    annotations_export:
+      _target_: kineo.pipeline.stages.annotations_export.AnnotationsExportStage
+      name: "Annotations Export"
+      order: 10
+      runtime_cfg:
+        _target_: kineo.pipeline.stages.annotations_export.AnnotationsExportRuntimeConfig
+        annotations_keys: ["keypoints_3d", "frame_timings", "stage_timings"]
+        excluded_annotations_keys: []
+        not_found_error: True
+        output_path_template: "${output_root_dir}/annotations/{sequence_name}/{annotation_key}.pkl"

@@ -14,7 +14,8 @@ import torch
 from tqdm import tqdm
 import tempfile
 import os
-import torchaudio
+
+from kineo.io.audio_file import load_waveform
 
 def get_audio_stream_info(video_path: str, stream_idx: int = 0) -> Dict[str, Any]:
     ffprobe_cmd = [
@@ -83,8 +84,6 @@ def extract_audio(
         "-vn",
         "-acodec",
         "pcm_s16le",
-        "-vsync",
-        "0",
         output_path,
     ]
 
@@ -123,7 +122,7 @@ def extract_audio(
     if p.returncode != 0:
         raise Exception("ffmpeg command failed.")
 
-    audio, sample_rate = torchaudio.load(output_path)
+    audio, sample_rate = load_waveform(output_path)
 
     # Remove temporary file
     os.remove(output_path)
@@ -200,3 +199,165 @@ def get_video_duration(video_path: str) -> float:
 
     output = ffprobe_cmd_stdout.strip()
     return float(output)
+
+def decode_video_to_grayscale(video_path: str, width: int, height: int) -> torch.Tensor:
+    if not os.path.exists(video_path):
+        raise FileNotFoundError(f"Video file {video_path} not found")
+
+    decode_cmd = [
+        "ffmpeg",
+        "-hide_banner",
+        "-v",
+        "error",
+        "-i",
+        video_path,
+        "-vf",
+        f"scale={width}:{height}",
+        "-pix_fmt",
+        "gray",
+        "-f",
+        "rawvideo",
+        "pipe:1",
+    ]
+
+    result = subprocess.run(decode_cmd, capture_output=True)
+
+    if result.returncode != 0:
+        raise ValueError(
+            f"Failed to decode {video_path}: {result.stderr.decode().strip()}"
+        )
+
+    frame_size = width * height
+
+    if len(result.stdout) % frame_size != 0:
+        raise ValueError(
+            f"Decoding {video_path} yielded {len(result.stdout)} bytes, "
+            f"not a multiple of the {frame_size} B frame size."
+        )
+
+    return torch.frombuffer(bytearray(result.stdout), dtype=torch.uint8).reshape(
+        -1, frame_size
+    )
+
+
+def scale_filter_args(scale: float) -> list[str]:
+    if scale == 1.0:
+        return []
+
+    # yuv420p requires even sides
+    return ["-vf", f"scale=trunc(iw*{scale}/2)*2:trunc(ih*{scale}/2)*2"]
+
+
+def encode_images_to_video(
+    image_paths: list[str],
+    output_path: str,
+    fps: float,
+    scale: float = 1.0,
+):
+    # Concat list allows arbitrary image names
+    with tempfile.NamedTemporaryFile(
+        "w", suffix=".txt", delete=False
+    ) as list_file:
+        for path in image_paths:
+            list_file.write(f"file '{path.replace(os.sep, '/')}'\n")
+
+    encode_cmd = [
+        "ffmpeg",
+        "-hide_banner",
+        "-v",
+        "error",
+        "-y",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-r",
+        str(fps),
+        "-i",
+        list_file.name,
+        *scale_filter_args(scale),
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "28",
+        "-pix_fmt",
+        "yuv420p",
+        output_path,
+    ]
+
+    try:
+        result = subprocess.run(encode_cmd, capture_output=True)
+    finally:
+        os.remove(list_file.name)
+
+    if result.returncode != 0:
+        raise ValueError(
+            f"Failed to encode {output_path}: {result.stderr.decode().strip()}"
+        )
+
+
+def get_video_codec(video_path: str) -> str:
+    ffprobe_cmd = [
+        "ffprobe",
+        "-hide_banner",
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=codec_name",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        video_path,
+    ]
+
+    result = subprocess.run(ffprobe_cmd, capture_output=True, text=True)
+
+    if result.returncode != 0:
+        raise ValueError(
+            f"Failed to probe {video_path}: {result.stderr.strip()}"
+        )
+
+    codec_name = result.stdout.strip()
+
+    if not codec_name:
+        raise ValueError(f"{video_path} holds no video stream.")
+
+    return codec_name
+
+
+def transcode_video_to_h264(
+    video_path: str, output_path: str, scale: float = 1.0
+):
+    """Re-encode a video to H.264, keeping frame indices unchanged."""
+    transcode_cmd = [
+        "ffmpeg",
+        "-hide_banner",
+        "-v",
+        "error",
+        "-y",
+        "-i",
+        video_path,
+        *scale_filter_args(scale),
+        "-fps_mode",
+        "passthrough",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "28",
+        "-pix_fmt",
+        "yuv420p",
+        "-an",
+        output_path,
+    ]
+
+    result = subprocess.run(transcode_cmd, capture_output=True)
+
+    if result.returncode != 0:
+        raise ValueError(
+            f"Failed to transcode {video_path}: {result.stderr.decode().strip()}"
+        )

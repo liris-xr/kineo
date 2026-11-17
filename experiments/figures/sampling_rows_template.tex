@@ -1,0 +1,31 @@
+\begin{table*}[htbp]
+\centering
+\caption{Confidence-filtered random sampling (Random) against confidence-filtered spatio-temporal sampling (FPS) on EgoHumans~\cite{egohumans}, over {n_sequences} sequences. Both select a fixed budget among the same confidence-filtered candidates (Sec.~\ref{sec:sampling}): Random draws it uniformly at random, as in all other experiments; FPS draws it by farthest-point sampling over their image positions and time, so that it spreads them across the images and the sequence. Each cell gives the median over sequences, and the better of each column is in bold. Metrics include translation error (TE, in meters), scale-aligned translation error (s-TE, in meters), angular error (AE, in degrees), Field-of-View error (FoV, in degrees), and mean-per-joint position error in metric world space (W-MPJPE, in meters), after global alignment (GA-MPJPE, in meters) and after Procrustes alignment (PA-MPJPE, in meters). Runtime is the time per sequence of the two sampling stages.}
+\maxsizebox{\linewidth}{!}{
+    \begin{tabular}{l|cccc|ccc|c}
+        \toprule
+        \multirow{2}{*}{\textbf{Sampling}} & \multicolumn{4}{c|}{\textbf{Camera Metrics}} & \multicolumn{3}{c|}{\textbf{Human Metrics}} & \multicolumn{1}{c}{\textbf{Runtime (s)}} \\
+        & TE$\downarrow$ & s-TE$\downarrow$ & AE$\downarrow$ & FoV$\downarrow$ & W-MPJPE$\downarrow$ & GA-MPJPE$\downarrow$ & PA-MPJPE$\downarrow$ & Sampling$\downarrow$ \\
+        \midrule
+{global_rows}
+        \bottomrule
+    \end{tabular}
+}
+\label{tab:sampling_egohumans}
+\end{table*}
+
+\begin{table*}[htbp]
+\centering
+\caption{Confidence-filtered random sampling (Random) against confidence-filtered spatio-temporal sampling (FPS) per EgoHumans~\cite{egohumans} category, over the same sequences and with the same metrics as Table~\ref{tab:sampling_egohumans}. Each cell gives the median over sequences, and the better of each column is in bold.}
+\maxsizebox{\linewidth}{!}{
+    \begin{tabular}{ll|cccc|ccc|c}
+        \toprule
+        \multirow{2}{*}{\textbf{Category}} & \multirow{2}{*}{\textbf{Sampling}} & \multicolumn{4}{c|}{\textbf{Camera Metrics}} & \multicolumn{3}{c|}{\textbf{Human Metrics}} & \multicolumn{1}{c}{\textbf{Runtime (s)}} \\
+        & & TE$\downarrow$ & s-TE$\downarrow$ & AE$\downarrow$ & FoV$\downarrow$ & W-MPJPE$\downarrow$ & GA-MPJPE$\downarrow$ & PA-MPJPE$\downarrow$ & Sampling$\downarrow$ \\
+        \midrule
+{category_rows}
+        \bottomrule
+    \end{tabular}
+}
+\label{tab:sampling_egohumans_categories}
+\end{table*}

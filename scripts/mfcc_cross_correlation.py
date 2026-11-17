@@ -137,9 +137,14 @@ def merge_interleave_mfcc(mfcc1: torch.Tensor, mfcc2: torch.Tensor) -> torch.Ten
 
 
 if __name__ == "__main__":
-    # Video paths
-    video_path1 = "D:/Charles_JAVERLIAT/Captations Guedelon/raw_videos/09_09_2025_luc/gopro1_linear_carriere1.MP4"
-    video_path2 = "D:/Charles_JAVERLIAT/Captations Guedelon/raw_videos/09_09_2025_luc/gopro2_linear_carriere1.MP4"
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("video_path1")
+    parser.add_argument("video_path2")
+    args = parser.parse_args()
+    video_path1 = args.video_path1
+    video_path2 = args.video_path2
 
     # Output directory
     output_dir = "../outputs/mfcc_output"

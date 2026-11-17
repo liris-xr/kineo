@@ -394,6 +394,12 @@ class NLFSMPLFittingStage(PipelineStage[NLFSMPLFittingRuntimeConfig]):
             "bi,ij->bj", [right_hand_pose_pca, right_hand_components]
         ).view(n_frames, -1, 3)
 
+        if not (
+            torch.isfinite(left_hand_pose).all()
+            and torch.isfinite(right_hand_pose).all()
+        ):
+            raise ValueError("non-finite hand pose after optimization")
+
         return left_hand_pose.detach(), right_hand_pose.detach()
 
     def _refine_subject_model(
@@ -427,8 +433,6 @@ class NLFSMPLFittingStage(PipelineStage[NLFSMPLFittingRuntimeConfig]):
         vertices_2d = torch.zeros((n_frames, n_views, n_vertices, 2), device=device)
         vertices_2d_scores = torch.zeros((n_frames, n_views, n_vertices), device=device)
 
-        import cv2
-        import numpy as np
 
         for annot in tqdm(
             subject_kps_2d.annotations, desc="Collecting 2D keypoints", leave=False
@@ -515,6 +519,9 @@ class NLFSMPLFittingStage(PipelineStage[NLFSMPLFittingRuntimeConfig]):
         for _ in pbar:
             loss = optimizer.step(opt_closure)
             pbar.set_postfix(loss=loss.detach().item())
+
+        if not torch.isfinite(pose_opt).all():
+            raise ValueError("non-finite SMPL pose after optimization")
 
         pose_out = pose.clone().detach()
         pose_out[frame_idx] = pose_opt.reshape(1, -1, 3).detach()

@@ -8,6 +8,8 @@
 # Contact: guillaume.lavoue@enise.ec-lyon.fr
 # -----------------------------------------------------------------------------
 
+import dataclasses
+
 from kineo.annotations.keypoints_3d import Keypoints3DAnnotations
 from kineo.annotations.camera_intrinsics import CameraIntrinsicsAnnotations
 from kineo.annotations.camera_extrinsics import CameraExtrinsicsAnnotations
@@ -22,6 +24,16 @@ from kineo.geometry.camera import (
 )
 import torch
 from kineo.torch_utils import check_shape
+
+
+def with_unit_scores(keypoints: Keypoints2DAnnotations) -> Keypoints2DAnnotations:
+    return Keypoints2DAnnotations(
+        metadata=keypoints.metadata,
+        annotations=[
+            dataclasses.replace(a, scores=torch.ones_like(a.scores))
+            for a in keypoints.annotations
+        ],
+    )
 
 
 def project_kps3d_to_kps2d(
@@ -75,7 +87,6 @@ def project_kps3d_to_kps2d(
                     subject_id=orig_annotation.subject_id,
                     xy=points_2d[i],
                     scores=orig_annotation.scores[i],
-                    annotated=orig_annotation.annotated[i],
                     format=orig_annotation.format,
                 )
                 for i, orig_annotation in enumerate(kps_annotations.annotations)
@@ -132,7 +143,6 @@ def generate_kps2d_from_kps3d_and_cameras(
                     subject_id=annotation.subject_id,
                     xy=kps_img,
                     scores=annotation.scores.clone(),
-                    annotated=annotation.annotated.clone(),
                     format=annotation.format,
                 )
             )

@@ -1,8 +1,6 @@
 from __future__ import annotations
 import torch
-import os
 from tqdm import tqdm
-import pickle
 from typing import Literal
 
 from kineo.pipeline.pipeline import PipelineStage
@@ -16,6 +14,8 @@ from kineo.annotations import (
     CameraIntrinsicsAnnotations,
 )
 from kineo.pipeline.pipeline import Pipeline
+from kineo.pipeline import per_view_cache
+from kineo.pipeline.stages.global_time_reference import build_inference_frames
 from kineo.pipeline.stages.nlf.model_wrapper import NLFModelWrapper
 from kineo.pipeline.stages.nlf.smpl_keypoints_format import NLF_SMPL_KEYPOINTS_FORMAT, NLF_SMPLX_KEYPOINTS_FORMAT
 
@@ -29,7 +29,9 @@ class NLFSMPLKeypointsDetectionRuntimeConfig:
     batch_size: int = 16
     use_half_precision: bool = True
     use_cache: bool = True
-    cache_output_path_template: str = "cache/{sequence_name}/{annotation_key}.pkl"
+    cache_output_path_template: str = (
+        "cache/{sequence_name}/{annotation_key}/{view_id}.pkl"
+    )
     frame_step: int = (
         1  # Infer every N frames (1 = every frame, 2 = every other frame, etc.)
     )
@@ -80,56 +82,56 @@ class NLFSMPLKeypointsDetectionStage(PipelineStage[NLFSMPLKeypointsDetectionRunt
         bboxes_annotations: BBox2DAnnotations = annotations.get("bboxes_2d")
 
         intrinsics_annotations: CameraIntrinsicsAnnotations = annotations.get(
-            "camera_intrinsics"
+            "cameras_intrinsics"
         )
 
         if bboxes_annotations is None:
             raise ValueError("Expected bboxes annotations but none were provided")
 
-        if runtime_cfg.use_cache:
-            kps2d_cache_filepath = runtime_cfg.cache_output_path_template.format(
-                sequence_name=sequence_name, annotation_key="keypoints_2d"
-            )
-
-            if os.path.exists(kps2d_cache_filepath):
-                with open(kps2d_cache_filepath, "rb") as f:
-                    keypoints_annotations = Keypoints2DAnnotations.from_dict(
-                        pickle.load(f)
-                    )
-                print(
-                    f"Loaded keypoints annotations from cache: {kps2d_cache_filepath}"
-                )
-                annotations["keypoints_2d"] = keypoints_annotations.cpu()
-                return
-
-        self.model = self.model.to(device)
-
-        keypoints_annotations = self._infer_keypoints(
-            views=views,
-            device=device,
-            bboxes_annotations=bboxes_annotations,
-            intrinsics_annotations=intrinsics_annotations,
-            model=self.model,
-            batch_size=runtime_cfg.batch_size,
-            use_half_precision=runtime_cfg.use_half_precision,
-            frame_step=runtime_cfg.frame_step,
-            model_name=runtime_cfg.model_name,
-            show=runtime_cfg.show,
+        keypoints_format = (
+            NLF_SMPLX_KEYPOINTS_FORMAT
+            if runtime_cfg.model_name == "smplx"
+            else NLF_SMPL_KEYPOINTS_FORMAT
         )
 
-        self.model = self.model.cpu()
-
-        if runtime_cfg.use_cache:
-            os.makedirs(os.path.dirname(kps2d_cache_filepath), exist_ok=True)
-
-            if not os.path.exists(kps2d_cache_filepath):
-                with open(kps2d_cache_filepath, "wb") as f:
-                    print(
-                        f"Saving keypoints annotations to cache: {kps2d_cache_filepath}"
+        def infer_missing(missing_views: list[ViewInput]) -> dict[str, Annotations]:
+            self.model = self.model.to(device)
+            try:
+                return {
+                    "keypoints_2d": self._infer_keypoints(
+                        views=missing_views,
+                        device=device,
+                        bboxes_annotations=bboxes_annotations,
+                        intrinsics_annotations=intrinsics_annotations,
+                        model=self.model,
+                        batch_size=runtime_cfg.batch_size,
+                        use_half_precision=runtime_cfg.use_half_precision,
+                        frame_step=runtime_cfg.frame_step,
+                        model_name=runtime_cfg.model_name,
+                        show=runtime_cfg.show,
+                        inference_frames_by_view=build_inference_frames(
+                            annotations, missing_views
+                        ),
                     )
-                    pickle.dump(keypoints_annotations.to_dict(), f)
+                }
+            finally:
+                self.model = self.model.cpu()
 
-        annotations["keypoints_2d"] = keypoints_annotations.cpu()
+        cached = per_view_cache.load_or_infer_per_view(
+            views=views,
+            specs={
+                "keypoints_2d": per_view_cache.PerViewCacheSpec(
+                    annotations_cls=Keypoints2DAnnotations,
+                    metadata=Keypoints2DAnnotationsMetadata(formats=[keypoints_format]),
+                )
+            },
+            infer_missing=infer_missing,
+            sequence_name=sequence_name,
+            cache_output_path_template=runtime_cfg.cache_output_path_template,
+            use_cache=runtime_cfg.use_cache,
+        )
+
+        annotations["keypoints_2d"] = cached["keypoints_2d"].cpu()
 
     def _infer_keypoints(
         self,
@@ -143,6 +145,7 @@ class NLFSMPLKeypointsDetectionStage(PipelineStage[NLFSMPLKeypointsDetectionRunt
         frame_step: int = 1,
         model_name: Literal["smpl", "smplx"] = "smplx",
         show: bool = False,
+        inference_frames_by_view: dict[str, list[int]] | None = None,
     ) -> Keypoints2DAnnotations:
         """
         Infer keypoints for all views.
@@ -155,9 +158,16 @@ class NLFSMPLKeypointsDetectionStage(PipelineStage[NLFSMPLKeypointsDetectionRunt
 
         all_keypoints_annotations: list[Keypoints2DAnnotation] = []
 
+        if inference_frames_by_view is None:
+            inference_frames_by_view = {
+                view["view_id"]: _get_inference_frames(
+                    view["frame_loader"].n_frames, frame_step
+                )
+                for view in views
+            }
+
         n_total_inference_frames = sum(
-            len(_get_inference_frames(view["frame_loader"].n_frames, frame_step))
-            for view in views
+            len(inference_frames_by_view[view["view_id"]]) for view in views
         )
         pbar = tqdm(
             total=n_total_inference_frames, desc="Inferring keypoints", leave=False
@@ -166,7 +176,6 @@ class NLFSMPLKeypointsDetectionStage(PipelineStage[NLFSMPLKeypointsDetectionRunt
         for view in views:
             frame_loader = view["frame_loader"]
             view_id = view["view_id"]
-            view_n_frames = frame_loader.n_frames
 
             K = (
                 intrinsics_annotations.filter_by_view_id(view_id)
@@ -188,7 +197,7 @@ class NLFSMPLKeypointsDetectionStage(PipelineStage[NLFSMPLKeypointsDetectionRunt
                 [0, -1, 0], dtype=torch.float32, device=device
             )
 
-            inference_frames = _get_inference_frames(view_n_frames, frame_step)
+            inference_frames = inference_frames_by_view[view_id]
 
             for batch_start in range(0, len(inference_frames), batch_size):
                 batch_end = min(batch_start + batch_size, len(inference_frames))
@@ -296,7 +305,6 @@ class NLFSMPLKeypointsDetectionStage(PipelineStage[NLFSMPLKeypointsDetectionRunt
                             subject_id=subject_id,
                             xy=kps_xy.cpu(),
                             scores=scores.cpu(),
-                            annotated=torch.ones(kps_xy.shape[0], dtype=torch.bool),
                             format=keypoints_format.name,
                         )
 

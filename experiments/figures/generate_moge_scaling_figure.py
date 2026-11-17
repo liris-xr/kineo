@@ -3,13 +3,13 @@ import orjson
 import os
 import numpy as np
 import cv2
-from kineo.annotations.keypoints_3d import Keypoints3DAnnotations, KeypointsFormat
+from kineo.annotations.keypoints_3d import Keypoints3DAnnotations
+from kineo.annotations.keypoints_format import H36M_17_KEYPOINTS_FORMAT
 from kineo.annotations.camera_extrinsics import CameraExtrinsicsAnnotations
 from kineo.annotations.camera_intrinsics import CameraIntrinsicsAnnotations
 from aitviewer.scene.camera import PinholeCamera, OpenCVCamera
 from aitviewer.scene.node import Node
 from aitviewer.headless import HeadlessRenderer
-from aitviewer.viewer import Viewer
 from aitviewer.renderables.skeletons import Skeletons
 from aitviewer.renderables.point_clouds import PointClouds
 from aitviewer.renderables.billboard import Billboard
@@ -24,7 +24,7 @@ from kineo.geometry.conversions import (
 )
 from kineo.geometry.transformations import inverse_Rt
 
-H36M_KPS_FORMAT = KeypointsFormat.from_mmpose_dataset("h36m")
+H36M_KPS_FORMAT = H36M_17_KEYPOINTS_FORMAT
 
 C.window_type = "pyglet"
 

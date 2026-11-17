@@ -18,6 +18,7 @@ from kineo.pipeline.pipeline import Pipeline
 
 from kineo.datasets.keypoints_sequence_dataset import ViewInput
 from kineo.io.frame_sequence_loader import VideoLoader
+from kineo.io.occluded_frame_loader import OccludedFrameLoader, load_occluders
 from kineo.annotations.keypoints_3d import Keypoints3DAnnotations
 from kineo.annotations.camera_extrinsics import CameraExtrinsicsAnnotations
 from kineo.annotations.camera_intrinsics import CameraIntrinsicsAnnotations
@@ -25,11 +26,10 @@ from kineo.annotations.bboxes_2d import BBox2DAnnotations
 from kineo.annotations.keypoints_2d import Keypoints2DAnnotations
 
 import orjson
+from omegaconf import OmegaConf
 from tqdm import tqdm
 import argparse
 import traceback
-from collections import defaultdict
-import json
 
 torch.use_deterministic_algorithms(True)
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -58,6 +58,13 @@ def main(
     print_system_info(device)
 
     pipeline = Pipeline.build_pipeline_from_config(config_file, device)
+
+    cfg = OmegaConf.load(config_file)
+    occlusion_cfg = cfg.get("occlusion")
+    if occlusion_cfg is not None:
+        print(f"Loading occluders from {occlusion_cfg.pascal_voc_dir}")
+        occluders = load_occluders(occlusion_cfg.pascal_voc_dir)
+        print(f"Loaded {len(occluders)} occluders")
 
     sequences_file = os.path.join(dataset_dir, "h36m_protocol1_sequences.json")
 
@@ -123,7 +130,7 @@ def main(
                 )
 
             views = []
-            for camera in cameras:
+            for view_idx, camera in enumerate(cameras):
                 video_path = os.path.join(
                     dataset_dir, sequence["views"][camera]["video_path"]
                 )
@@ -135,14 +142,37 @@ def main(
                     selected_frames_start, selected_frames_stop, selected_frames_step
                 )
 
+                frame_loader = VideoLoader(
+                    video_path=video_path,
+                    selected_frames=selected_frames,
+                    device=device,
+                )
+                if occlusion_cfg is not None:
+                    bboxes_xywh = {}
+                    for bbox in gt_bboxes_2d:
+                        if bbox.view_id == camera:
+                            x_min, y_min, x_max, y_max = bbox.xyxy.tolist()
+                            bboxes_xywh[bbox.frame_idx] = (
+                                x_min,
+                                y_min,
+                                x_max - x_min,
+                                y_max - y_min,
+                            )
+                    frame_loader = OccludedFrameLoader(
+                        frame_loader,
+                        occluders,
+                        bboxes_xywh,
+                        sequence_name=sequence_name,
+                        view_idx=view_idx,
+                        n_views=len(cameras),
+                        n_occluded_views=occlusion_cfg.n_occluded_views,
+                        seed=occlusion_cfg.seed,
+                    )
+
                 views.append(
                     ViewInput(
                         view_id=camera,
-                        frame_loader=VideoLoader(
-                            video_path=video_path,
-                            selected_frames=selected_frames,
-                            device=device,
-                        ),
+                        frame_loader=frame_loader,
                         audio_loader=None,
                     )
                 )
@@ -155,8 +185,8 @@ def main(
                     "bboxes_2d": gt_bboxes_2d,
                     "keypoints_2d": gt_keypoints_2d,
                     "keypoints_3d": gt_keypoints_3d,
-                    "camera_extrinsics": gt_cam_extrinsics,
-                    "camera_intrinsics": gt_cam_intrinsics,
+                    "cameras_extrinsics": gt_cam_extrinsics,
+                    "cameras_intrinsics": gt_cam_intrinsics,
                 },
             )
         except Exception:
@@ -177,7 +207,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--config-file",
         type=str,
-        default="configs/pipeline/h36m_eval_rtmpose_smpl_scaling.yaml",
+        required=True,
     )
     parser.add_argument(
         "--sequences-filter",
