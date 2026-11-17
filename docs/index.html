@@ -154,30 +154,28 @@
 
       <div class="content has-text-justified">
         <p>
-          Markerless multiview motion capture remains challenging due to the need for precise camera calibration,
-          limiting its accessibility for non-experts. Existing calibration-free approaches avoid manual calibration but
-          suffer from high computational cost and reduced reconstruction accuracy.
+          Markerless multi-view motion capture is often constrained by the need for precise camera calibration,
+          limiting accessibility for non-experts and in-the-wild captures. Existing calibration-free approaches mitigate
+          this requirement but suffer from high computational cost and reduced reconstruction accuracy.
         </p>
         <p>
           We present Kineo, a fully automatic, calibration-free pipeline for markerless motion capture from videos
-          captured by unsynchronized, uncalibrated, consumer-grade RGB cameras. Kineo fully leverages 2D keypoint from
-          off-the-shelf detectors to simultaneously calibrate cameras, estimate Brown-Conrady distortion coefficients,
-          and reconstruct 3D keypoints and dense scene point maps at metric scale. A novel confidence-driven keypoint
-          sampling strategy, combined with graph-based optimization, ensures a fixed computational cost for the
-          calibration step, independent of sequence duration. Additionally, we introduce the pairwise reprojection
-          consensus score, which quantifies the reliability of 3D estimations for downstream tasks.
+          captured by unsynchronized, uncalibrated, consumer-grade RGB cameras. Kineo leverages 2D keypoints from
+          off-the-shelf detectors to simultaneously calibrate cameras, including Brown-Conrady distortion coefficients,
+          and reconstruct 3D keypoints and dense scene pointmaps at metric scale. A confidence-aware spatio-temporal
+          keypoint subsampling strategy, combined with graph-based global optimization, enables robust calibration at a
+          fixed computational cost independent of sequence length. We further introduce a pairwise reprojection
+          consistency score, a heuristic measure of the agreement between views, which we use to weight bone lengths in
+          metric scale recovery.
         </p>
         <p>
           Evaluations on EgoHumans and Human3.6M demonstrate substantial improvements over prior calibration-free
           methods. Compared to previous state-of-the-art approaches, Kineo reduces camera translation error by
-          approximately 81-84%, camera angular error by 86-92%, and world mean-per-joint error (W-MPJPE) by 82-91%. When
-          provided with ground-truth intrinsics, Kineo's performance further improves, matching methods that use
-          ground-truth extrinsics. We further demonstrate Kineo's real-world applicability in both offline and realtime
-          scenarios. In an offline setting, we capture craftsmen gestures at Guédelon Castle, highlighting Kineo's
-          potential for scalable, accurate motion capture in complex, uncontrolled environments and its utility in
-          preserving intangible cultural heritage. In a realtime setting, Kineo employs a two-step approach, with
-          calibration followed by live human reconstruction, showcasing its capability for interactive 3D motion
-          capture.
+          approximately 83–85%, camera angular error by 86–92%, and world mean-per-joint position error (W-MPJPE) by
+          83–91%. Kineo is also efficient in real-world scenarios, processing multi-view sequences faster than their
+          duration in a specific configuration (e.g., 36&nbsp;min to process 1&nbsp;h&nbsp;23&nbsp;min of footage). The
+          full pipeline and evaluation code are openly released to promote reproducibility and practical adoption at:
+          <a href="https://github.com/liris-xr/kineo">github.com/liris-xr/kineo</a>.
         </p>
       </div>
     </div>
@@ -202,14 +200,13 @@
           unsynchronized streams on a shared timeline.
           Next, automatic camera calibration estimates extrinsic and intrinsic parameters, including Brown–Conrady lens
           distortion, via a graph-based optimization
-          over 2D keypoint correspondences selected by a confidence-driven sampling strategy.
-          Using the recovered cameras, 3D keypoints and scene point maps are reconstructed, and each triangulated
-          keypoint is assigned a pairwise reprojection confidence
-          score to quantify reconstruction quality.
+          over 2D keypoint correspondences selected by a confidence-aware subsampling strategy.
+          Using the recovered cameras, 3D keypoints and scene pointmaps are reconstructed, and each triangulated
+          keypoint is assigned a pairwise reprojection consistency score to measure the agreement between views.
           Finally, metric-scale recovery is achieved either through a human body prior using the SMPL model or a
           monocular metric depth estimator for subject-agnostic scaling.
-          The modular design enables robust and scalable reconstruction of both human and non-human subjects across
-          long, multi-view sequences.
+          The modular design enables robust and scalable reconstruction of human subjects across long, multi-view
+          sequences, and can extend to other subjects given a suitable 2D keypoint detector.
         </figcaption>
       </figure>
 
@@ -350,7 +347,7 @@
             <tr>
               <td class="dataset-label" rowspan="6">EgoHumans</td>
               <td>UnCaliPose</td><td>3.51</td><td>0.13</td>
-              <td class="est">Est.</td><td class="gt">GT</td><td class="gt">GT</td>
+              <td class="est">Est.</td><td class="est">Est.</td><td class="notused">-</td>
             </tr>
             <tr>
               <td>HSfM</td><td class="underline">1.04</td><td class="underline">0.05</td>
@@ -411,8 +408,10 @@
           Metrics include W-MPJPE (in meters) and PA-MPJPE (in meters). 
           Camera parameters: <span class="gt">GT</span> = ground truth, 
           <span class="est">Est.</span> = estimated, 
-          <span class="notused">-</span> = omitted. 
+          <span class="notused">-</span> = omitted.
           <b>Best</b> and <u>second-best</u> <i>calibration-free</i> methods are highlighted.
+          HSfM results on Human3.6M come from our own evaluation, and UnCaliPose values are those reported by HSfM;
+          other values are reported as in the respective papers.
         </p>
 
         <table>
@@ -444,7 +443,7 @@
               <td class="dataset-label" rowspan="8">EgoHumans</td>
               <td>UnCaliPose</td>
               <td>2.63</td><td>2.63</td><td>60.90</td><td>0.28</td><td>-</td><td>0.33</td><td>-</td>
-              <td class="est">Est.</td><td class="gt">GT</td><td class="gt">GT</td>
+              <td class="est">Est.</td><td class="est">Est.</td><td class="notused">-</td>
             </tr>
             <tr>
               <td>DUSt3R</td>
@@ -513,13 +512,15 @@
         <p>
           Quantitative comparison of camera pose estimation on <b>EgoHumans</b> and <b>Human3.6M</b>. 
           Metrics include translation error (TE, m), scale-aligned translation error (s-TE, m), 
-          angular error (AE, °), relative rotation accuracy (RRA), camera center accuracy (CCA), 
-          and scale-aligned CCA (s-CCA). 
-          Camera parameters: <span class="gt">GT</span> = ground truth, 
-          <span class="est">Est.</span> = estimated, 
-          <span class="notused">-</span> = omitted. 
+          angular error (AE, °), relative rotation accuracy (RRA, at 10°), camera center accuracy (CCA, at 10% of the
+          scene scale), scale-aligned CCA (s-CCA), and field-of-view error (FoV, °).
+          Camera parameters: <span class="gt">GT</span> = ground truth,
+          <span class="est">Est.</span> = estimated,
+          <span class="notused">-</span> = omitted.
           <b>Best</b> and <u>second-best</u> <i>calibration-free</i> methods are highlighted.
-        </p>        
+          HSfM results on Human3.6M come from our own evaluation, and UnCaliPose, DUSt3R and MASt3R values are those
+          reported by HSfM; other values are reported as in the respective papers.
+        </p>
 
       </div>
 
